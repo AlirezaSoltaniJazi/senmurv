@@ -1,0 +1,6 @@
+dist/
+release/
+coverage/
+node_modules/
+*.zip
+package-lock.json

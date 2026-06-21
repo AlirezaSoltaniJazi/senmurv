@@ -1,0 +1,8 @@
+/.idea/
+node_modules/
+dist/
+release/
+coverage/
+*.local
+.env*
+.DS_Store
