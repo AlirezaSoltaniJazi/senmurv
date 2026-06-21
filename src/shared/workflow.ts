@@ -139,21 +139,34 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     if (b) { b.click(); await sleep(500); return; }
     console.warn('[flow] button not found, skipping:', text);
   }
+  // Framework-agnostic label resolution: gather a control's accessible label from
+  // every common source (standard <label for>/wrapping <label>, aria-label,
+  // aria-labelledby, placeholder, generic field containers, and — where present —
+  // Angular Material's mat-label). No single framework is assumed.
+  function labelTextFor(el) {
+    const parts = [];
+    const al = el.getAttribute('aria-label'); if (al) parts.push(al);
+    const ph = el.getAttribute('placeholder'); if (ph) parts.push(ph);
+    const lb = el.getAttribute('aria-labelledby');
+    if (lb) lb.split(/\\s+/).forEach((id) => { const n = document.getElementById(id); if (n) parts.push(n.textContent); });
+    if (el.id) {
+      const safe = window.CSS && CSS.escape ? CSS.escape(el.id) : el.id;
+      document.querySelectorAll('label[for="' + safe + '"]').forEach((l) => parts.push(l.textContent));
+    }
+    const wrap = el.closest('label');
+    if (wrap) parts.push(wrap.textContent);
+    const field = el.closest('mat-form-field, .mat-mdc-form-field, .form-group, .form-field, .field');
+    if (field) { const ml = field.querySelector('mat-label, label, legend, .label'); if (ml) parts.push(ml.textContent); }
+    if (el.matches('mat-checkbox, mat-radio-button, [role="checkbox"], [role="radio"], [role="switch"]')) parts.push(el.textContent);
+    return norm(parts.join(' '));
+  }
   function resolveField(step, sel) {
     if (step.selector) return queryNth(step.selector, step.index);
     if (step.label) {
       const g = norm(step.label);
-      const fields = [...document.querySelectorAll('mat-form-field, .mat-mdc-form-field')];
-      const find = (cmp) => {
-        for (const f of fields) {
-          const lbl = f.querySelector('mat-label');
-          if (!lbl || !cmp(norm(lbl.textContent))) continue;
-          const ctrl = f.querySelector(sel);
-          if (ctrl && isVisible(ctrl)) return ctrl;
-        }
-        return null;
-      };
-      return find((t) => t === g) || find((t) => t.includes(g) || g.includes(t));
+      const cands = [...document.querySelectorAll(sel)].filter(isVisible);
+      const pick = (cmp) => cands.find((el) => cmp(labelTextFor(el))) || null;
+      return pick((t) => t === g) || pick((t) => t.includes(g)) || pick((t) => g.includes(t));
     }
     return null;
   }
