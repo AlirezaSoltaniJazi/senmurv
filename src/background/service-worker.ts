@@ -1,6 +1,6 @@
 import { BLOCKED_URL_PREFIXES, MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
-import { deleteScript, getScripts, upsertScript } from '@/shared/storage';
+import { deleteScript, getScripts, saveScripts, upsertScript } from '@/shared/storage';
 import type { LocatorKind, Result } from '@/shared/types';
 
 // ---------------------------------------------------------------------------
@@ -221,6 +221,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     case MESSAGE_TYPES.SAVE_SCRIPT:
       upsertScript(message.payload.script)
         .then((value) => sendResponse({ ok: true, value }))
+        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+      return true;
+
+    case MESSAGE_TYPES.SET_SCRIPTS:
+      saveScripts(message.payload.scripts)
+        .then(() => sendResponse({ ok: true, value: message.payload.scripts }))
         .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
       return true;
 

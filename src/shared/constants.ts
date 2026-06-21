@@ -15,23 +15,49 @@ export const MESSAGE_TYPES = {
   RUN_SCRIPT: 'RUN_SCRIPT',
   GET_SCRIPTS: 'GET_SCRIPTS',
   SAVE_SCRIPT: 'SAVE_SCRIPT',
+  SET_SCRIPTS: 'SET_SCRIPTS',
   DELETE_SCRIPT: 'DELETE_SCRIPT',
   TEST_LOCATOR: 'TEST_LOCATOR',
 } as const;
 
-/** Locales offered in the Generate Random Data tool (faker instances are mapped in faker-data.ts). */
-export const SUPPORTED_LOCALES = ['en_GB', 'en_US', 'de', 'fr', 'es', 'it'] as const;
+/** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
+export const SUPPORTED_LOCALES = [
+  'en_GB',
+  'en_US',
+  'pt_PT',
+  'nl_BE',
+  'nl',
+  'de_CH',
+  'de',
+  'it',
+  'fr',
+  'es',
+  'nb_NO',
+  'sv',
+  'fi',
+  'cs_CZ',
+  'de_AT',
+] as const;
 
 export const DEFAULT_LOCALE = 'en_GB';
 
-/** Human labels for the locale switcher. */
+/** Human (country) labels for the locale switcher. */
 export const LOCALE_LABELS: Record<string, string> = {
-  en_GB: 'English (UK)',
-  en_US: 'English (US)',
-  de: 'German',
-  fr: 'French',
-  es: 'Spanish',
-  it: 'Italian',
+  en_GB: 'United Kingdom',
+  en_US: 'United States',
+  pt_PT: 'Portugal',
+  nl_BE: 'Belgium',
+  nl: 'Netherlands',
+  de_CH: 'Switzerland',
+  de: 'Germany',
+  it: 'Italy',
+  fr: 'France',
+  es: 'Spain',
+  nb_NO: 'Norway',
+  sv: 'Sweden',
+  fi: 'Finland',
+  cs_CZ: 'Czech Republic',
+  de_AT: 'Austria',
 };
 
 /** Attributes treated as automation test ids, in preference order. */

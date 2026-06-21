@@ -111,8 +111,13 @@ button {
   font-size: 12px;
 }
 
-button:hover {
+button:not(:disabled):hover {
   border-color: var(--muted);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 button.primary {
@@ -321,6 +326,25 @@ select,
 .script-actions {
   display: flex;
   gap: 4px;
+}
+
+.hidden-file {
+  display: none;
+}
+
+.import-panel {
+  background: var(--panel);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.badge.conflict {
+  background: var(--warn);
+  color: #2a1c00;
 }
 
 .code-input {

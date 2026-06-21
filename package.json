@@ -1,6 +1,6 @@
 {
   "name": "senmurv",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "QA toolkit Chrome extension: generate test data, find element locators, and run saved JS scripts on any page.",
   "license": "MIT",
   "private": true,
@@ -30,11 +30,13 @@
   },
   "dependencies": {
     "@faker-js/faker": "^9.0.0",
+    "js-beautify": "^1.15.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@crxjs/vite-plugin": "^2.6.1",
+    "@types/js-beautify": "^1.14.3",
     "@eslint/js": "^10.0.1",
     "@types/chrome": "^0.1.42",
     "@types/node": "^25.9.0",
