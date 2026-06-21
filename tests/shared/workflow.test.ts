@@ -61,4 +61,33 @@ describe('parseWorkflowScript', () => {
     expect(parseWorkflowScript('console.log(1)')).toBeNull();
     expect(isWorkflowScript('console.log(1)')).toBe(false);
   });
+
+  it('preserves an nth index through round-trip', () => {
+    const withIndex: WorkflowStep[] = [
+      {
+        id: 'x',
+        kind: 'fill',
+        selector: 'input[formcontrolname="firstName"]',
+        index: 1,
+        value: 'Contact',
+      },
+    ];
+    const code = buildWorkflowScript(withIndex);
+    expect(code).toContain('"index": 1');
+    expect(code).toContain('queryNth(step.selector, step.index)');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({
+      kind: 'fill',
+      selector: 'input[formcontrolname="firstName"]',
+      index: 1,
+      value: 'Contact',
+    });
+  });
+
+  it('omits index 0 (equivalent to the default first match)', () => {
+    const code = buildWorkflowScript([
+      { id: 'y', kind: 'fill', selector: 'input', index: 0, value: 'v' },
+    ]);
+    expect(code).not.toContain('"index"');
+  });
 });

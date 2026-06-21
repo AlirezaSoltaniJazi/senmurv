@@ -200,6 +200,17 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
   function updateStep(id: string, patch: Partial<WorkflowStep>): void {
     setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
+  function setStepIndex(id: string, value: string): void {
+    setSteps((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const next: WorkflowStep = { ...s };
+        if (value === '') delete next.index;
+        else next.index = Math.max(0, Number(value) || 0);
+        return next;
+      })
+    );
+  }
   function moveStep(id: string, dir: -1 | 1): void {
     setSteps((prev) => {
       const i = prev.findIndex((s) => s.id === id);
@@ -437,6 +448,15 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                       placeholder="Field label (e.g. Prescription name)"
                       value={s.label ?? ''}
                       onChange={(e) => updateStep(s.id, { label: e.target.value })}
+                    />
+                    <input
+                      type="number"
+                      min={0}
+                      placeholder="nth"
+                      title="If the selector matches several elements, which one (0 = first)"
+                      style={{ width: '4rem', flex: '0 0 auto' }}
+                      value={s.index ?? ''}
+                      onChange={(e) => setStepIndex(s.id, e.target.value)}
                     />
                     <button type="button" onClick={() => void pickForStep(s.id)}>
                       Pick

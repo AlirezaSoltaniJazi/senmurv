@@ -26,6 +26,7 @@ export interface WorkflowStep {
   value?: string; // fill: value to type; select(text)/radio: option text/value
   optionMode?: SelectMode; // select
   checked?: boolean; // check
+  index?: number; // fill/select/radio/check: pick the Nth element matching `selector` (0-based)
 }
 
 export const STEP_KINDS: StepKind[] = ['click', 'wait', 'fill', 'select', 'radio', 'check'];
@@ -91,6 +92,7 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
   } else {
     if (s.label) o.label = s.label;
     if (s.selector) o.selector = s.selector;
+    if (typeof s.index === 'number' && s.index > 0) o.index = s.index;
     if (s.kind === 'fill') o.value = s.value ?? '';
     if (s.kind === 'select') {
       o.value = s.value ?? '';
@@ -107,6 +109,7 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
 const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
   const isVisible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+  const queryNth = (sel, i) => (typeof i === 'number' ? (document.querySelectorAll(sel)[i] || null) : document.querySelector(sel));
   function waitFor(fn, desc, timeout = 15000, interval = 200) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
@@ -131,7 +134,7 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     console.warn('[flow] button not found, skipping:', text);
   }
   function resolveField(step, sel) {
-    if (step.selector) return document.querySelector(step.selector);
+    if (step.selector) return queryNth(step.selector, step.index);
     if (step.label) {
       const g = norm(step.label);
       const fields = [...document.querySelectorAll('mat-form-field, .mat-mdc-form-field')];
@@ -212,14 +215,17 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         if (!opt) await sleep(150);
       }
     }
-    if (!opt) throw new Error('no options for "' + (step.value || step.optionMode) + '"');
+    if (!opt) {
+      const disabled = el.getAttribute('aria-disabled') === 'true' || (el.classList && el.classList.contains('mat-mdc-select-disabled'));
+      throw new Error(disabled ? 'select is disabled (a prior field may be required first)' : 'opened but no options appeared');
+    }
     opt.click();
     await sleep(300);
   }
   async function setRadio(step) {
     const click = (el) => { if (el) (el.matches && el.matches('input') ? el : (el.querySelector('input[type="radio"]') || el)).click(); };
     if (step.selector) {
-      const el = await waitFor(() => document.querySelector(step.selector), 'radio ' + step.selector);
+      const el = await waitFor(() => queryNth(step.selector, step.index), 'radio ' + step.selector);
       click(el);
       await sleep(150);
       return;
@@ -235,7 +241,13 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(150);
   }
   async function setCheck(step) {
-    const el = await waitFor(() => resolveField(step, 'input[type="checkbox"], input.msos-checkbox, mat-checkbox, [role="checkbox"]'), 'checkbox ' + (step.label || step.selector));
+    const byText = () => {
+      if (!step.label) return null;
+      const g = norm(step.label);
+      const cands = [...document.querySelectorAll('mat-checkbox, mat-slide-toggle, [role="checkbox"], [role="switch"]')].filter(isVisible);
+      return cands.find((x) => norm(x.textContent).includes(g)) || null;
+    };
+    const el = await waitFor(() => resolveField(step, 'input[type="checkbox"], input.msos-checkbox, mat-checkbox, mat-slide-toggle, [role="checkbox"], [role="switch"]') || byText(), 'checkbox ' + (step.label || step.selector), 8000);
     const box = el.matches && el.matches('input') ? el : (el.querySelector('input[type="checkbox"], input.msos-checkbox') || el);
     const msos = box.closest && box.closest('li.msos-option');
     const on = !!box.checked || !!(msos && msos.classList.contains('msos-option-selected'));
@@ -301,6 +313,7 @@ function toStep(item: unknown): WorkflowStep | null {
     step.optionMode = o.optionMode;
   }
   if (typeof o.checked === 'boolean') step.checked = o.checked;
+  if (typeof o.index === 'number') step.index = o.index;
   return step;
 }
 
