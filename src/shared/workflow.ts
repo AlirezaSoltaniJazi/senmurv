@@ -1,4 +1,4 @@
-import type { PickedField } from '@/shared/types';
+import type { GeneratorId, PickedField } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 /** What the Scripts "Customize" button hands to the Fill tab. */
@@ -27,6 +27,7 @@ export interface WorkflowStep {
   optionMode?: SelectMode; // select
   checked?: boolean; // check
   index?: number; // fill/select/radio/check: pick the Nth element matching `selector` (0-based)
+  generator?: GeneratorId; // fill: random-value generator; falls back to the static `value`
 }
 
 export const STEP_KINDS: StepKind[] = ['click', 'wait', 'fill', 'select', 'radio', 'check'];
@@ -69,7 +70,9 @@ export function describeStep(s: WorkflowStep): string {
     case 'wait':
       return `Wait ${s.ms ?? 0} ms`;
     case 'fill':
-      return `Fill ${target} = “${s.value ?? ''}”`;
+      return s.generator && s.generator !== 'custom'
+        ? `Fill ${target} = «random ${s.generator}»`
+        : `Fill ${target} = “${s.value ?? ''}”`;
     case 'select':
       return s.optionMode === 'text'
         ? `Select ${target} → “${s.value ?? ''}”`
@@ -93,7 +96,10 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
     if (s.label) o.label = s.label;
     if (s.selector) o.selector = s.selector;
     if (typeof s.index === 'number' && s.index > 0) o.index = s.index;
-    if (s.kind === 'fill') o.value = s.value ?? '';
+    if (s.kind === 'fill') {
+      o.value = s.value ?? '';
+      if (s.generator && s.generator !== 'custom') o.generator = s.generator;
+    }
     if (s.kind === 'select') {
       o.value = s.value ?? '';
       o.optionMode = s.optionMode ?? 'text';
@@ -314,6 +320,7 @@ function toStep(item: unknown): WorkflowStep | null {
   }
   if (typeof o.checked === 'boolean') step.checked = o.checked;
   if (typeof o.index === 'number') step.index = o.index;
+  if (typeof o.generator === 'string') step.generator = o.generator as GeneratorId;
   return step;
 }
 

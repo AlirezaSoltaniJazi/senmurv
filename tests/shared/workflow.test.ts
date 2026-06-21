@@ -90,4 +90,20 @@ describe('parseWorkflowScript', () => {
     ]);
     expect(code).not.toContain('"index"');
   });
+
+  it('round-trips a fill-step random generator', () => {
+    const code = buildWorkflowScript([
+      { id: 'g', kind: 'fill', selector: '#name', generator: 'fullName', value: 'Jane Doe' },
+    ]);
+    expect(code).toContain('"generator": "fullName"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'fullName', value: 'Jane Doe' });
+  });
+
+  it('omits a custom (static) generator from the script', () => {
+    const code = buildWorkflowScript([
+      { id: 'c', kind: 'fill', selector: '#x', generator: 'custom', value: 'static' },
+    ]);
+    expect(code).not.toContain('"generator"');
+  });
 });

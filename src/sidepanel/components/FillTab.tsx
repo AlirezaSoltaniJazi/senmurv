@@ -15,6 +15,7 @@ import {
   FIELD_TYPES,
   GENERATOR_LABELS,
   generatorsFor,
+  generateValue,
   instructionPreview,
 } from '@/shared/generators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
@@ -228,6 +229,17 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
   function removeStep(id: string): void {
     setSteps((prev) => prev.filter((s) => s.id !== id));
   }
+  // Bake any random-value fill generators into concrete values (faker can't run
+  // in the page). Fresh each call: "Run flow" re-randomizes; Save/Copy snapshot.
+  async function buildFlow(): Promise<string> {
+    await ensureFaker(locale);
+    const resolved = steps.map((s) =>
+      s.kind === 'fill' && s.generator && s.generator !== 'custom'
+        ? { ...s, value: generateValue(s.generator, locale, s.value) ?? '' }
+        : s
+    );
+    return buildWorkflowScript(resolved);
+  }
   async function runFlow(): Promise<void> {
     setError(null);
     setStatus(null);
@@ -237,7 +249,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
     }
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
-      payload: { code: buildWorkflowScript(steps) },
+      payload: { code: await buildFlow() },
     });
     if (res.ok) setStatus(`Ran ${steps.length} step(s). Check the page (console has details).`);
     else setError(res.error);
@@ -245,7 +257,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
   async function copyFlow(): Promise<void> {
     if (!steps.length) return;
     try {
-      await navigator.clipboard.writeText(buildWorkflowScript(steps));
+      await navigator.clipboard.writeText(await buildFlow());
       setStatus('Flow script copied to clipboard.');
     } catch {
       setError('Could not access the clipboard.');
@@ -253,7 +265,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
   }
   async function saveFlow(): Promise<void> {
     if (!steps.length) return;
-    await saveScript(`Generated flow (${steps.length} steps)`, buildWorkflowScript(steps));
+    await saveScript(`Generated flow (${steps.length} steps)`, await buildFlow());
   }
 
   async function saveScript(name: string, code: string): Promise<void> {
@@ -395,6 +407,23 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
               </button>
             ))}
           </div>
+          <div className="row">
+            <label className="field-label" htmlFor="flow-locale">
+              Random data locale
+            </label>
+            <select
+              id="flow-locale"
+              value={locale}
+              onChange={(e) => setLocale(e.target.value as Locale)}
+              title="Locale used by random-value generators in fill steps"
+            >
+              {SUPPORTED_LOCALES.map((l) => (
+                <option key={l} value={l}>
+                  {LOCALE_LABELS[l] ?? l}
+                </option>
+              ))}
+            </select>
+          </div>
           {picking && <p className="hint">Click the target element on the page (Esc to cancel).</p>}
           {steps.length === 0 && !picking && (
             <p className="hint">Add steps (click / wait / fill / select / checkbox), then Run.</p>
@@ -428,7 +457,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                 {s.kind === 'click' && (
                   <input
                     className="name-input"
-                    placeholder="Button text (e.g. Continue)"
+                    placeholder="Button text, e.g. Submit"
                     value={s.text ?? ''}
                     onChange={(e) => updateStep(s.id, { text: e.target.value })}
                   />
@@ -437,7 +466,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                   <input
                     className="name-input"
                     type="number"
-                    placeholder="milliseconds"
+                    placeholder="Milliseconds, e.g. 1000"
                     value={s.ms ?? 0}
                     onChange={(e) => updateStep(s.id, { ms: Number(e.target.value) || 0 })}
                   />
@@ -449,7 +478,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                   <div className="step-target">
                     <input
                       className="name-input"
-                      placeholder="Field label (e.g. Prescription name)"
+                      placeholder="Field label shown on the page, e.g. Email"
                       value={s.label ?? ''}
                       onChange={(e) => updateStep(s.id, { label: e.target.value })}
                     />
@@ -467,13 +496,45 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                     </button>
                   </div>
                 )}
-                {s.kind === 'fill' && (
+                {(s.kind === 'fill' ||
+                  s.kind === 'select' ||
+                  s.kind === 'check' ||
+                  s.kind === 'radio') && (
                   <input
                     className="name-input"
-                    placeholder="Value to type"
-                    value={s.value ?? ''}
-                    onChange={(e) => updateStep(s.id, { value: e.target.value })}
+                    placeholder="CSS selector (optional, overrides label), e.g. #email"
+                    value={s.selector ?? ''}
+                    onChange={(e) => updateStep(s.id, { selector: e.target.value })}
                   />
+                )}
+                {s.kind === 'fill' && (
+                  <div className="step-target">
+                    <select
+                      value={s.generator ?? 'custom'}
+                      onChange={(e) =>
+                        updateStep(s.id, { generator: e.target.value as GeneratorId })
+                      }
+                      title="Value source"
+                    >
+                      {generatorsFor('text').map((g) => (
+                        <option key={g} value={g}>
+                          {g === 'custom' ? 'Static value' : GENERATOR_LABELS[g]}
+                        </option>
+                      ))}
+                    </select>
+                    {(s.generator ?? 'custom') === 'custom' ? (
+                      <input
+                        className="name-input"
+                        placeholder="Value to type, e.g. John Smith"
+                        value={s.value ?? ''}
+                        onChange={(e) => updateStep(s.id, { value: e.target.value })}
+                      />
+                    ) : (
+                      <span className="hint" style={{ flex: 1, alignSelf: 'center' }}>
+                        random {GENERATOR_LABELS[s.generator ?? 'custom'].toLowerCase()} on each run
+                      </span>
+                    )}
+                  </div>
                 )}
                 {s.kind === 'select' && (
                   <div className="step-target">
@@ -490,7 +551,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                     {(s.optionMode ?? 'text') === 'text' && (
                       <input
                         className="name-input"
-                        placeholder="Option text (e.g. APD)"
+                        placeholder="Option text to match, e.g. United Kingdom"
                         value={s.value ?? ''}
                         onChange={(e) => updateStep(s.id, { value: e.target.value })}
                       />
@@ -500,7 +561,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                 {s.kind === 'radio' && (
                   <input
                     className="name-input"
-                    placeholder="Option value/text (e.g. HHD)"
+                    placeholder="Option value or text, e.g. Yes"
                     value={s.value ?? ''}
                     onChange={(e) => updateStep(s.id, { value: e.target.value })}
                   />
