@@ -120,6 +120,14 @@ select,
   color: var(--muted);
 }
 
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .framework-select {
   margin-left: auto;
 }

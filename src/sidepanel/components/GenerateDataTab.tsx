@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
 import { DEFAULT_LOCALE, LOCALE_LABELS, SUPPORTED_LOCALES } from '@/shared/constants';
-import { generateTestData } from '@/shared/faker-data';
+import { DIAL_CODES, generateTestData } from '@/shared/faker-data';
 import type { GeneratedData, Locale } from '@/shared/types';
 import { CopyButton } from './CopyButton';
 
@@ -17,11 +17,13 @@ const FIELDS: { key: keyof GeneratedData; label: string }[] = [
 
 export function GenerateDataTab(): ReactElement {
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
-  const [data, setData] = useState<GeneratedData>(() => generateTestData(DEFAULT_LOCALE));
+  const [phoneWithCode, setPhoneWithCode] = useState(true);
+  const [data, setData] = useState<GeneratedData>(() =>
+    generateTestData(DEFAULT_LOCALE, { phoneWithCode: true })
+  );
 
-  function onLocaleChange(next: Locale): void {
-    setLocale(next);
-    setData(generateTestData(next));
+  function regenerate(nextLocale: Locale = locale, withCode: boolean = phoneWithCode): void {
+    setData(generateTestData(nextLocale, { phoneWithCode: withCode }));
   }
 
   return (
@@ -33,7 +35,10 @@ export function GenerateDataTab(): ReactElement {
         <select
           id="locale-select"
           value={locale}
-          onChange={(e) => onLocaleChange(e.target.value as Locale)}
+          onChange={(e) => {
+            setLocale(e.target.value as Locale);
+            regenerate(e.target.value as Locale, phoneWithCode);
+          }}
         >
           {SUPPORTED_LOCALES.map((l) => (
             <option key={l} value={l}>
@@ -41,10 +46,21 @@ export function GenerateDataTab(): ReactElement {
             </option>
           ))}
         </select>
-        <button type="button" className="primary" onClick={() => setData(generateTestData(locale))}>
+        <button type="button" className="primary" onClick={() => regenerate()}>
           Regenerate
         </button>
       </div>
+      <label className="checkbox-inline">
+        <input
+          type="checkbox"
+          checked={phoneWithCode}
+          onChange={(e) => {
+            setPhoneWithCode(e.target.checked);
+            regenerate(locale, e.target.checked);
+          }}
+        />
+        Phone with country code ({DIAL_CODES[locale]})
+      </label>
 
       <ul className="data-list">
         {FIELDS.map((f) => (
