@@ -1,6 +1,9 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
+import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
+
+type PickMode = 'locator' | 'fields';
 
 // Idle until the side panel asks us to pick (START_PICK). Then we highlight the
 // hovered element and capture one click, compute its locators, and report back.
@@ -8,6 +11,7 @@ import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 const HOST_TAG = 'senmurv-picker-overlay';
 
 let active = false;
+let mode: PickMode = 'locator';
 let hostEl: HTMLElement | null = null;
 let boxEl: HTMLDivElement | null = null;
 let labelEl: HTMLDivElement | null = null;
@@ -78,11 +82,33 @@ function onMouseMove(e: MouseEvent): void {
   if (el) highlight(el);
 }
 
+function flashBox(): void {
+  if (!boxEl) return;
+  const previous = boxEl.style.borderColor;
+  boxEl.style.borderColor = '#3fb950';
+  setTimeout(() => {
+    if (boxEl) boxEl.style.borderColor = previous;
+  }, 200);
+}
+
 function onClick(e: MouseEvent): void {
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
   const el = targetAt(e.clientX, e.clientY);
+
+  if (mode === 'fields') {
+    // Continuous: report each clicked field and stay active for the next.
+    if (el) {
+      void sendRuntimeMessage({
+        type: MESSAGE_TYPES.FIELD_PICKED,
+        payload: { field: detectField(el, document) },
+      });
+      flashBox();
+    }
+    return;
+  }
+
   stopPicking();
   if (el) {
     void sendRuntimeMessage({
@@ -102,7 +128,8 @@ function onKeyDown(e: KeyboardEvent): void {
   }
 }
 
-function startPicking(): void {
+function startPicking(nextMode: PickMode): void {
+  mode = nextMode;
   if (active) return;
   active = true;
   ensureOverlay();
@@ -126,7 +153,9 @@ function stopPicking(): void {
 chrome.runtime.onMessage.addListener((message: unknown) => {
   if (!isRuntimeMessage(message)) return false;
   if (message.type === MESSAGE_TYPES.START_PICK) {
-    startPicking();
+    startPicking('locator');
+  } else if (message.type === MESSAGE_TYPES.START_PICK_FIELDS) {
+    startPicking('fields');
   } else if (message.type === MESSAGE_TYPES.CANCEL_PICK) {
     stopPicking();
   }

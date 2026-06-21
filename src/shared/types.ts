@@ -73,3 +73,75 @@ export interface LocatorSet {
 
 /** Standard fallible-operation result. */
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
+// Script generator (Fill tool)
+// ---------------------------------------------------------------------------
+
+/** The kind of form control a picked element resolves to. */
+export type FieldType =
+  | 'text'
+  | 'email'
+  | 'tel'
+  | 'number'
+  | 'date'
+  | 'password'
+  | 'textarea'
+  | 'checkbox'
+  | 'radio'
+  | 'select'
+  | 'combobox';
+
+/** A value/data generator the user can assign to a field. */
+export type GeneratorId =
+  | 'firstName'
+  | 'lastName'
+  | 'fullName'
+  | 'email'
+  | 'phone'
+  | 'streetAddress'
+  | 'city'
+  | 'postalCode'
+  | 'country'
+  | 'company'
+  | 'word'
+  | 'sentence'
+  | 'number'
+  | 'uuid'
+  | 'date'
+  | 'pastDate'
+  | 'check'
+  | 'uncheck'
+  | 'boolean'
+  | 'pickFirst'
+  | 'pickRandom'
+  | 'custom';
+
+/** What the in-page picker reports for one clicked element. */
+export interface DetectedField {
+  selector: string;
+  fieldType: FieldType;
+  label: string;
+  /** Lowercased blob of formcontrolname/name/placeholder/label/id for generator guessing. */
+  hint: string;
+}
+
+/** A field in the Fill tool's list, plus the user's generator choice. */
+export interface PickedField {
+  id: string;
+  selector: string;
+  fieldType: FieldType;
+  label: string;
+  hint: string;
+  generator: GeneratorId;
+  customValue?: string;
+  preview?: string;
+}
+
+/** One concrete fill action emitted into the generated script. */
+export interface FillInstruction {
+  selector: string;
+  fieldType: FieldType;
+  value?: string;
+  action?: 'check' | 'uncheck' | 'pickFirst' | 'pickRandom';
+}

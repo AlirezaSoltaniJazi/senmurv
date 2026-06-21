@@ -109,10 +109,12 @@ async function injectPicker(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files });
 }
 
-/** Send a tab message, retrying briefly while a just-injected script finishes loading. */
+type PickStart = typeof MESSAGE_TYPES.START_PICK | typeof MESSAGE_TYPES.START_PICK_FIELDS;
+
+/** Send a pick-start message, retrying briefly while a just-injected script loads. */
 async function sendTabMessageWithRetry(
   tabId: number,
-  type: typeof MESSAGE_TYPES.START_PICK,
+  type: PickStart,
   attempts = 12
 ): Promise<void> {
   let lastError: unknown;
@@ -129,18 +131,18 @@ async function sendTabMessageWithRetry(
 }
 
 /**
- * Start picking. If the content script isn't there yet (pre-existing tab),
- * inject it and retry — the picker's listener registers asynchronously after
- * its loader resolves, so we poll for a short window.
+ * Start picking (single locator or continuous field mode). If the content
+ * script isn't there yet (pre-existing tab), inject it and retry — the picker's
+ * listener registers asynchronously after its loader resolves.
  */
-async function startPick(tabId: number): Promise<Result<void>> {
+async function startPicking(tabId: number, type: PickStart): Promise<Result<void>> {
   try {
-    await sendTabMessage(tabId, { type: MESSAGE_TYPES.START_PICK });
+    await sendTabMessage(tabId, { type });
     return { ok: true, value: undefined };
   } catch {
     try {
       await injectPicker(tabId);
-      await sendTabMessageWithRetry(tabId, MESSAGE_TYPES.START_PICK);
+      await sendTabMessageWithRetry(tabId, type);
       return { ok: true, value: undefined };
     } catch {
       return { ok: false, error: 'Could not reach the page. Try reloading the tab.' };
@@ -241,7 +243,15 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       return true;
 
     case MESSAGE_TYPES.START_PICK:
-      withActiveRunnableTab((tabId) => startPick(tabId)).then(sendResponse);
+      withActiveRunnableTab((tabId) => startPicking(tabId, MESSAGE_TYPES.START_PICK)).then(
+        sendResponse
+      );
+      return true;
+
+    case MESSAGE_TYPES.START_PICK_FIELDS:
+      withActiveRunnableTab((tabId) => startPicking(tabId, MESSAGE_TYPES.START_PICK_FIELDS)).then(
+        sendResponse
+      );
       return true;
 
     case MESSAGE_TYPES.CANCEL_PICK:

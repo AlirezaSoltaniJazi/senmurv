@@ -7,8 +7,10 @@ export const STORAGE_KEYS = {
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
 export const MESSAGE_TYPES = {
   START_PICK: 'START_PICK',
+  START_PICK_FIELDS: 'START_PICK_FIELDS',
   CANCEL_PICK: 'CANCEL_PICK',
   ELEMENT_PICKED: 'ELEMENT_PICKED',
+  FIELD_PICKED: 'FIELD_PICKED',
   PICK_CANCELLED: 'PICK_CANCELLED',
   RUN_SCRIPT: 'RUN_SCRIPT',
   GET_SCRIPTS: 'GET_SCRIPTS',

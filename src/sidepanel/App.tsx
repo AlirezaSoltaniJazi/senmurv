@@ -1,14 +1,16 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
+import { FillTab } from './components/FillTab';
 import { GenerateDataTab } from './components/GenerateDataTab';
 import { LocatorTab } from './components/LocatorTab';
 import { ScriptsTab } from './components/ScriptsTab';
 
-type TabKey = 'data' | 'locator' | 'scripts';
+type TabKey = 'data' | 'locator' | 'fill' | 'scripts';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'data', label: 'Data' },
   { key: 'locator', label: 'Locator' },
+  { key: 'fill', label: 'Fill' },
   { key: 'scripts', label: 'Scripts' },
 ];
 
@@ -35,6 +37,7 @@ export function App(): ReactElement {
       <main className="app-body">
         {tab === 'data' && <GenerateDataTab />}
         {tab === 'locator' && <LocatorTab />}
+        {tab === 'fill' && <FillTab />}
         {tab === 'scripts' && <ScriptsTab />}
       </main>
     </div>

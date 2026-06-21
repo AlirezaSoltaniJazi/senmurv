@@ -84,6 +84,14 @@ describe('picking + scripts CRUD', () => {
     });
   });
 
+  it('relays START_PICK_FIELDS to the active tab content script', async () => {
+    const res = await send({ type: MESSAGE_TYPES.START_PICK_FIELDS });
+    expect(res).toEqual({ ok: true, value: undefined });
+    expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(1, {
+      type: MESSAGE_TYPES.START_PICK_FIELDS,
+    });
+  });
+
   it('returns stored scripts for GET_SCRIPTS', async () => {
     store[STORAGE_KEYS.SCRIPTS] = [makeScript(), makeScript({ id: 'scr_2' })];
     const res = await send({ type: MESSAGE_TYPES.GET_SCRIPTS });

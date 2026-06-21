@@ -1,5 +1,5 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
-import type { LocatorKind, LocatorSet, SavedScript } from '@/shared/types';
+import type { DetectedField, LocatorKind, LocatorSet, SavedScript } from '@/shared/types';
 
 /**
  * All runtime messages, as a discriminated union keyed on `type`.
@@ -8,8 +8,10 @@ import type { LocatorKind, LocatorSet, SavedScript } from '@/shared/types';
  */
 export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.START_PICK }
+  | { type: typeof MESSAGE_TYPES.START_PICK_FIELDS }
   | { type: typeof MESSAGE_TYPES.CANCEL_PICK }
   | { type: typeof MESSAGE_TYPES.ELEMENT_PICKED; payload: LocatorSet }
+  | { type: typeof MESSAGE_TYPES.FIELD_PICKED; payload: { field: DetectedField } }
   | { type: typeof MESSAGE_TYPES.PICK_CANCELLED }
   | { type: typeof MESSAGE_TYPES.RUN_SCRIPT; payload: { code: string } }
   | { type: typeof MESSAGE_TYPES.GET_SCRIPTS }
