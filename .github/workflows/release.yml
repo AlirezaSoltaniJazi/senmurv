@@ -84,7 +84,7 @@ jobs:
         run: |
           version="${{ steps.ver.outputs.version }}"
           if [ "${{ github.event.inputs.bump }}" != "none" ]; then
-            git add package.json manifest.json
+            git add package.json manifest.json package-lock.json
             git commit -m "chore: release v$version"
             git push
           fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -53,5 +53,17 @@ function replaceVersion(text, current, next) {
 
 writeFileSync(pkgPath, replaceVersion(pkgText, pkgVersion, next));
 writeFileSync(manifestPath, replaceVersion(manifestText, manifestVersion, next));
+
+// Keep package-lock.json in sync so the lockfile version doesn't drift on CI
+// bumps. It's prettier-ignored, so re-serializing with 2-space indent is fine.
+const lockPath = resolve(root, 'package-lock.json');
+if (existsSync(lockPath)) {
+  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+  lock.version = next;
+  if (lock.packages && lock.packages['']) {
+    lock.packages[''].version = next;
+  }
+  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+}
 
 console.log(next);
