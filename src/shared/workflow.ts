@@ -106,7 +106,7 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
 // string concatenation (no nested template literals) so nothing needs escaping.
 const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
-  const isVisible = (el) => !!el && el.offsetParent !== null;
+  const isVisible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   function waitFor(fn, desc, timeout = 15000, interval = 200) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
@@ -192,9 +192,14 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         if ((step.optionMode || 'text') === 'text' && step.value) {
           Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, step.value);
           el.dispatchEvent(new Event('input', { bubbles: true }));
-        } else { el.click(); }
+        } else {
+          el.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          el.click();
+        }
       } else {
-        (el.querySelector('.mat-mdc-select-trigger') || el).click();
+        const trg = el.querySelector('.mat-mdc-select-trigger') || el;
+        trg.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        trg.click();
       }
     };
     let opt = null;
@@ -202,12 +207,12 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       await dismissOverlay(); // a previous select's backdrop can swallow this click
       open();
       const start = Date.now();
-      while (!opt && Date.now() - start < 4000) {
+      while (!opt && Date.now() - start < 3000) {
         opt = pickOption(step, [...document.querySelectorAll(optSel)].filter(isVisible));
         if (!opt) await sleep(150);
       }
     }
-    if (!opt) throw new Error('Timed out waiting for option "' + (step.value || step.optionMode) + '"');
+    if (!opt) throw new Error('no options for "' + (step.value || step.optionMode) + '"');
     opt.click();
     await sleep(300);
   }
@@ -247,24 +252,32 @@ export function buildWorkflowScript(steps: WorkflowStep[]): string {
   return `(async () => {
   const STEPS = ${data};
   ${PREAMBLE}
-  try {
-    for (const step of STEPS) {
+  const skipped = [];
+  let okCount = 0;
+  for (const step of STEPS) {
+    const tag = step.label || step.text || step.selector || (step.ms + 'ms');
+    try {
       if (step.kind === 'click') await clickButton(step.text);
       else if (step.kind === 'wait') await sleep(step.ms);
       else if (step.kind === 'fill') await setInput(step);
       else if (step.kind === 'select') await setSelect(step);
       else if (step.kind === 'radio') await setRadio(step);
       else if (step.kind === 'check') await setCheck(step);
-      console.info('[flow] ok:', step.kind, step.label || step.text || step.selector || step.ms);
+      okCount += 1;
+      console.info('[flow] ok:', step.kind, tag);
+    } catch (e) {
+      skipped.push(step.kind + ' ' + tag + ' (' + e.message + ')');
+      console.warn('[flow] SKIPPED:', step.kind, tag, '-', e.message);
     }
-    console.info('[flow] done.');
-  } catch (e) {
-    console.error('[flow] failed:', e);
-    const labels = [...document.querySelectorAll('mat-label')].filter((l) => l.offsetParent).map((l) => l.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean);
-    const buttons = [...new Set([...document.querySelectorAll('button, a')].filter((b) => b.offsetParent).map((b) => b.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean))];
+  }
+  console.info('[flow] done. ok=' + okCount + ', skipped=' + skipped.length);
+  if (skipped.length) {
+    const labels = [...document.querySelectorAll('mat-label')].filter(isVisible).map((l) => l.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean);
+    console.warn('[flow] skipped steps:', skipped);
     console.warn('[flow] labels on page:', labels);
-    console.warn('[flow] buttons on page:', buttons);
-    alert('Flow failed: ' + e.message + '\\n\\nLabels: ' + labels.join(' | ') + '\\n\\nButtons: ' + buttons.slice(0, 30).join(' | '));
+    alert('Flow done — filled ' + okCount + ', skipped ' + skipped.length + ':\\n\\n' + skipped.join('\\n'));
+  } else {
+    alert('Flow done — ' + okCount + ' steps completed.');
   }
 })();`;
 }
