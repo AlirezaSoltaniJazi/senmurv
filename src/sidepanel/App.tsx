@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import type { ReactElement } from 'react';
+import type { PickedField } from '@/shared/types';
 import { FillTab } from './components/FillTab';
 import { GenerateDataTab } from './components/GenerateDataTab';
 import { LocatorTab } from './components/LocatorTab';
@@ -19,6 +20,13 @@ const LOGO_URL = chrome.runtime.getURL('public/icons/icon-32.png');
 
 export function App(): ReactElement {
   const [tab, setTab] = useState<TabKey>('data');
+  const [fillSeed, setFillSeed] = useState<PickedField[] | null>(null);
+
+  const customizeInFill = useCallback((fields: PickedField[]) => {
+    setFillSeed(fields);
+    setTab('fill');
+  }, []);
+  const clearFillSeed = useCallback(() => setFillSeed(null), []);
 
   return (
     <div className="app">
@@ -44,8 +52,8 @@ export function App(): ReactElement {
       <main className="app-body">
         {tab === 'data' && <GenerateDataTab />}
         {tab === 'locator' && <LocatorTab />}
-        {tab === 'fill' && <FillTab />}
-        {tab === 'scripts' && <ScriptsTab />}
+        {tab === 'fill' && <FillTab seed={fillSeed} onSeedConsumed={clearFillSeed} />}
+        {tab === 'scripts' && <ScriptsTab onCustomize={customizeInFill} />}
       </main>
     </div>
   );

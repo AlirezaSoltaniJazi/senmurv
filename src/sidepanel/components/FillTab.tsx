@@ -28,7 +28,13 @@ import type {
 } from '@/shared/types';
 import { newId } from '@/utils/id';
 
-export function FillTab(): ReactElement {
+interface Props {
+  /** Fields derived from a saved script (via the Scripts tab "Customize" button). */
+  seed: PickedField[] | null;
+  onSeedConsumed: () => void;
+}
+
+export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
   const [fields, setFields] = useState<PickedField[]>([]);
   const [picking, setPicking] = useState(false);
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
@@ -59,6 +65,20 @@ export function FillTab(): ReactElement {
     chrome.runtime.onMessage.addListener(onMessage);
     return () => chrome.runtime.onMessage.removeListener(onMessage);
   }, []);
+
+  // Load fields derived from a saved script (Scripts tab → Customize). This is a
+  // one-shot prop signal: we sync it into local state once, then acknowledge it
+  // via onSeedConsumed (which nulls the prop) so the effect can't re-loop.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!seed) return;
+    setFields(seed);
+    setStatus(
+      `Loaded ${seed.length} field(s) from a script — customize, then Generate & Fill or Save.`
+    );
+    onSeedConsumed();
+  }, [seed, onSeedConsumed]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function pickFields(): Promise<void> {
     setError(null);

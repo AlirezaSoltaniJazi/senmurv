@@ -4,6 +4,7 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { decodeBookmarklet } from '@/shared/bookmarklet';
 import { formatJs } from '@/shared/format-js';
+import { isFillScript, parseFillScript } from '@/shared/generators';
 import {
   applyScriptImport,
   importConflicts,
@@ -11,10 +12,15 @@ import {
   serializeScripts,
 } from '@/shared/script-io';
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
-import type { Result, SavedScript } from '@/shared/types';
+import type { PickedField, Result, SavedScript } from '@/shared/types';
 import { newId } from '@/utils/id';
 
-export function ScriptsTab(): ReactElement {
+interface Props {
+  /** Open a generated fill script's fields in the Fill tab for customization. */
+  onCustomize: (fields: PickedField[]) => void;
+}
+
+export function ScriptsTab({ onCustomize }: Props): ReactElement {
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -54,6 +60,15 @@ export function ScriptsTab(): ReactElement {
     setCode(s.code);
     setStatus(null);
     setError(null);
+  }
+
+  function customizeScript(s: SavedScript): void {
+    const fields = parseFillScript(s.code);
+    if (!fields) {
+      setError(`"${s.name}" isn't a generated fill script, so it can't be customized in Fill.`);
+      return;
+    }
+    onCustomize(fields);
   }
 
   async function save(): Promise<void> {
@@ -308,6 +323,11 @@ export function ScriptsTab(): ReactElement {
               <button type="button" onClick={() => editScript(s)}>
                 Edit
               </button>
+              {isFillScript(s.code) && (
+                <button type="button" onClick={() => customizeScript(s)}>
+                  Customize
+                </button>
+              )}
               <button type="button" className="danger" onClick={() => void remove(s.id)}>
                 Delete
               </button>
