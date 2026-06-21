@@ -6,6 +6,7 @@ import {
   MESSAGE_TYPES,
   SUPPORTED_LOCALES,
 } from '@/shared/constants';
+import { ensureFaker } from '@/shared/faker-data';
 import {
   buildInstruction,
   buildScript,
@@ -168,6 +169,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
       setError('Pick some fields first.');
       return;
     }
+    await ensureFaker(locale);
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code: buildScript(fieldInstructions()) },
@@ -178,6 +180,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
   }
   async function copyFields(): Promise<void> {
     if (!fields.length) return;
+    await ensureFaker(locale);
     try {
       await navigator.clipboard.writeText(buildScript(lastInstructions ?? fieldInstructions()));
       setStatus('Script copied to clipboard.');
@@ -187,6 +190,7 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
   }
   async function saveFields(): Promise<void> {
     if (!fields.length) return;
+    await ensureFaker(locale);
     await saveScript(
       `Generated fill (${fields.length} fields)`,
       buildScript(lastInstructions ?? fieldInstructions())
