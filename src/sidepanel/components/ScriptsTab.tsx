@@ -100,6 +100,23 @@ export function ScriptsTab(): ReactElement {
     }
   }
 
+  async function deleteAll(): Promise<void> {
+    if (scripts.length === 0) return;
+    if (!window.confirm(`Delete all ${scripts.length} script(s)? This cannot be undone.`)) return;
+    const res = await sendRuntimeMessage<Result<SavedScript[]>>({
+      type: MESSAGE_TYPES.SET_SCRIPTS,
+      payload: { scripts: [] },
+    });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setScripts([]);
+    setSelected(new Set());
+    resetEditor();
+    setStatus('Deleted all scripts.');
+  }
+
   async function run(script: SavedScript): Promise<void> {
     setError(null);
     setStatus(null);
@@ -205,6 +222,14 @@ export function ScriptsTab(): ReactElement {
         </button>
         <button type="button" onClick={() => fileInputRef.current?.click()}>
           Import
+        </button>
+        <button
+          type="button"
+          className="danger"
+          onClick={() => void deleteAll()}
+          disabled={scripts.length === 0}
+        >
+          Delete all
         </button>
         <input
           ref={fileInputRef}
