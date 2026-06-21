@@ -427,7 +427,10 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                     onChange={(e) => updateStep(s.id, { ms: Number(e.target.value) || 0 })}
                   />
                 )}
-                {(s.kind === 'fill' || s.kind === 'select' || s.kind === 'check') && (
+                {(s.kind === 'fill' ||
+                  s.kind === 'select' ||
+                  s.kind === 'check' ||
+                  s.kind === 'radio') && (
                   <div className="step-target">
                     <input
                       className="name-input"
@@ -469,6 +472,14 @@ export function FillTab({ seed, onSeedConsumed }: Props): ReactElement {
                       />
                     )}
                   </div>
+                )}
+                {s.kind === 'radio' && (
+                  <input
+                    className="name-input"
+                    placeholder="Option value/text (e.g. HHD)"
+                    value={s.value ?? ''}
+                    onChange={(e) => updateStep(s.id, { value: e.target.value })}
+                  />
                 )}
                 {s.kind === 'check' && (
                   <label className="checkbox-inline">

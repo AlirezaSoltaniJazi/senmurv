@@ -7,7 +7,7 @@ export type FillSeed =
   | { mode: 'flow'; steps: WorkflowStep[] };
 
 /** A workflow step kind. */
-export type StepKind = 'click' | 'wait' | 'fill' | 'select' | 'check';
+export type StepKind = 'click' | 'wait' | 'fill' | 'select' | 'radio' | 'check';
 
 /** How a `select` step chooses its option. */
 export type SelectMode = 'text' | 'first' | 'random';
@@ -21,20 +21,21 @@ export interface WorkflowStep {
   kind: StepKind;
   text?: string; // click: button text
   ms?: number; // wait: milliseconds
-  label?: string; // fill/select/check: mat-label text
-  selector?: string; // fill/select/check: CSS selector (alternative to label)
-  value?: string; // fill: value to type; select(text): option text
+  label?: string; // fill/select/radio/check: mat-label text
+  selector?: string; // fill/select/radio/check: CSS selector (alternative to label)
+  value?: string; // fill: value to type; select(text)/radio: option text/value
   optionMode?: SelectMode; // select
   checked?: boolean; // check
 }
 
-export const STEP_KINDS: StepKind[] = ['click', 'wait', 'fill', 'select', 'check'];
+export const STEP_KINDS: StepKind[] = ['click', 'wait', 'fill', 'select', 'radio', 'check'];
 
 export const STEP_KIND_LABELS: Record<StepKind, string> = {
   click: 'Click button',
   wait: 'Wait',
   fill: 'Fill field',
   select: 'Select option',
+  radio: 'Radio',
   check: 'Checkbox',
 };
 
@@ -50,6 +51,8 @@ export function newStep(kind: StepKind): WorkflowStep {
       return { ...base, label: '', value: '' };
     case 'select':
       return { ...base, label: '', value: '', optionMode: 'text' };
+    case 'radio':
+      return { ...base, label: '', value: '' };
     case 'check':
     default:
       return { ...base, label: '', checked: true };
@@ -70,6 +73,8 @@ export function describeStep(s: WorkflowStep): string {
       return s.optionMode === 'text'
         ? `Select ${target} → “${s.value ?? ''}”`
         : `Select ${target} → ${s.optionMode} option`;
+    case 'radio':
+      return `Radio ${target} → “${s.value ?? ''}”`;
     case 'check':
       return `${s.checked ? 'Check' : 'Uncheck'} ${target}`;
     default:
@@ -91,14 +96,14 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
       o.value = s.value ?? '';
       o.optionMode = s.optionMode ?? 'text';
     }
+    if (s.kind === 'radio') o.value = s.value ?? '';
     if (s.kind === 'check') o.checked = s.checked ?? true;
   }
   return o;
 }
 
-// Self-contained interpreter helpers, embedded into the generated script. Mirrors
-// the proven hand-written automation helpers; uses string concatenation (no
-// nested template literals) so nothing needs escaping at generation time.
+// Self-contained interpreter helpers, embedded into the generated script. Uses
+// string concatenation (no nested template literals) so nothing needs escaping.
 const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
   const isVisible = (el) => !!el && el.offsetParent !== null;
@@ -119,22 +124,28 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     return els.find((b) => norm(b.textContent) === g) || els.find((b) => norm(b.textContent).includes(g));
   }
   async function clickButton(text) {
-    const b = await waitFor(() => findButton(text), 'button "' + text + '"');
-    b.click();
-    await sleep(400);
+    const start = Date.now();
+    let b = findButton(text);
+    while (!b && Date.now() - start < 6000) { await sleep(200); b = findButton(text); }
+    if (b) { b.click(); await sleep(500); return; }
+    console.warn('[flow] button not found, skipping:', text);
   }
   function resolveField(step, sel) {
+    if (step.selector) return document.querySelector(step.selector);
     if (step.label) {
       const g = norm(step.label);
-      for (const f of document.querySelectorAll('mat-form-field, .mat-mdc-form-field')) {
-        const lbl = f.querySelector('mat-label');
-        if (!lbl || norm(lbl.textContent) !== g) continue;
-        const ctrl = f.querySelector(sel);
-        if (ctrl && isVisible(ctrl)) return ctrl;
-      }
-      return null;
+      const fields = [...document.querySelectorAll('mat-form-field, .mat-mdc-form-field')];
+      const find = (cmp) => {
+        for (const f of fields) {
+          const lbl = f.querySelector('mat-label');
+          if (!lbl || !cmp(norm(lbl.textContent))) continue;
+          const ctrl = f.querySelector(sel);
+          if (ctrl && isVisible(ctrl)) return ctrl;
+        }
+        return null;
+      };
+      return find((t) => t === g) || find((t) => t.includes(g) || g.includes(t));
     }
-    if (step.selector) return document.querySelector(step.selector);
     return null;
   }
   async function setInput(step) {
@@ -145,39 +156,90 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     (input.tagName === 'TEXTAREA' ? tSet : iSet).call(input, step.value || '');
     for (const t of ['input', 'change', 'blur']) input.dispatchEvent(new Event(t, { bubbles: true }));
   }
+  function pickOption(step, opts) {
+    if (!opts.length) return null;
+    if (step.optionMode === 'first') return opts[0];
+    if (step.optionMode === 'random') return opts[Math.floor(Math.random() * opts.length)];
+    const g = norm(step.value);
+    return opts.find((o) => norm(o.textContent) === g)
+      || opts.find((o) => (o.getAttribute('title') || '') === step.value)
+      || opts.find((o) => norm(o.textContent).includes(g));
+  }
+  async function dismissOverlay() {
+    if (document.querySelector('.cdk-overlay-backdrop')) {
+      document.body.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      document.body.click();
+      await sleep(300);
+    }
+  }
   async function setSelect(step) {
-    const el = await waitFor(() => resolveField(step, 'mat-select, select'), 'select ' + (step.label || step.selector));
-    const pick = (opts) => {
-      if (!opts.length) return null;
-      if (step.optionMode === 'first') return opts[0];
-      if (step.optionMode === 'random') return opts[Math.floor(Math.random() * opts.length)];
-      const g = norm(step.value);
-      return opts.find((o) => norm(o.textContent) === g) || opts.find((o) => norm(o.textContent).includes(g));
-    };
-    if (el.tagName.toLowerCase() === 'select') {
+    const el = await waitFor(() => resolveField(step, 'mat-select, select, [role="combobox"]'), 'select ' + (step.label || step.selector));
+    const tag = el.tagName.toLowerCase();
+    if (tag === 'select') {
       const opts = [...el.options].filter((o) => !o.disabled && o.value !== '');
-      const o = pick(opts);
+      const o = pickOption(step, opts);
       if (o) {
         Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, 'value').set.call(el, o.value);
         el.dispatchEvent(new Event('change', { bubbles: true }));
       }
       return;
     }
-    (el.querySelector('.mat-mdc-select-trigger') || el).click();
-    await sleep(350);
-    const opt = await waitFor(() => pick([...document.querySelectorAll('mat-option')].filter(isVisible)), 'option "' + (step.value || step.optionMode) + '"');
+    if (el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+    const optSel = 'mat-option, [role="option"], [role="listbox"] li';
+    const open = () => {
+      if (tag === 'input' && el.getAttribute('role') === 'combobox') {
+        el.focus();
+        if ((step.optionMode || 'text') === 'text' && step.value) {
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set.call(el, step.value);
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+        } else { el.click(); }
+      } else {
+        (el.querySelector('.mat-mdc-select-trigger') || el).click();
+      }
+    };
+    let opt = null;
+    for (let attempt = 0; attempt < 3 && !opt; attempt += 1) {
+      await dismissOverlay(); // a previous select's backdrop can swallow this click
+      open();
+      const start = Date.now();
+      while (!opt && Date.now() - start < 4000) {
+        opt = pickOption(step, [...document.querySelectorAll(optSel)].filter(isVisible));
+        if (!opt) await sleep(150);
+      }
+    }
+    if (!opt) throw new Error('Timed out waiting for option "' + (step.value || step.optionMode) + '"');
     opt.click();
     await sleep(300);
   }
+  async function setRadio(step) {
+    const click = (el) => { if (el) (el.matches && el.matches('input') ? el : (el.querySelector('input[type="radio"]') || el)).click(); };
+    if (step.selector) {
+      const el = await waitFor(() => document.querySelector(step.selector), 'radio ' + step.selector);
+      click(el);
+      await sleep(150);
+      return;
+    }
+    const g = norm(step.value);
+    const el = await waitFor(() => {
+      const byVal = document.querySelector('mat-radio-button[value="' + (step.value || '') + '"], input[type="radio"][value="' + (step.value || '') + '"]');
+      if (byVal) return byVal;
+      const cands = [...document.querySelectorAll('mat-radio-button, [role="radio"], label')].filter(isVisible);
+      return cands.find((x) => norm(x.textContent) === g) || cands.find((x) => norm(x.textContent).includes(g));
+    }, 'radio "' + (step.value || '') + '"');
+    click(el);
+    await sleep(150);
+  }
   async function setCheck(step) {
-    const el = await waitFor(() => resolveField(step, 'input[type="checkbox"], mat-checkbox'), 'checkbox ' + (step.label || step.selector));
-    const box = el.matches && el.matches('input[type="checkbox"]') ? el : (el.querySelector('input[type="checkbox"]') || el);
-    if (!!box.checked !== !!step.checked) { box.click(); }
+    const el = await waitFor(() => resolveField(step, 'input[type="checkbox"], input.msos-checkbox, mat-checkbox, [role="checkbox"]'), 'checkbox ' + (step.label || step.selector));
+    const box = el.matches && el.matches('input') ? el : (el.querySelector('input[type="checkbox"], input.msos-checkbox') || el);
+    const msos = box.closest && box.closest('li.msos-option');
+    const on = !!box.checked || !!(msos && msos.classList.contains('msos-option-selected'));
+    if (on !== !!step.checked) (box.click ? box : el).click();
   }`;
 
 /**
  * Emit a runnable workflow script that interprets the embedded `STEPS` array.
- * Shared by Flow's Generate & Run / Copy / Save, and round-trippable via
+ * Shared by Flow's Run / Copy / Save, and round-trippable via
  * {@link parseWorkflowScript}.
  */
 export function buildWorkflowScript(steps: WorkflowStep[]): string {
@@ -191,13 +253,18 @@ export function buildWorkflowScript(steps: WorkflowStep[]): string {
       else if (step.kind === 'wait') await sleep(step.ms);
       else if (step.kind === 'fill') await setInput(step);
       else if (step.kind === 'select') await setSelect(step);
+      else if (step.kind === 'radio') await setRadio(step);
       else if (step.kind === 'check') await setCheck(step);
       console.info('[flow] ok:', step.kind, step.label || step.text || step.selector || step.ms);
     }
     console.info('[flow] done.');
   } catch (e) {
     console.error('[flow] failed:', e);
-    alert('Flow failed: ' + e.message + ' — see the console.');
+    const labels = [...document.querySelectorAll('mat-label')].filter((l) => l.offsetParent).map((l) => l.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean);
+    const buttons = [...new Set([...document.querySelectorAll('button, a')].filter((b) => b.offsetParent).map((b) => b.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean))];
+    console.warn('[flow] labels on page:', labels);
+    console.warn('[flow] buttons on page:', buttons);
+    alert('Flow failed: ' + e.message + '\\n\\nLabels: ' + labels.join(' | ') + '\\n\\nButtons: ' + buttons.slice(0, 30).join(' | '));
   }
 })();`;
 }

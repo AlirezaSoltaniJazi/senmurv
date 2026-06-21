@@ -11,8 +11,9 @@ const steps: WorkflowStep[] = [
   { id: 'a', kind: 'click', text: 'Continue' },
   { id: 'b', kind: 'fill', label: 'Prescription name', value: 'APD Rx' },
   { id: 'c', kind: 'select', label: 'Therapy modality', value: 'APD', optionMode: 'text' },
-  { id: 'd', kind: 'wait', ms: 3000 },
-  { id: 'e', kind: 'check', selector: 'mat-checkbox[formcontrolname="isRtm"]', checked: true },
+  { id: 'd', kind: 'radio', value: 'HHD' },
+  { id: 'e', kind: 'wait', ms: 3000 },
+  { id: 'f', kind: 'check', selector: 'mat-checkbox[formcontrolname="isRtm"]', checked: true },
 ];
 
 describe('newStep', () => {
@@ -31,6 +32,7 @@ describe('buildWorkflowScript', () => {
     expect(code).toContain('const STEPS =');
     expect(code).toContain('clickButton(step.text)');
     expect(code).toContain('setSelect(step)');
+    expect(code).toContain('setRadio(step)');
     expect(code).toContain('"Continue"');
     expect(isWorkflowScript(code)).toBe(true);
   });
@@ -40,11 +42,19 @@ describe('parseWorkflowScript', () => {
   it('round-trips a generated script back into steps', () => {
     const parsed = parseWorkflowScript(buildWorkflowScript(steps));
     expect(parsed).not.toBeNull();
-    expect(parsed).toHaveLength(5);
-    expect(parsed!.map((s) => s.kind)).toEqual(['click', 'fill', 'select', 'wait', 'check']);
+    expect(parsed).toHaveLength(6);
+    expect(parsed!.map((s) => s.kind)).toEqual([
+      'click',
+      'fill',
+      'select',
+      'radio',
+      'wait',
+      'check',
+    ]);
     expect(parsed![0]).toMatchObject({ kind: 'click', text: 'Continue' });
     expect(parsed![2]).toMatchObject({ kind: 'select', label: 'Therapy modality', value: 'APD' });
-    expect(parsed![3]).toMatchObject({ kind: 'wait', ms: 3000 });
+    expect(parsed![3]).toMatchObject({ kind: 'radio', value: 'HHD' });
+    expect(parsed![4]).toMatchObject({ kind: 'wait', ms: 3000 });
   });
 
   it('returns null for non-workflow scripts', () => {
