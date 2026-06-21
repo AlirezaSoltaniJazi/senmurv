@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { PickedField } from '@/shared/types';
+import type { FillSeed } from '@/shared/workflow';
 import { FillTab } from './components/FillTab';
 import { GenerateDataTab } from './components/GenerateDataTab';
 import { LocatorTab } from './components/LocatorTab';
@@ -20,10 +20,10 @@ const LOGO_URL = chrome.runtime.getURL('public/icons/icon-32.png');
 
 export function App(): ReactElement {
   const [tab, setTab] = useState<TabKey>('data');
-  const [fillSeed, setFillSeed] = useState<PickedField[] | null>(null);
+  const [fillSeed, setFillSeed] = useState<FillSeed | null>(null);
 
-  const customizeInFill = useCallback((fields: PickedField[]) => {
-    setFillSeed(fields);
+  const customizeInFill = useCallback((s: FillSeed) => {
+    setFillSeed(s);
     setTab('fill');
   }, []);
   const clearFillSeed = useCallback(() => setFillSeed(null), []);

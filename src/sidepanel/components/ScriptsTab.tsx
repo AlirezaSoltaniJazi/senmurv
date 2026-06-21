@@ -12,12 +12,18 @@ import {
   serializeScripts,
 } from '@/shared/script-io';
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
-import type { PickedField, Result, SavedScript } from '@/shared/types';
+import { isWorkflowScript, parseWorkflowScript } from '@/shared/workflow';
+import type { FillSeed } from '@/shared/workflow';
+import type { Result, SavedScript } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 interface Props {
-  /** Open a generated fill script's fields in the Fill tab for customization. */
-  onCustomize: (fields: PickedField[]) => void;
+  /** Open a generated fill/flow script in the Fill tab for customization. */
+  onCustomize: (seed: FillSeed) => void;
+}
+
+function customizable(code: string): boolean {
+  return isFillScript(code) || isWorkflowScript(code);
 }
 
 export function ScriptsTab({ onCustomize }: Props): ReactElement {
@@ -63,12 +69,20 @@ export function ScriptsTab({ onCustomize }: Props): ReactElement {
   }
 
   function customizeScript(s: SavedScript): void {
-    const fields = parseFillScript(s.code);
-    if (!fields) {
-      setError(`"${s.name}" isn't a generated fill script, so it can't be customized in Fill.`);
-      return;
+    if (isFillScript(s.code)) {
+      const fields = parseFillScript(s.code);
+      if (fields) {
+        onCustomize({ mode: 'fields', fields });
+        return;
+      }
+    } else if (isWorkflowScript(s.code)) {
+      const steps = parseWorkflowScript(s.code);
+      if (steps) {
+        onCustomize({ mode: 'flow', steps });
+        return;
+      }
     }
-    onCustomize(fields);
+    setError(`"${s.name}" isn't a generated fill/flow script, so it can't be customized in Fill.`);
   }
 
   async function save(): Promise<void> {
@@ -323,7 +337,7 @@ export function ScriptsTab({ onCustomize }: Props): ReactElement {
               <button type="button" onClick={() => editScript(s)}>
                 Edit
               </button>
-              {isFillScript(s.code) && (
+              {customizable(s.code) && (
                 <button type="button" onClick={() => customizeScript(s)}>
                   Customize
                 </button>

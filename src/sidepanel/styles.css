@@ -452,6 +452,77 @@ select,
   color: var(--muted);
 }
 
+/* Fill tool — mode toggle */
+.mode-toggle {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+
+/* Flow steps */
+.step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-kind {
+  font-weight: 600;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+
+.step-desc {
+  flex: 1;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.step-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.step-actions button {
+  padding: 2px 7px;
+  line-height: 1;
+}
+
+.step-target {
+  display: flex;
+  gap: 6px;
+}
+
+.step-target .name-input,
+.step-target select {
+  flex: 1;
+  min-width: 0;
+}
+
 /* Fill tool — field cards */
 .field-list {
   list-style: none;

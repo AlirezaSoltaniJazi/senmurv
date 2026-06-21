@@ -41,6 +41,11 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   automatic field-type detection (resolving Material labels/wrappers to their
   control) and a random-data generator per field; **Generate & Fill** live,
   **Copy as script**, or **Save to Scripts**.
+- **Fill → Flow mode** — a step builder for multi-step workflows: ordered
+  click / wait / fill / select (specific option, first, or random) / checkbox
+  steps, with element picking for targets; **Run flow**, **Copy as script**, or
+  **Save**. Generated fill/flow scripts round-trip via the Scripts tab
+  **Customize** button.
 - Chrome Side Panel UI, MV3 service worker, content picker, a Vitest test
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
