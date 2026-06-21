@@ -10,13 +10,30 @@ const FIELD_WRAPPERS = 'mat-form-field, mat-checkbox, mat-radio-button, .mat-mdc
  * From whatever the user clicked (often a label or Material wrapper), find the
  * actual fillable control underneath.
  */
-export function resolveControl(el: Element): Element {
+export function resolveControl(el: Element, doc: Document = document): Element {
   if (el.matches('input, textarea, select, mat-select')) return el;
+
   const inner = el.querySelector(CONTROL_SELECTOR);
   if (inner) return inner;
-  const wrap = el.closest(FIELD_WRAPPERS);
-  const control = wrap?.querySelector(CONTROL_SELECTOR);
-  return control ?? el;
+
+  // A Material floating <mat-label> sits inside a <label for="<input-id>"> —
+  // follow `for` straight to the input.
+  const labelFor = el.closest('label[for]')?.getAttribute('for');
+  if (labelFor) {
+    const target = doc.getElementById(labelFor);
+    if (target) return target;
+  }
+
+  // Otherwise climb form-field wrappers until one actually contains a control.
+  // (A bare label wrapper — e.g. the floating label — holds no input, so the
+  // nearest wrapper can be a dead end; keep climbing to the mat-form-field.)
+  let node: Element | null = el.closest(FIELD_WRAPPERS);
+  while (node) {
+    const control = node.querySelector(CONTROL_SELECTOR);
+    if (control) return control;
+    node = node.parentElement ? node.parentElement.closest(FIELD_WRAPPERS) : null;
+  }
+  return el;
 }
 
 /** Classify a resolved control into a FieldType. */
@@ -67,7 +84,7 @@ function fieldLabel(el: Element, doc: Document): string {
 
 /** Resolve, classify, label, and build a stable selector for a clicked element. */
 export function detectField(el: Element, doc: Document): DetectedField {
-  const control = resolveControl(el);
+  const control = resolveControl(el, doc);
   const fieldType = detectFieldType(control);
   const label = fieldLabel(control, doc);
   const hint = [

@@ -63,6 +63,18 @@ function isUnique(doc: Document, selector: string): boolean {
   return countCssMatches(doc, selector) === 1;
 }
 
+/**
+ * True if an `id` is author-defined and stable, false for framework-generated
+ * ids (Angular Material / CDK: `mat-input-12`, `mat-select-3`, `cdk-…`,
+ * `…-<counter>`). Those change every page load, so we never recommend them.
+ */
+export function isStableId(id: string): boolean {
+  if (!id) return false;
+  if (/^(mat-|cdk-|ng-)/i.test(id)) return false;
+  if (/[-_]\d+$/.test(id)) return false;
+  return true;
+}
+
 // ---------------------------------------------------------------------------
 // Locator-input parsing (for the "Test a locator" box)
 // ---------------------------------------------------------------------------
@@ -239,7 +251,7 @@ function elementSegment(el: Element): string {
 /** Build the shortest reasonably-unique CSS selector for an element. */
 export function buildCssSelector(el: Element, doc: Document): string {
   const id = el.getAttribute('id');
-  if (id) {
+  if (id && isStableId(id)) {
     const sel = `#${cssEscapeIdent(id)}`;
     if (isUnique(doc, sel)) return sel;
   }
@@ -250,11 +262,17 @@ export function buildCssSelector(el: Element, doc: Document): string {
     if (isUnique(doc, sel)) return sel;
   }
 
+  const formControl = el.getAttribute('formcontrolname');
+  if (formControl) {
+    const sel = `${el.tagName.toLowerCase()}[formcontrolname="${cssEscapeAttrValue(formControl)}"]`;
+    if (isUnique(doc, sel)) return sel;
+  }
+
   const parts: string[] = [];
   let current: Element | null = el;
   while (current && current.nodeType === 1 && current.tagName.toLowerCase() !== 'html') {
     const currentId = current.getAttribute('id');
-    if (currentId && isUnique(doc, `#${cssEscapeIdent(currentId)}`)) {
+    if (currentId && isStableId(currentId) && isUnique(doc, `#${cssEscapeIdent(currentId)}`)) {
       parts.unshift(`#${cssEscapeIdent(currentId)}`);
       break;
     }
@@ -405,8 +423,30 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
     );
   }
 
+  // formControlName — the Angular/Material app standard; very stable.
+  const fcEl = el.matches('[formcontrolname]') ? el : el.closest('[formcontrolname]');
+  const fcName = fcEl?.getAttribute('formcontrolname');
+  if (fcEl && fcName) {
+    const sel = `${fcEl.tagName.toLowerCase()}[formcontrolname="${cssEscapeAttrValue(fcName)}"]`;
+    const count = countCssMatches(doc, sel);
+    suggestions.push(
+      withMatchCount(
+        {
+          strategy: 'formControl',
+          label: 'form control',
+          value: sel,
+          quality: count === 1 ? 'high' : 'medium',
+          recommended: false,
+          snippets: cssSnippets(sel),
+        },
+        count
+      )
+    );
+  }
+
+  // Only offer an `id` selector when the id is author-defined (not mat-/cdk-/…-N).
   const id = el.getAttribute('id');
-  if (id) {
+  if (id && isStableId(id)) {
     const count =
       countCssMatches(doc, `#${cssEscapeIdent(id)}`) ??
       countCssMatches(doc, `[id="${cssEscapeAttrValue(id)}"]`);
@@ -420,6 +460,49 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
           quality,
           recommended: false,
           snippets: idSnippets(id),
+        },
+        count
+      )
+    );
+  }
+
+  // Radio buttons / mat-radio-button by their `value` attribute.
+  const radioEl = el.matches('mat-radio-button, input[type="radio"], [role="radio"]')
+    ? el
+    : el.closest('mat-radio-button, [role="radio"]');
+  const radioValue = radioEl?.getAttribute('value');
+  if (radioEl && radioValue) {
+    const sel = `${radioEl.tagName.toLowerCase()}[value="${cssEscapeAttrValue(radioValue)}"]`;
+    const count = countCssMatches(doc, sel);
+    suggestions.push(
+      withMatchCount(
+        {
+          strategy: 'attr',
+          label: 'value',
+          value: sel,
+          quality: count === 1 ? 'high' : 'medium',
+          recommended: false,
+          snippets: cssSnippets(sel),
+        },
+        count
+      )
+    );
+  }
+
+  // aria-label as a direct CSS attribute selector (distinct from role+name below).
+  const ariaLabel = el.getAttribute('aria-label');
+  if (ariaLabel) {
+    const sel = `${el.tagName.toLowerCase()}[aria-label="${cssEscapeAttrValue(ariaLabel)}"]`;
+    const count = countCssMatches(doc, sel);
+    suggestions.push(
+      withMatchCount(
+        {
+          strategy: 'ariaLabel',
+          label: 'aria-label',
+          value: sel,
+          quality: count === 1 ? 'high' : 'medium',
+          recommended: false,
+          snippets: cssSnippets(sel),
         },
         count
       )

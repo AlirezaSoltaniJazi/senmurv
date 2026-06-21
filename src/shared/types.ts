@@ -27,7 +27,16 @@ export interface SavedScript {
 }
 
 /** Locator generation strategies (Find Element Locator tool). */
-export type LocatorStrategy = 'testId' | 'id' | 'roleName' | 'css' | 'xpath' | 'xpathAbsolute';
+export type LocatorStrategy =
+  | 'testId'
+  | 'formControl'
+  | 'id'
+  | 'attr'
+  | 'ariaLabel'
+  | 'roleName'
+  | 'css'
+  | 'xpath'
+  | 'xpathAbsolute';
 
 export type LocatorQuality = 'high' | 'medium' | 'low';
 

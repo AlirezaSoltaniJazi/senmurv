@@ -7,6 +7,7 @@ import {
   getAccessibleName,
   getRole,
   getTestIdAttr,
+  isStableId,
   parseLocatorInput,
 } from '@/shared/locators';
 
@@ -71,6 +72,65 @@ describe('buildCssSelector', () => {
     const el = document.querySelector('span.tag')!;
     const selector = buildCssSelector(el, document);
     expect(document.querySelectorAll(selector).length).toBe(1);
+  });
+});
+
+describe('Angular formControlName + auto-id handling', () => {
+  beforeEach(() => {
+    setBody(`
+      <form>
+        <input formcontrolname="firstName" id="mat-input-12" type="text" />
+        <mat-select formcontrolname="gender" id="mat-select-3"></mat-select>
+        <input aria-label="Mobile number input" id="mat-input-19" type="tel" />
+        <mat-radio-button value="HHD"><label>HHD</label></mat-radio-button>
+      </form>
+    `);
+  });
+
+  it('recommends the formControlName selector and never an auto-generated id', () => {
+    const el = document.querySelector('input[formcontrolname="firstName"]')!;
+    const set = buildLocatorSet(el, document);
+    const top = set.suggestions[0]!;
+    expect(top.strategy).toBe('formControl');
+    expect(top.value).toBe('input[formcontrolname="firstName"]');
+    // mat-input-12 is auto-generated → no id suggestion at all.
+    expect(set.suggestions.some((s) => s.strategy === 'id')).toBe(false);
+    const wdio = top.snippets.find((s) => s.framework === 'wdio');
+    expect(wdio?.code).toBe('$(\'input[formcontrolname="firstName"]\')');
+  });
+
+  it('builds a formControlName selector for a mat-select', () => {
+    const el = document.querySelector('mat-select')!;
+    const set = buildLocatorSet(el, document);
+    expect(set.suggestions[0]!.value).toBe('mat-select[formcontrolname="gender"]');
+  });
+
+  it('emits an aria-label CSS selector when there is no form control', () => {
+    const el = document.querySelector('input[aria-label="Mobile number input"]')!;
+    const set = buildLocatorSet(el, document);
+    expect(
+      set.suggestions.some(
+        (s) => s.strategy === 'ariaLabel' && s.value === 'input[aria-label="Mobile number input"]'
+      )
+    ).toBe(true);
+    expect(set.suggestions.some((s) => s.strategy === 'id')).toBe(false);
+  });
+
+  it('locates a radio button by its value', () => {
+    const el = document.querySelector('mat-radio-button')!;
+    const set = buildLocatorSet(el, document);
+    expect(
+      set.suggestions.some(
+        (s) => s.strategy === 'attr' && s.value === 'mat-radio-button[value="HHD"]'
+      )
+    ).toBe(true);
+  });
+
+  it('treats author-defined ids as stable', () => {
+    expect(isStableId('patient-form')).toBe(true);
+    expect(isStableId('mat-input-12')).toBe(false);
+    expect(isStableId('cdk-overlay-3')).toBe(false);
+    expect(isStableId('mat-select-3')).toBe(false);
   });
 });
 
@@ -166,15 +226,17 @@ describe('buildLocatorSet ranking', () => {
     expect(idSuggestion?.value).toBe('fn');
   });
 
-  it('recommends role+name when there is no id or test id', () => {
+  it('recommends an aria-label CSS selector and still offers role+name', () => {
     const el = document.querySelector('input[type="email"]')!;
     const set = buildLocatorSet(el, document);
     const top = set.suggestions[0]!;
-    expect(top.strategy).toBe('roleName');
-    expect(top.value).toBe('Email');
-    const pw = top.snippets.find((s) => s.framework === 'playwright');
+    expect(top.strategy).toBe('ariaLabel');
+    expect(top.value).toBe('input[aria-label="Email"]');
+
+    const roleName = set.suggestions.find((s) => s.strategy === 'roleName');
+    expect(roleName?.value).toBe('Email');
+    const pw = roleName?.snippets.find((s) => s.framework === 'playwright');
     expect(pw?.code).toContain("getByRole('textbox'");
-    expect(pw?.code).toContain("name: 'Email'");
   });
 
   it('falls back to css/xpath for a plain element and covers all frameworks', () => {

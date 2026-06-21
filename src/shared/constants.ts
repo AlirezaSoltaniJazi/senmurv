@@ -44,7 +44,16 @@ export const TEST_ID_ATTRS = [
 ] as const;
 
 /** Locator strategy ranking — earlier is more stable / preferred. */
-export const LOCATOR_PRIORITY = ['testId', 'id', 'roleName', 'css', 'xpath'] as const;
+export const LOCATOR_PRIORITY = [
+  'testId',
+  'formControl',
+  'id',
+  'attr',
+  'ariaLabel',
+  'roleName',
+  'css',
+  'xpath',
+] as const;
 
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;

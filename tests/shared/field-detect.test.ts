@@ -33,6 +33,47 @@ describe('resolveControl', () => {
   });
 });
 
+describe('Material floating-label resolution', () => {
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <mat-form-field class="mat-mdc-form-field">
+        <div class="mdc-notched-outline__notch">
+          <label class="mdc-floating-label" id="mat-mdc-form-field-label-19" for="mat-input-15">
+            <mat-label>Primary health ID (NHS number)</mat-label>
+          </label>
+        </div>
+        <div class="mat-mdc-form-field-infix">
+          <input formcontrolname="primary" id="mat-input-15" type="text" />
+        </div>
+      </mat-form-field>
+      <mat-form-field class="mat-mdc-form-field">
+        <div class="mdc-notched-outline__notch">
+          <label class="mdc-floating-label" id="mat-mdc-form-field-label-16">
+            <mat-label>Gender</mat-label>
+          </label>
+        </div>
+        <mat-select formcontrolname="gender" id="mat-select-3"></mat-select>
+      </mat-form-field>
+    `;
+  });
+
+  it('resolves a clicked <mat-label> to its input via label for=', () => {
+    const matLabel = document.querySelectorAll('mat-label')[0]!;
+    expect(resolveControl(matLabel, document).id).toBe('mat-input-15');
+    const d = detectField(matLabel, document);
+    expect(d.fieldType).toBe('text');
+    expect(d.selector).toBe('input[formcontrolname="primary"]');
+  });
+
+  it('resolves a label with no for= by climbing to the mat-select', () => {
+    const genderLabel = document.querySelectorAll('mat-label')[1]!;
+    expect(resolveControl(genderLabel, document).tagName.toLowerCase()).toBe('mat-select');
+    const d = detectField(genderLabel, document);
+    expect(d.fieldType).toBe('select');
+    expect(d.selector).toBe('mat-select[formcontrolname="gender"]');
+  });
+});
+
 describe('detectField', () => {
   it('returns selector, type, label and hint', () => {
     const d = detectField(document.querySelector('#fn')!, document);
