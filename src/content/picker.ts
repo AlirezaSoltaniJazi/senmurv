@@ -2,6 +2,7 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
+import type { RuntimeMessage } from '@/shared/messages';
 
 type PickMode = 'locator' | 'fields';
 
@@ -91,6 +92,28 @@ function flashBox(): void {
   }, 200);
 }
 
+/** Is the extension context still valid? (False for an orphaned content script.) */
+function contextAlive(): boolean {
+  try {
+    return Boolean(chrome.runtime?.id);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Fire-and-forget message. After the extension reloads/updates, this content
+ * script lingers in the page with an invalidated context — sending then throws
+ * "Extension context invalidated". Swallow it and tear the picker down quietly.
+ */
+function notify(message: RuntimeMessage): void {
+  if (!contextAlive()) {
+    stopPicking();
+    return;
+  }
+  void sendRuntimeMessage(message).catch(() => stopPicking());
+}
+
 function onClick(e: MouseEvent): void {
   e.preventDefault();
   e.stopPropagation();
@@ -100,7 +123,7 @@ function onClick(e: MouseEvent): void {
   if (mode === 'fields') {
     // Continuous: report each clicked field and stay active for the next.
     if (el) {
-      void sendRuntimeMessage({
+      notify({
         type: MESSAGE_TYPES.FIELD_PICKED,
         payload: { field: detectField(el, document) },
       });
@@ -111,12 +134,9 @@ function onClick(e: MouseEvent): void {
 
   stopPicking();
   if (el) {
-    void sendRuntimeMessage({
-      type: MESSAGE_TYPES.ELEMENT_PICKED,
-      payload: buildLocatorSet(el, document),
-    });
+    notify({ type: MESSAGE_TYPES.ELEMENT_PICKED, payload: buildLocatorSet(el, document) });
   } else {
-    void sendRuntimeMessage({ type: MESSAGE_TYPES.PICK_CANCELLED });
+    notify({ type: MESSAGE_TYPES.PICK_CANCELLED });
   }
 }
 
@@ -124,7 +144,7 @@ function onKeyDown(e: KeyboardEvent): void {
   if (e.key === 'Escape') {
     e.preventDefault();
     stopPicking();
-    void sendRuntimeMessage({ type: MESSAGE_TYPES.PICK_CANCELLED });
+    notify({ type: MESSAGE_TYPES.PICK_CANCELLED });
   }
 }
 
