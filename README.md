@@ -26,7 +26,7 @@ Writing browser tests means constantly answering the same questions: _what's a s
 
 ### 🎲 Generate Random Data
 
-Locale-aware test data via [`@faker-js/faker`](https://fakerjs.dev/) — first/last name, phone, address, postal code, email, date of birth. Switch locale (default **English (UK)**), toggle **phone country code** on/off, copy any field, or regenerate the set.
+Locale-aware test data via [`@faker-js/faker`](https://fakerjs.dev/) — first/last name, phone, address, postal code, email, date of birth. Switch **country/locale** (15 supported — UK, US, Portugal, Belgium, Netherlands, Switzerland, Germany, Italy, France, Spain, Norway, Sweden, Finland, Czech Republic, Austria), toggle **phone country code** on/off, copy any field, or regenerate.
 
 ### 🎯 Find Element Locator
 
@@ -42,7 +42,7 @@ data-testid › formControlName › id › value / aria-label › role + name �
 
 ### 📝 Execute JS Script
 
-Save, edit, and **import `javascript:` bookmarklets**, then run your own JavaScript in the page's context — like a bookmarklet manager, but in the side panel.
+Save, edit, **format** (pretty-print), and **import / export** your scripts (and decode `javascript:` bookmarklets), then run your own JavaScript in the page's context — like a bookmarklet manager, but in the side panel.
 
 ### ⚡ Fill (script generator)
 

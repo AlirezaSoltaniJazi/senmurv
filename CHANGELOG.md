@@ -4,6 +4,20 @@ All notable changes to Senmurv are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
+## [0.2.0] - 2026-06-21
+
+### Added
+
+- **Scripts import / export** — selectively export saved scripts to a versioned
+  JSON file and import them back, choosing exactly which to bring in and how to
+  resolve clashes (**Overwrite existing** or **Keep both** with auto-renaming).
+- **Format script** — one-click pretty-print of script code (handy for decoded
+  one-line bookmarklets), powered by js-beautify.
+- **More countries / locales** — Portugal, Belgium, Netherlands, Switzerland,
+  Norway, Sweden, Finland, Czech Republic, and Austria (each with the correct
+  phone dialing code), alongside the existing United Kingdom, United States,
+  Germany, Italy, France, and Spain.
+
 ## [0.1.0] - 2026-06-21
 
 Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
@@ -31,4 +45,5 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
 
+[0.2.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.2.0
 [0.1.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.1.0
