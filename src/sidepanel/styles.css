@@ -1,0 +1,401 @@
+:root {
+  --bg: #1e1f24;
+  --panel: #26272e;
+  --border: #3a3c45;
+  --text: #e7e8ec;
+  --muted: #9a9cab;
+  --accent: #2d7ff9;
+  --danger: #e5534b;
+  --good: #3fb950;
+  --warn: #d29922;
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px 0;
+}
+
+.logo {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.tab-btn {
+  flex: 1;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--muted);
+  padding: 8px 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.tab-btn.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.app-body {
+  padding: 12px;
+}
+
+.tab {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+button:hover {
+  border-color: var(--muted);
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+button.danger {
+  color: var(--danger);
+}
+
+select,
+.name-input,
+.code-input {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.field-label {
+  color: var(--muted);
+}
+
+.framework-select {
+  margin-left: auto;
+}
+
+/* Generate Data */
+.data-list,
+.locator-list,
+.snippet-list,
+.script-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.data-row {
+  display: grid;
+  grid-template-columns: 92px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.data-key {
+  color: var(--muted);
+}
+
+.data-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.copy-btn {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* Locator */
+.element-info {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.text-preview {
+  color: var(--muted);
+}
+
+.attrs {
+  color: var(--muted);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+}
+
+.section-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--muted);
+  margin: 6px 0 0;
+  display: flex;
+  align-items: center;
+}
+
+.locator-row,
+.snippet-row {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.locator-head,
+.snippet-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.locator-label {
+  font-weight: 600;
+}
+
+.snippet-label {
+  font-family: ui-monospace, Menlo, monospace;
+}
+
+.badge {
+  background: var(--good);
+  color: #04210d;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.quality {
+  margin-left: auto;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.quality.q-high {
+  color: var(--good);
+}
+
+.quality.q-medium {
+  color: var(--warn);
+}
+
+.quality.q-low {
+  color: var(--danger);
+}
+
+.locator-value,
+.snippet-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.locator-value code,
+.snippet-code {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+  word-break: break-all;
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 4px 6px;
+  flex: 1;
+}
+
+.snippet-head .copy-btn {
+  margin-left: auto;
+}
+
+/* Scripts */
+.script-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.script-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.script-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.code-input {
+  min-height: 160px;
+  font-family: ui-monospace, Menlo, monospace;
+  resize: vertical;
+  white-space: pre;
+  overflow: auto;
+}
+
+.hint {
+  color: var(--muted);
+  margin: 0;
+}
+
+.status {
+  color: var(--good);
+  margin: 0;
+}
+
+.error {
+  color: var(--danger);
+  margin: 0;
+}
+
+/* Test a locator */
+.test-locator {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.test-locator .name-input {
+  flex: 1;
+}
+
+/* Framework filter chips */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.chip {
+  padding: 3px 9px;
+  font-size: 11px;
+  border-radius: 12px;
+}
+
+.chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Locator card (raw locator + its framework snippets) */
+.locator-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.locator-card .snippet-row {
+  background: var(--bg);
+}
+
+.snippet-fw {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+/* Match-count badge */
+.count {
+  font-size: 10px;
+  text-transform: uppercase;
+  border-radius: 10px;
+  padding: 1px 7px;
+  font-weight: 700;
+}
+
+.count.unique {
+  background: var(--good);
+  color: #04210d;
+}
+
+.count.many {
+  background: var(--warn);
+  color: #2a1c00;
+}
+
+.count.none {
+  background: var(--danger);
+  color: #2a0808;
+}
+
+.dim {
+  color: var(--muted);
+}
