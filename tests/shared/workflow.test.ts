@@ -9,11 +9,11 @@ import type { WorkflowStep } from '@/shared/workflow';
 
 const steps: WorkflowStep[] = [
   { id: 'a', kind: 'click', text: 'Continue' },
-  { id: 'b', kind: 'fill', label: 'Prescription name', value: 'APD Rx' },
-  { id: 'c', kind: 'select', label: 'Therapy modality', value: 'APD', optionMode: 'text' },
-  { id: 'd', kind: 'radio', value: 'HHD' },
+  { id: 'b', kind: 'fill', label: 'Full name', value: 'Jane Doe' },
+  { id: 'c', kind: 'select', label: 'Country', value: 'United Kingdom', optionMode: 'text' },
+  { id: 'd', kind: 'radio', value: 'yes' },
   { id: 'e', kind: 'wait', ms: 3000 },
-  { id: 'f', kind: 'check', selector: 'mat-checkbox[formcontrolname="isRtm"]', checked: true },
+  { id: 'f', kind: 'check', selector: 'mat-checkbox[formcontrolname="subscribe"]', checked: true },
 ];
 
 describe('newStep', () => {
@@ -52,8 +52,8 @@ describe('parseWorkflowScript', () => {
       'check',
     ]);
     expect(parsed![0]).toMatchObject({ kind: 'click', text: 'Continue' });
-    expect(parsed![2]).toMatchObject({ kind: 'select', label: 'Therapy modality', value: 'APD' });
-    expect(parsed![3]).toMatchObject({ kind: 'radio', value: 'HHD' });
+    expect(parsed![2]).toMatchObject({ kind: 'select', label: 'Country', value: 'United Kingdom' });
+    expect(parsed![3]).toMatchObject({ kind: 'radio', value: 'yes' });
     expect(parsed![4]).toMatchObject({ kind: 'wait', ms: 3000 });
   });
 

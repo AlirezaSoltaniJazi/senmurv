@@ -136,7 +136,7 @@ export function defaultGenerator(type: FieldType, hint: string): GeneratorId {
   if (/address|street|line ?[12]/.test(hint)) return 'streetAddress';
   if (/company|organi/.test(hint)) return 'company';
   if (/date|dob|birth|dd.?mm.?yyyy/.test(hint)) return 'date';
-  if (/number|amount|\bqty\b|\bid\b|nhs/.test(hint)) return 'number';
+  if (/number|amount|\bqty\b|\bid\b/.test(hint)) return 'number';
   return 'fullName';
 }
 

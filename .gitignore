@@ -6,3 +6,10 @@ coverage/
 *.local
 .env*
 .DS_Store
+
+# Local working artifacts — page/app-specific data and PII, never commit
+/js
+/html/
+/patient
+/senmurv-scripts*.json
+*.bookmarklet
