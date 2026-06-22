@@ -1,7 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 import { SUPPORTED_LOCALES } from '@/shared/constants';
-import { generatePhone, generateTestData } from '@/shared/faker-data';
+import { ensureFaker, generatePhone, generateTestData } from '@/shared/faker-data';
 import type { GeneratedData } from '@/shared/types';
+
+// Lazy per-locale loading means the cache must be primed before the synchronous
+// generators run; load every supported locale once up front.
+beforeAll(async () => {
+  await Promise.all(SUPPORTED_LOCALES.map((l) => ensureFaker(l)));
+});
 
 const REQUIRED_FIELDS: (keyof GeneratedData)[] = [
   'firstName',

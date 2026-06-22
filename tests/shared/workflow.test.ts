@@ -1,0 +1,109 @@
+import { describe, expect, it } from 'vitest';
+import {
+  buildWorkflowScript,
+  isWorkflowScript,
+  newStep,
+  parseWorkflowScript,
+} from '@/shared/workflow';
+import type { WorkflowStep } from '@/shared/workflow';
+
+const steps: WorkflowStep[] = [
+  { id: 'a', kind: 'click', text: 'Continue' },
+  { id: 'b', kind: 'fill', label: 'Full name', value: 'Jane Doe' },
+  { id: 'c', kind: 'select', label: 'Country', value: 'United Kingdom', optionMode: 'text' },
+  { id: 'd', kind: 'radio', value: 'yes' },
+  { id: 'e', kind: 'wait', ms: 3000 },
+  { id: 'f', kind: 'check', selector: 'mat-checkbox[formcontrolname="subscribe"]', checked: true },
+];
+
+describe('newStep', () => {
+  it('creates sensible defaults per kind', () => {
+    expect(newStep('wait').ms).toBe(1000);
+    expect(newStep('select').optionMode).toBe('text');
+    expect(newStep('check').checked).toBe(true);
+    expect(newStep('click').text).toBe('');
+  });
+});
+
+describe('buildWorkflowScript', () => {
+  it('emits a runnable IIFE with a STEPS array and the interpreter', () => {
+    const code = buildWorkflowScript(steps);
+    expect(code.trim().startsWith('(async () =>')).toBe(true);
+    expect(code).toContain('const STEPS =');
+    expect(code).toContain('clickButton(step.text)');
+    expect(code).toContain('setSelect(step)');
+    expect(code).toContain('setRadio(step)');
+    expect(code).toContain('"Continue"');
+    expect(isWorkflowScript(code)).toBe(true);
+  });
+});
+
+describe('parseWorkflowScript', () => {
+  it('round-trips a generated script back into steps', () => {
+    const parsed = parseWorkflowScript(buildWorkflowScript(steps));
+    expect(parsed).not.toBeNull();
+    expect(parsed).toHaveLength(6);
+    expect(parsed!.map((s) => s.kind)).toEqual([
+      'click',
+      'fill',
+      'select',
+      'radio',
+      'wait',
+      'check',
+    ]);
+    expect(parsed![0]).toMatchObject({ kind: 'click', text: 'Continue' });
+    expect(parsed![2]).toMatchObject({ kind: 'select', label: 'Country', value: 'United Kingdom' });
+    expect(parsed![3]).toMatchObject({ kind: 'radio', value: 'yes' });
+    expect(parsed![4]).toMatchObject({ kind: 'wait', ms: 3000 });
+  });
+
+  it('returns null for non-workflow scripts', () => {
+    expect(parseWorkflowScript('console.log(1)')).toBeNull();
+    expect(isWorkflowScript('console.log(1)')).toBe(false);
+  });
+
+  it('preserves an nth index through round-trip', () => {
+    const withIndex: WorkflowStep[] = [
+      {
+        id: 'x',
+        kind: 'fill',
+        selector: 'input[formcontrolname="firstName"]',
+        index: 1,
+        value: 'Contact',
+      },
+    ];
+    const code = buildWorkflowScript(withIndex);
+    expect(code).toContain('"index": 1');
+    expect(code).toContain('queryNth(step.selector, step.index)');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({
+      kind: 'fill',
+      selector: 'input[formcontrolname="firstName"]',
+      index: 1,
+      value: 'Contact',
+    });
+  });
+
+  it('omits index 0 (equivalent to the default first match)', () => {
+    const code = buildWorkflowScript([
+      { id: 'y', kind: 'fill', selector: 'input', index: 0, value: 'v' },
+    ]);
+    expect(code).not.toContain('"index"');
+  });
+
+  it('round-trips a fill-step random generator', () => {
+    const code = buildWorkflowScript([
+      { id: 'g', kind: 'fill', selector: '#name', generator: 'fullName', value: 'Jane Doe' },
+    ]);
+    expect(code).toContain('"generator": "fullName"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'fullName', value: 'Jane Doe' });
+  });
+
+  it('omits a custom (static) generator from the script', () => {
+    const code = buildWorkflowScript([
+      { id: 'c', kind: 'fill', selector: '#x', generator: 'custom', value: 'static' },
+    ]);
+    expect(code).not.toContain('"generator"');
+  });
+});

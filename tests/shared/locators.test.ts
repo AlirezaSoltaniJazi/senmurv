@@ -82,7 +82,7 @@ describe('Angular formControlName + auto-id handling', () => {
         <input formcontrolname="firstName" id="mat-input-12" type="text" />
         <mat-select formcontrolname="gender" id="mat-select-3"></mat-select>
         <input aria-label="Mobile number input" id="mat-input-19" type="tel" />
-        <mat-radio-button value="HHD"><label>HHD</label></mat-radio-button>
+        <mat-radio-button value="standard"><label>Standard</label></mat-radio-button>
       </form>
     `);
   });
@@ -121,7 +121,7 @@ describe('Angular formControlName + auto-id handling', () => {
     const set = buildLocatorSet(el, document);
     expect(
       set.suggestions.some(
-        (s) => s.strategy === 'attr' && s.value === 'mat-radio-button[value="HHD"]'
+        (s) => s.strategy === 'attr' && s.value === 'mat-radio-button[value="standard"]'
       )
     ).toBe(true);
   });
@@ -158,8 +158,8 @@ describe('parseLocatorInput', () => {
   });
 
   it('maps getByTestId and By.id to selectors', () => {
-    expect(parseLocatorInput("page.getByTestId('huma-shell-menu')")).toEqual({
-      query: '[data-testid="huma-shell-menu"]',
+    expect(parseLocatorInput("page.getByTestId('app-shell-menu')")).toEqual({
+      query: '[data-testid="app-shell-menu"]',
       kind: 'css',
     });
     expect(parseLocatorInput('By.id("fn")')).toEqual({ query: '#fn', kind: 'css' });

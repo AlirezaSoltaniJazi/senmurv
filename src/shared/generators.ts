@@ -1,5 +1,6 @@
 import { generatePhone, getFaker } from '@/shared/faker-data';
 import type { FieldType, FillInstruction, GeneratorId, Locale, PickedField } from '@/shared/types';
+import { newId } from '@/utils/id';
 
 export const GENERATOR_LABELS: Record<GeneratorId, string> = {
   firstName: 'First name',
@@ -135,7 +136,7 @@ export function defaultGenerator(type: FieldType, hint: string): GeneratorId {
   if (/address|street|line ?[12]/.test(hint)) return 'streetAddress';
   if (/company|organi/.test(hint)) return 'company';
   if (/date|dob|birth|dd.?mm.?yyyy/.test(hint)) return 'date';
-  if (/number|amount|\bqty\b|\bid\b|nhs/.test(hint)) return 'number';
+  if (/number|amount|\bqty\b|\bid\b/.test(hint)) return 'number';
   return 'fullName';
 }
 
@@ -276,4 +277,65 @@ export function buildScript(instructions: FillInstruction[]): string {
   }
   console.info('[fill] done — filled', filled, '/ missing', missing);
 })();`;
+}
+
+const ACTION_GENERATORS = new Set<GeneratorId>(['check', 'uncheck', 'pickFirst', 'pickRandom']);
+
+/** A short label derived from a selector (formcontrolname / attr value / id / raw). */
+function labelFromSelector(selector: string): string {
+  const attr = /\[[a-z-]+="([^"]+)"\]/i.exec(selector);
+  if (attr) return attr[1]!;
+  const id = /#([\w-]+)/.exec(selector);
+  if (id) return id[1]!;
+  return selector;
+}
+
+function instructionToField(item: unknown): PickedField | null {
+  if (typeof item !== 'object' || item === null) return null;
+  const o = item as Record<string, unknown>;
+  if (typeof o.selector !== 'string') return null;
+  const fieldType: FieldType = (FIELD_TYPES as string[]).includes(o.fieldType as string)
+    ? (o.fieldType as FieldType)
+    : 'text';
+  const base = {
+    id: newId('fld_'),
+    selector: o.selector,
+    fieldType,
+    label: labelFromSelector(o.selector),
+    hint: o.selector.toLowerCase(),
+  };
+  if (typeof o.action === 'string' && ACTION_GENERATORS.has(o.action as GeneratorId)) {
+    return { ...base, generator: o.action as GeneratorId };
+  }
+  return { ...base, generator: 'custom', customValue: typeof o.value === 'string' ? o.value : '' };
+}
+
+/**
+ * Reverse of {@link buildScript}: extract the embedded `INSTRUCTIONS` array from
+ * a generated fill script and rebuild editable fields. Text values come back as
+ * the `custom` generator (the original random generator isn't stored in the
+ * script), so they can be re-randomized or tweaked. Returns null if the code
+ * isn't a Senmurv fill script.
+ */
+/** Cheap check: was this script produced by the Fill tool (has an INSTRUCTIONS array)? */
+export function isFillScript(code: string): boolean {
+  return /const INSTRUCTIONS\s*=\s*\[/.test(code);
+}
+
+export function parseFillScript(code: string): PickedField[] | null {
+  const match = /const INSTRUCTIONS\s*=\s*(\[[\s\S]*?\n\]);/.exec(code);
+  if (!match) return null;
+  let arr: unknown;
+  try {
+    arr = JSON.parse(match[1]!);
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(arr)) return null;
+  const fields: PickedField[] = [];
+  for (const item of arr) {
+    const field = instructionToField(item);
+    if (field) fields.push(field);
+  }
+  return fields.length > 0 ? fields : null;
 }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Senmurv",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "QA toolkit: generate test data, find element locators, and run saved JS scripts on any page.",
   "permissions": ["sidePanel", "scripting", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],

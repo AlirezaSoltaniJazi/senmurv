@@ -16,6 +16,7 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.RUN_SCRIPT; payload: { code: string } }
   | { type: typeof MESSAGE_TYPES.GET_SCRIPTS }
   | { type: typeof MESSAGE_TYPES.SAVE_SCRIPT; payload: { script: SavedScript } }
+  | { type: typeof MESSAGE_TYPES.SET_SCRIPTS; payload: { scripts: SavedScript[] } }
   | { type: typeof MESSAGE_TYPES.DELETE_SCRIPT; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.TEST_LOCATOR; payload: { query: string; kind: LocatorKind } };
 

@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
+import { ensureFaker } from '@/shared/faker-data';
 import {
   buildInstruction,
   buildScript,
@@ -6,8 +7,14 @@ import {
   FIELD_TYPES,
   generateValue,
   generatorsFor,
+  parseFillScript,
 } from '@/shared/generators';
-import type { PickedField } from '@/shared/types';
+import type { FillInstruction, PickedField } from '@/shared/types';
+
+// generateValue/buildInstruction read from faker's locale cache — prime it first.
+beforeAll(async () => {
+  await ensureFaker('en_GB');
+});
 
 describe('defaultGenerator', () => {
   it('maps control types to sensible generators', () => {
@@ -87,5 +94,38 @@ describe('buildScript', () => {
     expect(code).toContain('document.querySelector');
     expect(code).toContain('"#a"');
     expect(code).toContain('Bob');
+  });
+});
+
+describe('parseFillScript', () => {
+  it('round-trips a generated script back into editable fields', () => {
+    const instructions: FillInstruction[] = [
+      { selector: 'input[formcontrolname="firstName"]', fieldType: 'text', value: 'Bob' },
+      {
+        selector: 'mat-select[formcontrolname="gender"]',
+        fieldType: 'select',
+        action: 'pickRandom',
+      },
+      { selector: 'mat-checkbox[formcontrolname="isRtm"]', fieldType: 'checkbox', action: 'check' },
+    ];
+    const fields = parseFillScript(buildScript(instructions));
+    expect(fields).not.toBeNull();
+    expect(fields).toHaveLength(3);
+
+    const [text, select, checkbox] = fields!;
+    expect(text).toMatchObject({
+      selector: 'input[formcontrolname="firstName"]',
+      fieldType: 'text',
+      generator: 'custom',
+      customValue: 'Bob',
+      label: 'firstName',
+    });
+    expect(select).toMatchObject({ fieldType: 'select', generator: 'pickRandom', label: 'gender' });
+    expect(checkbox).toMatchObject({ fieldType: 'checkbox', generator: 'check' });
+  });
+
+  it('returns null for a non-fill script', () => {
+    expect(parseFillScript('console.log("hello")')).toBeNull();
+    expect(parseFillScript('const INSTRUCTIONS = not-json;\n];')).toBeNull();
   });
 });

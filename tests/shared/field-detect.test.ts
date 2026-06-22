@@ -39,7 +39,7 @@ describe('Material floating-label resolution', () => {
       <mat-form-field class="mat-mdc-form-field">
         <div class="mdc-notched-outline__notch">
           <label class="mdc-floating-label" id="mat-mdc-form-field-label-19" for="mat-input-15">
-            <mat-label>Primary health ID (NHS number)</mat-label>
+            <mat-label>Reference number</mat-label>
           </label>
         </div>
         <div class="mat-mdc-form-field-infix">
