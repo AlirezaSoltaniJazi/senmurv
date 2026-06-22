@@ -4,10 +4,19 @@ All notable changes to Senmurv are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [0.2.0] - 2026-06-22
 
 ### Added
 
+- **Scripts import / export** — selectively export saved scripts to a versioned
+  JSON file and import them back, choosing exactly which to bring in and how to
+  resolve clashes (**Overwrite existing** or **Keep both** with auto-renaming).
+- **Format script** — one-click pretty-print of script code (handy for decoded
+  one-line bookmarklets), powered by js-beautify.
+- **More countries / locales** — Portugal, Belgium, Netherlands, Switzerland,
+  Norway, Sweden, Finland, Czech Republic, and Austria (each with the correct
+  phone dialing code), alongside the existing United Kingdom, United States,
+  Germany, Italy, France, and Spain.
 - **Fill → Flow: random-value generators** — a fill step can now generate a
   random value (first/full name, email, phone, address, postal code, etc.) on
   each run, with a per-flow locale selector, instead of only a static value.
@@ -36,20 +45,6 @@ All notable changes to Senmurv are documented here. The format is based on
   options are detected by bounding box (so fixed-position overlay panels are
   seen), checkboxes can be matched by visible text, and a disabled select is
   reported distinctly from an empty one.
-
-## [0.2.0] - 2026-06-21
-
-### Added
-
-- **Scripts import / export** — selectively export saved scripts to a versioned
-  JSON file and import them back, choosing exactly which to bring in and how to
-  resolve clashes (**Overwrite existing** or **Keep both** with auto-renaming).
-- **Format script** — one-click pretty-print of script code (handy for decoded
-  one-line bookmarklets), powered by js-beautify.
-- **More countries / locales** — Portugal, Belgium, Netherlands, Switzerland,
-  Norway, Sweden, Finland, Czech Republic, and Austria (each with the correct
-  phone dialing code), alongside the existing United Kingdom, United States,
-  Germany, Italy, France, and Spain.
 
 ## [0.1.0] - 2026-06-21
 
