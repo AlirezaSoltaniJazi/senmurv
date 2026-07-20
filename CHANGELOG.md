@@ -4,6 +4,40 @@ All notable changes to Senmurv are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Track — time logging** — a stopwatch for QA work: start a task with a title
+  and tag, then **pause / resume / stop** (a task accumulates multiple work
+  intervals into one total). Run **several timers at once** and see all
+  currently active ones, then browse history in a **List** view (grouped by day
+  with a per-day total) or a **Calendar** view (per-day totals with tag dots;
+  click a day to drill in). **Edit** a task's title, tag, and start/end times or
+  **delete** it, with **color-coded tags** across both views.
+- **Track — re-run** — restart a stopped task; its runs group under an
+  expandable parent task, and each day's total stays exact.
+- **My Tasks — checklists** — plan work as tasks with a **subtask checkbox
+  list**. The parent auto-completes when all subtasks are done (and toggling it
+  checks/unchecks them all). See a **per-task and overall completion %**, set an
+  **exact deadline** per task, and get a **remaining-days** badge (colored when
+  due soon or overdue).
+- **My Tasks → Track** — press **Start** on a task or any subtask to begin
+  timing it in Track without leaving the list; the card shows live elapsed time
+  and a Stop button.
+- **Settings** — choose the panel **font size** (Small / Medium / Large); the
+  choice persists and applies in the full-page view too.
+- **Refresh** — a toolbar button re-pulls data from storage, so a panel open in
+  one window picks up changes made in another.
+- **Open in full page** — a toolbar button opens the whole toolkit in a browser
+  tab for a roomier view.
+
+### Changed
+
+- Renamed the **Fill** tab to **Recorder**.
+- The transient **"Saved."** confirmation in Track now clears itself after a few
+  seconds instead of lingering.
+
 ## [0.2.0] - 2026-06-22
 
 ### Added
@@ -78,5 +112,6 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
 
+[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.3.0...HEAD
 [0.2.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.2.0
 [0.1.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.1.0

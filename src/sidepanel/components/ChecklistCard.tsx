@@ -203,7 +203,7 @@ export function ChecklistCard({
                 ■ Stop
               </button>
             </>
-          ) : (
+          ) : complete ? null : (
             <button type="button" className="primary" onClick={onStartTracking}>
               ▶ Start
             </button>
@@ -240,7 +240,7 @@ export function ChecklistCard({
                           ■ Stop
                         </button>
                       </>
-                    ) : (
+                    ) : s.done ? null : (
                       <button
                         type="button"
                         className="primary"
