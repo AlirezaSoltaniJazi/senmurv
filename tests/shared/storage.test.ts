@@ -103,6 +103,7 @@ describe('isTimeEntry', () => {
     expect(isTimeEntry(makeEntry({ tag: '', intervals: [] }))).toBe(true);
     expect(isTimeEntry(makeEntry({ parentId: 'tsk_root' }))).toBe(true);
     expect(isTimeEntry(makeEntry({ checklistId: 'chk_1' }))).toBe(true);
+    expect(isTimeEntry(makeEntry({ checklistId: 'chk_1', subtaskId: 'sub_1' }))).toBe(true);
   });
 
   it('rejects junk and malformed fields', () => {

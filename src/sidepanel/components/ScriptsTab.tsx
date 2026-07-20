@@ -18,7 +18,7 @@ import type { Result, SavedScript } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 interface Props {
-  /** Open a generated fill/flow script in the Fill tab for customization. */
+  /** Open a generated fill/flow script in the Recorder tab for customization. */
   onCustomize: (seed: FillSeed) => void;
   /** Bumped by the header refresh button to re-pull data from storage. */
   reloadNonce: number;
@@ -84,7 +84,9 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
         return;
       }
     }
-    setError(`"${s.name}" isn't a generated fill/flow script, so it can't be customized in Fill.`);
+    setError(
+      `"${s.name}" isn't a generated fill/flow script, so it can't be customized in Recorder.`
+    );
   }
 
   async function save(): Promise<void> {

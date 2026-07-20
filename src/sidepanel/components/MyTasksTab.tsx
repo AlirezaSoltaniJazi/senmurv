@@ -4,7 +4,7 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { isComplete, overallProgress, progressBar } from '@/shared/checklists';
 import { fromLocalInputValue, isActive, isRunning } from '@/shared/tasks';
-import type { Checklist, Result, TimeEntry } from '@/shared/types';
+import type { Checklist, Result, Subtask, TimeEntry } from '@/shared/types';
 import { newId } from '@/utils/id';
 import { ChecklistCard } from './ChecklistCard';
 
@@ -163,9 +163,18 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
     });
   }
 
-  /** The still-active time entry started from a given task, if any. */
+  /** The still-active timer tracking a whole task (not one of its subtasks). */
   function activeEntryFor(listId: string): TimeEntry | null {
-    return timeEntries.find((e) => e.checklistId === listId && isActive(e)) ?? null;
+    return (
+      timeEntries.find(
+        (e) => e.checklistId === listId && e.subtaskId === undefined && isActive(e)
+      ) ?? null
+    );
+  }
+
+  /** The still-active timer tracking a specific subtask, if any. */
+  function activeSubEntryFor(subtaskId: string): TimeEntry | null {
+    return timeEntries.find((e) => e.subtaskId === subtaskId && isActive(e)) ?? null;
   }
 
   async function saveEntry(entry: TimeEntry): Promise<void> {
@@ -191,6 +200,24 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
       createdAt: at,
       updatedAt: at,
       checklistId: list.id,
+    });
+  }
+
+  function startSubtaskTracking(list: Checklist, subtask: Subtask): void {
+    setError(null);
+    if (activeSubEntryFor(subtask.id)) return; // already tracking this subtask
+    const at = nowMs();
+    setNow(at);
+    void saveEntry({
+      id: newId('tsk_'),
+      title: `${list.title} › ${subtask.title}`,
+      tag: '',
+      intervals: [{ start: at, end: null }],
+      stoppedAt: null,
+      createdAt: at,
+      updatedAt: at,
+      checklistId: list.id,
+      subtaskId: subtask.id,
     });
   }
 
@@ -256,6 +283,7 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
               list={list}
               now={now}
               trackingEntry={activeEntryFor(list.id)}
+              subTrackingFor={activeSubEntryFor}
               isExpanded={expanded.has(list.id)}
               isEditing={editingId === list.id}
               onToggleExpand={toggleExpand}
@@ -264,6 +292,7 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
               onAddSubtask={addSubtask}
               onDeleteSubtask={deleteSubtask}
               onStartTracking={() => startTracking(list)}
+              onStartSubtaskTracking={startSubtaskTracking}
               onStopTracking={stopTracking}
               onStartEdit={(id) => setEditingId(id)}
               onCancelEdit={() => setEditingId(null)}

@@ -13,13 +13,15 @@ import {
   fromLocalInputValue,
   toLocalInputValue,
 } from '@/shared/tasks';
-import type { Checklist, TimeEntry } from '@/shared/types';
+import type { Checklist, Subtask, TimeEntry } from '@/shared/types';
 
 interface ChecklistCardProps {
   list: Checklist;
   now: number;
   /** The active Track timer started from this task, or null. */
   trackingEntry: TimeEntry | null;
+  /** Look up the active timer tracking a given subtask, or null. */
+  subTrackingFor: (subtaskId: string) => TimeEntry | null;
   isExpanded: boolean;
   isEditing: boolean;
   onToggleExpand: (id: string) => void;
@@ -28,6 +30,7 @@ interface ChecklistCardProps {
   onAddSubtask: (list: Checklist, title: string) => void;
   onDeleteSubtask: (list: Checklist, subtaskId: string) => void;
   onStartTracking: () => void;
+  onStartSubtaskTracking: (list: Checklist, subtask: Subtask) => void;
   onStopTracking: (entry: TimeEntry) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
@@ -101,6 +104,7 @@ export function ChecklistCard({
   list,
   now,
   trackingEntry,
+  subTrackingFor,
   isExpanded,
   isEditing,
   onToggleExpand,
@@ -109,6 +113,7 @@ export function ChecklistCard({
   onAddSubtask,
   onDeleteSubtask,
   onStartTracking,
+  onStartSubtaskTracking,
   onStopTracking,
   onStartEdit,
   onCancelEdit,
@@ -210,25 +215,52 @@ export function ChecklistCard({
         <div className="subtask-area">
           <ul className="subtask-list">
             {list.subtasks.length === 0 && <li className="hint">No subtasks yet.</li>}
-            {list.subtasks.map((s) => (
-              <li key={s.id} className="subtask-row">
-                <input
-                  type="checkbox"
-                  checked={s.done}
-                  onChange={() => onToggleSubtask(list, s.id)}
-                  aria-label={s.title}
-                />
-                <span className={s.done ? 'subtask-title done' : 'subtask-title'}>{s.title}</span>
-                <button
-                  type="button"
-                  className="remove"
-                  onClick={() => onDeleteSubtask(list, s.id)}
-                  aria-label="Delete subtask"
-                >
-                  ✕
-                </button>
-              </li>
-            ))}
+            {list.subtasks.map((s) => {
+              const subEntry = subTrackingFor(s.id);
+              return (
+                <li key={s.id} className="subtask-row">
+                  <input
+                    type="checkbox"
+                    checked={s.done}
+                    onChange={() => onToggleSubtask(list, s.id)}
+                    aria-label={s.title}
+                  />
+                  <span className={s.done ? 'subtask-title done' : 'subtask-title'}>{s.title}</span>
+                  <span className="track-control">
+                    {subEntry ? (
+                      <>
+                        <span className="running-elapsed">
+                          {formatDuration(entryDurationMs(subEntry, now))}
+                        </span>
+                        <button
+                          type="button"
+                          className="danger"
+                          onClick={() => onStopTracking(subEntry)}
+                        >
+                          ■ Stop
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        className="primary"
+                        onClick={() => onStartSubtaskTracking(list, s)}
+                      >
+                        ▶ Start
+                      </button>
+                    )}
+                  </span>
+                  <button
+                    type="button"
+                    className="remove"
+                    onClick={() => onDeleteSubtask(list, s.id)}
+                    aria-label="Delete subtask"
+                  >
+                    ✕
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           <div className="row">
             <input

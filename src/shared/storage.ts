@@ -78,7 +78,8 @@ export function isTimeEntry(value: unknown): value is TimeEntry {
     typeof v.createdAt === 'number' &&
     typeof v.updatedAt === 'number' &&
     (v.parentId === undefined || typeof v.parentId === 'string') &&
-    (v.checklistId === undefined || typeof v.checklistId === 'string')
+    (v.checklistId === undefined || typeof v.checklistId === 'string') &&
+    (v.subtaskId === undefined || typeof v.subtaskId === 'string')
   );
 }
 

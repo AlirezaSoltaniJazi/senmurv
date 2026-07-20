@@ -52,6 +52,8 @@ export interface TimeEntry {
   parentId?: string;
   /** Set when the entry was started from a "My Tasks" checklist (its id). */
   checklistId?: string;
+  /** Set when the entry tracks a specific subtask of that checklist (its id). */
+  subtaskId?: string;
 }
 
 /** Locator generation strategies (Find Element Locator tool). */

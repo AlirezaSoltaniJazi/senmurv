@@ -30,7 +30,7 @@ type TabKey = 'data' | 'locator' | 'fill' | 'scripts' | 'track' | 'mytasks' | 's
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'data', label: 'Data' },
   { key: 'locator', label: 'Locator' },
-  { key: 'fill', label: 'Fill' },
+  { key: 'fill', label: 'Recorder' },
   { key: 'scripts', label: 'Scripts' },
   { key: 'track', label: 'Track' },
   { key: 'mytasks', label: 'My Tasks' },
