@@ -1,6 +1,7 @@
 /** chrome.storage.local keys. */
 export const STORAGE_KEYS = {
   SCRIPTS: 'senmurv:scripts',
+  TASKS: 'senmurv:tasks',
   PREFS: 'senmurv:prefs',
 } as const;
 
@@ -18,6 +19,9 @@ export const MESSAGE_TYPES = {
   SET_SCRIPTS: 'SET_SCRIPTS',
   DELETE_SCRIPT: 'DELETE_SCRIPT',
   TEST_LOCATOR: 'TEST_LOCATOR',
+  GET_TASKS: 'GET_TASKS',
+  SAVE_TASK: 'SAVE_TASK',
+  DELETE_TASK: 'DELETE_TASK',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */

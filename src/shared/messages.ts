@@ -1,5 +1,11 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
-import type { DetectedField, LocatorKind, LocatorSet, SavedScript } from '@/shared/types';
+import type {
+  DetectedField,
+  LocatorKind,
+  LocatorSet,
+  SavedScript,
+  TimeEntry,
+} from '@/shared/types';
 
 /**
  * All runtime messages, as a discriminated union keyed on `type`.
@@ -18,7 +24,10 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.SAVE_SCRIPT; payload: { script: SavedScript } }
   | { type: typeof MESSAGE_TYPES.SET_SCRIPTS; payload: { scripts: SavedScript[] } }
   | { type: typeof MESSAGE_TYPES.DELETE_SCRIPT; payload: { id: string } }
-  | { type: typeof MESSAGE_TYPES.TEST_LOCATOR; payload: { query: string; kind: LocatorKind } };
+  | { type: typeof MESSAGE_TYPES.TEST_LOCATOR; payload: { query: string; kind: LocatorKind } }
+  | { type: typeof MESSAGE_TYPES.GET_TASKS }
+  | { type: typeof MESSAGE_TYPES.SAVE_TASK; payload: { entry: TimeEntry } }
+  | { type: typeof MESSAGE_TYPES.DELETE_TASK; payload: { id: string } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

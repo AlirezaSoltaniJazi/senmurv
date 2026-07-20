@@ -14,14 +14,16 @@ const FillTab = lazy(() => import('./components/FillTab').then((m) => ({ default
 const ScriptsTab = lazy(() =>
   import('./components/ScriptsTab').then((m) => ({ default: m.ScriptsTab }))
 );
+const TasksTab = lazy(() => import('./components/TasksTab').then((m) => ({ default: m.TasksTab })));
 
-type TabKey = 'data' | 'locator' | 'fill' | 'scripts';
+type TabKey = 'data' | 'locator' | 'fill' | 'scripts' | 'tasks';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'data', label: 'Data' },
   { key: 'locator', label: 'Locator' },
   { key: 'fill', label: 'Fill' },
   { key: 'scripts', label: 'Scripts' },
+  { key: 'tasks', label: 'Tasks' },
 ];
 
 const VERSION = chrome.runtime.getManifest().version;
@@ -64,6 +66,7 @@ export function App(): ReactElement {
           {tab === 'locator' && <LocatorTab />}
           {tab === 'fill' && <FillTab seed={fillSeed} onSeedConsumed={clearFillSeed} />}
           {tab === 'scripts' && <ScriptsTab onCustomize={customizeInFill} />}
+          {tab === 'tasks' && <TasksTab />}
         </Suspense>
       </main>
     </div>

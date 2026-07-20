@@ -26,6 +26,27 @@ export interface SavedScript {
   updatedAt: number;
 }
 
+/** One work interval of a logged task; `end === null` while it is running. */
+export interface TimeInterval {
+  start: number; // epoch ms
+  end: number | null; // epoch ms, or null while the interval is open
+}
+
+/**
+ * A time-logged task (Tasks tool). Accumulates one or more work intervals via
+ * play / pause / resume; `stoppedAt === null` means still active (running or
+ * paused). Total duration is always derived from `intervals`, never stored.
+ */
+export interface TimeEntry {
+  id: string;
+  title: string;
+  tag: string;
+  intervals: TimeInterval[];
+  stoppedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** Locator generation strategies (Find Element Locator tool). */
 export type LocatorStrategy =
   | 'testId'
