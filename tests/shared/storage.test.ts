@@ -1,16 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '@/shared/constants';
 import {
+  DEFAULT_PREFS,
+  deleteChecklist,
   deleteScript,
   deleteTask,
+  getChecklists,
+  getPrefs,
   getScripts,
   getTasks,
+  isChecklist,
   isSavedScript,
   isTimeEntry,
+  savePrefs,
+  upsertChecklist,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
-import type { SavedScript, TimeEntry } from '@/shared/types';
+import type { Checklist, SavedScript, TimeEntry } from '@/shared/types';
 import { store } from '../setup';
 
 function makeScript(overrides: Partial<SavedScript> = {}): SavedScript {
@@ -33,6 +40,19 @@ function makeEntry(overrides: Partial<TimeEntry> = {}): TimeEntry {
     stoppedAt: 2000,
     createdAt: 1000,
     updatedAt: 2000,
+    ...overrides,
+  };
+}
+
+function makeList(overrides: Partial<Checklist> = {}): Checklist {
+  return {
+    id: 'chk_1',
+    title: 'Release v1.0',
+    subtasks: [{ id: 'sub_1', title: 'Test', done: false }],
+    done: false,
+    deadline: null,
+    createdAt: 1,
+    updatedAt: 1,
     ...overrides,
   };
 }
@@ -82,6 +102,7 @@ describe('isTimeEntry', () => {
     ).toBe(true);
     expect(isTimeEntry(makeEntry({ tag: '', intervals: [] }))).toBe(true);
     expect(isTimeEntry(makeEntry({ parentId: 'tsk_root' }))).toBe(true);
+    expect(isTimeEntry(makeEntry({ checklistId: 'chk_1' }))).toBe(true);
   });
 
   it('rejects junk and malformed fields', () => {
@@ -119,5 +140,68 @@ describe('task storage', () => {
     await upsertTask(makeEntry({ id: 'tsk_2' }));
     const remaining = await deleteTask('tsk_1');
     expect(remaining.map((t) => t.id)).toEqual(['tsk_2']);
+  });
+});
+
+describe('isChecklist', () => {
+  it('accepts well-formed checklists (with/without subtasks, deadline null or set)', () => {
+    expect(isChecklist(makeList())).toBe(true);
+    expect(isChecklist(makeList({ subtasks: [], done: true }))).toBe(true);
+    expect(isChecklist(makeList({ deadline: 123456 }))).toBe(true);
+  });
+
+  it('rejects junk and malformed fields', () => {
+    expect(isChecklist({ id: 'x' })).toBe(false);
+    expect(isChecklist(null)).toBe(false);
+    expect(isChecklist({ ...makeList(), subtasks: [{ id: 'sub_1', title: 'x' }] })).toBe(false);
+    expect(isChecklist({ ...makeList(), done: 'nope' })).toBe(false);
+    expect(isChecklist({ ...makeList(), deadline: 'soon' })).toBe(false);
+  });
+});
+
+describe('checklist storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getChecklists()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.CHECKLISTS] = [makeList(), { id: 'bad' }];
+    expect(await getChecklists()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertChecklist(makeList());
+    let all = await getChecklists();
+    expect(all).toHaveLength(1);
+
+    all = await upsertChecklist(makeList({ title: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.title).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertChecklist(makeList());
+    await upsertChecklist(makeList({ id: 'chk_2' }));
+    const remaining = await deleteChecklist('chk_1');
+    expect(remaining.map((c) => c.id)).toEqual(['chk_2']);
+  });
+});
+
+describe('prefs storage', () => {
+  it('returns defaults when nothing is stored', async () => {
+    expect(await getPrefs()).toEqual(DEFAULT_PREFS);
+  });
+
+  it('merges valid stored fields and falls back on corrupt ones', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'large' };
+    expect((await getPrefs()).fontSize).toBe('large');
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'enormous' };
+    expect((await getPrefs()).fontSize).toBe(DEFAULT_PREFS.fontSize);
+  });
+
+  it('round-trips through savePrefs', async () => {
+    await savePrefs({ fontSize: 'small' });
+    expect((await getPrefs()).fontSize).toBe('small');
   });
 });

@@ -50,6 +50,8 @@ export interface TimeEntry {
   createdAt: number;
   updatedAt: number;
   parentId?: string;
+  /** Set when the entry was started from a "My Tasks" checklist (its id). */
+  checklistId?: string;
 }
 
 /** Locator generation strategies (Find Element Locator tool). */
@@ -108,6 +110,39 @@ export interface LocatorSet {
 
 /** Standard fallible-operation result. */
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
+// My Tasks (checklists) + user preferences
+// ---------------------------------------------------------------------------
+
+/** One checklist item (a subtask checkbox). */
+export interface Subtask {
+  id: string; // newId('sub_')
+  title: string;
+  done: boolean;
+}
+
+/**
+ * A "my task": a 2-level checklist. The parent's completion is derived from its
+ * subtasks (all done → complete); `done` is only used when `subtasks` is empty.
+ */
+export interface Checklist {
+  id: string; // newId('chk_')
+  title: string;
+  subtasks: Subtask[];
+  done: boolean;
+  deadline: number | null; // exact epoch ms, or null when unset
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** UI scale for the whole panel. */
+export type FontSize = 'small' | 'medium' | 'large';
+
+/** Persisted user preferences. */
+export interface Prefs {
+  fontSize: FontSize;
+}
 
 // ---------------------------------------------------------------------------
 // Script generator (Fill tool)

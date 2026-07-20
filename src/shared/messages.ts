@@ -1,8 +1,10 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
 import type {
+  Checklist,
   DetectedField,
   LocatorKind,
   LocatorSet,
+  Prefs,
   SavedScript,
   TimeEntry,
 } from '@/shared/types';
@@ -27,7 +29,12 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.TEST_LOCATOR; payload: { query: string; kind: LocatorKind } }
   | { type: typeof MESSAGE_TYPES.GET_TASKS }
   | { type: typeof MESSAGE_TYPES.SAVE_TASK; payload: { entry: TimeEntry } }
-  | { type: typeof MESSAGE_TYPES.DELETE_TASK; payload: { id: string } };
+  | { type: typeof MESSAGE_TYPES.DELETE_TASK; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.GET_CHECKLISTS }
+  | { type: typeof MESSAGE_TYPES.SAVE_CHECKLIST; payload: { checklist: Checklist } }
+  | { type: typeof MESSAGE_TYPES.DELETE_CHECKLIST; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.GET_PREFS }
+  | { type: typeof MESSAGE_TYPES.SAVE_PREFS; payload: { prefs: Prefs } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

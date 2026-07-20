@@ -27,6 +27,17 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+/* Font-size preference — scales the whole UI (Chromium `zoom`). Medium = 1. */
+.app.font-small {
+  zoom: 0.9;
+}
+
+.app.font-large {
+  zoom: 1.15;
 }
 
 .app-header {
@@ -64,8 +75,30 @@ body {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border: none;
 }
 
 .tab-btn {
@@ -940,4 +973,165 @@ select,
   flex-wrap: wrap;
   justify-content: center;
   gap: 2px;
+}
+
+/* Settings */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setting-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* My Tasks — checklists */
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.checklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Text progress bar (segmented, no inline widths) */
+.bar {
+  font-family: ui-monospace, Menlo, monospace;
+  letter-spacing: -1px;
+  white-space: nowrap;
+}
+
+.bar-fill {
+  color: var(--accent);
+}
+
+.bar-empty {
+  color: var(--border);
+}
+
+.progress-pct {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.overall-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.checklist-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.checklist-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checklist-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checklist-title.done,
+.subtask-title.done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.checklist-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.track-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.track-control button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.deadline-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.deadline-badge.is-overdue {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.deadline-badge.is-soon {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.subtask-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 20px;
+}
+
+.subtask-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.subtask-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subtask-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checklist-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }

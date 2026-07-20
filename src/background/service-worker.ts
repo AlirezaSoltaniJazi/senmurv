@@ -1,11 +1,16 @@
 import { BLOCKED_URL_PREFIXES, MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import {
+  deleteChecklist,
   deleteScript,
   deleteTask,
+  getChecklists,
+  getPrefs,
   getScripts,
   getTasks,
   saveScripts,
+  savePrefs,
+  upsertChecklist,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
@@ -259,6 +264,36 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     case MESSAGE_TYPES.DELETE_TASK:
       deleteTask(message.payload.id)
         .then((value) => sendResponse({ ok: true, value }))
+        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+      return true;
+
+    case MESSAGE_TYPES.GET_CHECKLISTS:
+      getChecklists()
+        .then((value) => sendResponse({ ok: true, value }))
+        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+      return true;
+
+    case MESSAGE_TYPES.SAVE_CHECKLIST:
+      upsertChecklist(message.payload.checklist)
+        .then((value) => sendResponse({ ok: true, value }))
+        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+      return true;
+
+    case MESSAGE_TYPES.DELETE_CHECKLIST:
+      deleteChecklist(message.payload.id)
+        .then((value) => sendResponse({ ok: true, value }))
+        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+      return true;
+
+    case MESSAGE_TYPES.GET_PREFS:
+      getPrefs()
+        .then((value) => sendResponse({ ok: true, value }))
+        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+      return true;
+
+    case MESSAGE_TYPES.SAVE_PREFS:
+      savePrefs(message.payload.prefs)
+        .then(() => sendResponse({ ok: true, value: message.payload.prefs }))
         .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
       return true;
 

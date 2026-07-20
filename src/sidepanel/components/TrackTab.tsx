@@ -37,7 +37,12 @@ function closeOpenInterval(entry: TimeEntry, at: number): TimeEntry['intervals']
   );
 }
 
-export function TasksTab(): ReactElement {
+interface Props {
+  /** Bumped by the header refresh button to re-pull data from storage. */
+  reloadNonce: number;
+}
+
+export function TrackTab({ reloadNonce }: Props): ReactElement {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [title, setTitle] = useState('');
   const [tag, setTag] = useState('');
@@ -53,7 +58,7 @@ export function TasksTab(): ReactElement {
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<number>(nowMs);
 
-  // Load persisted tasks on mount.
+  // Load persisted tasks on mount and whenever the refresh button bumps the nonce.
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -63,7 +68,7 @@ export function TasksTab(): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadNonce]);
 
   // Tick once a second only while something is actually running. The immediate
   // refresh makes a just-started timer show live time without a 1s delay.
@@ -73,6 +78,13 @@ export function TasksTab(): ReactElement {
     const id = setInterval(() => setNow(nowMs()), 1000);
     return () => clearInterval(id);
   }, [running]);
+
+  // Auto-dismiss the transient success message after 5 seconds.
+  useEffect(() => {
+    if (status === null) return undefined;
+    const id = setTimeout(() => setStatus(null), 5000);
+    return () => clearTimeout(id);
+  }, [status]);
 
   async function persist(entry: TimeEntry): Promise<boolean> {
     const res = await sendRuntimeMessage<Result<TimeEntry[]>>({

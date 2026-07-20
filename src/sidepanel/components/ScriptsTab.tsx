@@ -20,13 +20,15 @@ import { newId } from '@/utils/id';
 interface Props {
   /** Open a generated fill/flow script in the Fill tab for customization. */
   onCustomize: (seed: FillSeed) => void;
+  /** Bumped by the header refresh button to re-pull data from storage. */
+  reloadNonce: number;
 }
 
 function customizable(code: string): boolean {
   return isFillScript(code) || isWorkflowScript(code);
 }
 
-export function ScriptsTab({ onCustomize }: Props): ReactElement {
+export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -50,7 +52,7 @@ export function ScriptsTab({ onCustomize }: Props): ReactElement {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [reloadNonce]);
 
   function resetEditor(): void {
     setEditingId(null);

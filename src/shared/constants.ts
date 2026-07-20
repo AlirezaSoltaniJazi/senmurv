@@ -2,6 +2,7 @@
 export const STORAGE_KEYS = {
   SCRIPTS: 'senmurv:scripts',
   TASKS: 'senmurv:tasks',
+  CHECKLISTS: 'senmurv:checklists',
   PREFS: 'senmurv:prefs',
 } as const;
 
@@ -22,6 +23,11 @@ export const MESSAGE_TYPES = {
   GET_TASKS: 'GET_TASKS',
   SAVE_TASK: 'SAVE_TASK',
   DELETE_TASK: 'DELETE_TASK',
+  GET_CHECKLISTS: 'GET_CHECKLISTS',
+  SAVE_CHECKLIST: 'SAVE_CHECKLIST',
+  DELETE_CHECKLIST: 'DELETE_CHECKLIST',
+  GET_PREFS: 'GET_PREFS',
+  SAVE_PREFS: 'SAVE_PREFS',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
