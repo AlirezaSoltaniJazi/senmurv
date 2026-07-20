@@ -75,12 +75,13 @@ describe('script storage', () => {
 });
 
 describe('isTimeEntry', () => {
-  it('accepts well-formed entries (running, paused, and done)', () => {
+  it('accepts well-formed entries (running, paused, done, and re-run children)', () => {
     expect(isTimeEntry(makeEntry())).toBe(true);
     expect(
       isTimeEntry(makeEntry({ intervals: [{ start: 1000, end: null }], stoppedAt: null }))
     ).toBe(true);
     expect(isTimeEntry(makeEntry({ tag: '', intervals: [] }))).toBe(true);
+    expect(isTimeEntry(makeEntry({ parentId: 'tsk_root' }))).toBe(true);
   });
 
   it('rejects junk and malformed fields', () => {
@@ -89,6 +90,7 @@ describe('isTimeEntry', () => {
     expect(isTimeEntry(makeEntry({ intervals: [{ start: 'nope' } as never] }))).toBe(false);
     expect(isTimeEntry({ ...makeEntry(), stoppedAt: 'later' })).toBe(false);
     expect(isTimeEntry({ ...makeEntry(), intervals: 'not-an-array' })).toBe(false);
+    expect(isTimeEntry({ ...makeEntry(), parentId: 123 })).toBe(false);
   });
 });
 

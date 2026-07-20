@@ -68,7 +68,8 @@ export function isTimeEntry(value: unknown): value is TimeEntry {
     v.intervals.every(isTimeInterval) &&
     (v.stoppedAt === null || typeof v.stoppedAt === 'number') &&
     typeof v.createdAt === 'number' &&
-    typeof v.updatedAt === 'number'
+    typeof v.updatedAt === 'number' &&
+    (v.parentId === undefined || typeof v.parentId === 'string')
   );
 }
 

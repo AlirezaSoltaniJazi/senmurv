@@ -3,13 +3,14 @@ import type { KeyboardEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import {
+  buildDayBlocks,
   buildMonthGrid,
   distinctTags,
   entryDurationMs,
   formatDuration,
-  groupEntriesByDay,
   isActive,
   isRunning,
+  rootId,
   tagColorClass,
   totalsByDay,
 } from '@/shared/tasks';
@@ -46,6 +47,7 @@ export function TasksTab(): ReactElement {
     return { year: d.getFullYear(), month: d.getMonth() };
   });
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -137,6 +139,26 @@ export function TasksTab(): ReactElement {
     });
   }
 
+  async function rerun(entry: TimeEntry): Promise<void> {
+    setError(null);
+    setStatus(null);
+    const root = rootId(entry);
+    const source = entries.find((e) => e.id === root) ?? entry;
+    const at = nowMs();
+    const child: TimeEntry = {
+      id: newId('tsk_'),
+      title: source.title,
+      tag: source.tag,
+      intervals: [{ start: at, end: null }],
+      stoppedAt: null,
+      createdAt: at,
+      updatedAt: at,
+      parentId: root,
+    };
+    setNow(at);
+    await persist(child);
+  }
+
   async function saveEdit(entry: TimeEntry): Promise<void> {
     setError(null);
     if (await persist({ ...entry, updatedAt: nowMs() })) {
@@ -172,12 +194,21 @@ export function TasksTab(): ReactElement {
     setSelectedDay((prev) => (prev === key ? null : key));
   }
 
+  function toggleExpand(key: string): void {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }
+
   function onStartKey(e: KeyboardEvent<HTMLInputElement>): void {
     if (e.key === 'Enter') void start();
   }
 
   const activeEntries = [...entries].filter(isActive).sort((a, b) => firstStart(b) - firstStart(a));
-  const groups = groupEntriesByDay(entries, now);
+  const dayBlocks = buildDayBlocks(entries, now);
   const grid = buildMonthGrid(cursor.year, cursor.month);
   const totals = totalsByDay(entries, now);
   const tags = distinctTags(entries);
@@ -265,9 +296,12 @@ export function TasksTab(): ReactElement {
 
       {view === 'list' ? (
         <TaskListView
-          groups={groups}
+          days={dayBlocks}
           now={now}
+          expanded={expanded}
           editingId={editingId}
+          onToggleExpand={toggleExpand}
+          onRerun={(entry) => void rerun(entry)}
           onStartEdit={(id) => setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
           onSave={(entry) => void saveEdit(entry)}
@@ -276,14 +310,18 @@ export function TasksTab(): ReactElement {
       ) : (
         <TaskCalendarView
           entries={entries}
+          dayBlocks={dayBlocks}
           grid={grid}
           totals={totals}
           now={now}
           selectedDay={selectedDay}
+          expanded={expanded}
           editingId={editingId}
           onSelectDay={selectDay}
           onPrevMonth={() => shiftMonth(-1)}
           onNextMonth={() => shiftMonth(1)}
+          onToggleExpand={toggleExpand}
+          onRerun={(entry) => void rerun(entry)}
           onStartEdit={(id) => setEditingId(id)}
           onCancelEdit={() => setEditingId(null)}
           onSave={(entry) => void saveEdit(entry)}

@@ -26,6 +26,11 @@ export function isActive(entry: TimeEntry): boolean {
   return entry.stoppedAt === null;
 }
 
+/** The lineage root id: a run's `parentId`, or its own id when it is a root. */
+export function rootId(entry: TimeEntry): string {
+  return entry.parentId ?? entry.id;
+}
+
 /** Total logged milliseconds; open intervals accrue up to `now`. Clamped ≥ 0. */
 export function entryDurationMs(entry: TimeEntry, now: number): number {
   let total = 0;
@@ -60,6 +65,21 @@ export function formatDurationShort(ms: number): string {
   const hours = Math.floor(totalMinutes / 60);
   const minutes = totalMinutes % 60;
   return hours > 0 ? `${hours}h ${minutes}m` : `${minutes}m`;
+}
+
+/** Local wall-clock "HH:mm" for a timestamp. */
+export function formatClock(ts: number): string {
+  const d = new Date(ts);
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+/** A run's time span, e.g. "09:00 – 10:00" (or "09:00 – …" while still open). */
+export function runTimeRange(entry: TimeEntry): string {
+  const start = entry.intervals[0]?.start;
+  if (start === undefined) return '';
+  const last = entry.intervals[entry.intervals.length - 1];
+  if (!last || last.end === null) return `${formatClock(start)} – …`;
+  return `${formatClock(start)} – ${formatClock(last.end)}`;
 }
 
 // ---------------------------------------------------------------------------
@@ -143,6 +163,89 @@ export function totalsByDay(entries: TimeEntry[], now: number): Map<string, numb
     totals.set(key, (totals.get(key) ?? 0) + entryDurationMs(entry, now));
   }
   return totals;
+}
+
+// ---------------------------------------------------------------------------
+// Day blocks — within a day, runs of the same task (lineage) collapse under an
+// expandable "main task". A lineage with more than one run total is `multiRun`.
+// ---------------------------------------------------------------------------
+
+/** One task's runs within a single day (a collapsible group when `multiRun`). */
+export interface TaskBlock {
+  rootId: string;
+  title: string;
+  tag: string;
+  runs: TimeEntry[]; // this day's runs of the task, newest first
+  totalMs: number; // sum of this day's runs
+  multiRun: boolean; // the lineage has >1 run total → render as an expandable group
+}
+
+/** A day's task blocks with the day's grand total. */
+export interface DayBlocks {
+  key: string;
+  blocks: TaskBlock[];
+  totalMs: number;
+}
+
+function firstStart(entry: TimeEntry): number {
+  return entry.intervals[0]?.start ?? entry.createdAt;
+}
+
+/**
+ * Group entries by day, then by task lineage within each day. Days are newest
+ * first; blocks and their runs are newest first. Per-day totals stay exact
+ * because every run is filed under its own day (via {@link entryDayKey}).
+ */
+export function buildDayBlocks(entries: TimeEntry[], now: number): DayBlocks[] {
+  const runCount = new Map<string, number>();
+  const byId = new Map<string, TimeEntry>();
+  for (const entry of entries) {
+    runCount.set(rootId(entry), (runCount.get(rootId(entry)) ?? 0) + 1);
+    byId.set(entry.id, entry);
+  }
+
+  const byDay = new Map<string, TimeEntry[]>();
+  for (const entry of entries) {
+    const key = entryDayKey(entry);
+    const bucket = byDay.get(key);
+    if (bucket) bucket.push(entry);
+    else byDay.set(key, [entry]);
+  }
+
+  const days: DayBlocks[] = [];
+  for (const [key, dayEntries] of byDay.entries()) {
+    const byRoot = new Map<string, TimeEntry[]>();
+    for (const entry of dayEntries) {
+      const root = rootId(entry);
+      const bucket = byRoot.get(root);
+      if (bucket) bucket.push(entry);
+      else byRoot.set(root, [entry]);
+    }
+
+    const blocks: TaskBlock[] = [];
+    for (const [root, runs] of byRoot.entries()) {
+      const sortedRuns = [...runs].sort((a, b) => firstStart(b) - firstStart(a));
+      const head = byId.get(root) ?? sortedRuns[0]!;
+      blocks.push({
+        rootId: root,
+        title: head.title,
+        tag: head.tag,
+        runs: sortedRuns,
+        totalMs: sortedRuns.reduce((sum, e) => sum + entryDurationMs(e, now), 0),
+        multiRun: (runCount.get(root) ?? 0) > 1,
+      });
+    }
+    blocks.sort((a, b) => firstStart(b.runs[0]!) - firstStart(a.runs[0]!));
+
+    days.push({
+      key,
+      blocks,
+      totalMs: blocks.reduce((sum, b) => sum + b.totalMs, 0),
+    });
+  }
+
+  days.sort((a, b) => (a.key < b.key ? 1 : a.key > b.key ? -1 : 0));
+  return days;
 }
 
 // ---------------------------------------------------------------------------

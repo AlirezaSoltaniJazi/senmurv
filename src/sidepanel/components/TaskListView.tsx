@@ -1,13 +1,16 @@
 import type { ReactElement } from 'react';
 import { dayLabel, formatDurationShort } from '@/shared/tasks';
-import type { DayGroup } from '@/shared/tasks';
+import type { DayBlocks } from '@/shared/tasks';
 import type { TimeEntry } from '@/shared/types';
-import { TaskRow } from './TaskRow';
+import { TaskBlockView } from './TaskBlockView';
 
 interface TaskListViewProps {
-  groups: DayGroup[];
+  days: DayBlocks[];
   now: number;
+  expanded: Set<string>;
   editingId: string | null;
+  onToggleExpand: (key: string) => void;
+  onRerun: (entry: TimeEntry) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
@@ -16,40 +19,47 @@ interface TaskListViewProps {
 
 /** Day-grouped list of logged tasks, each day showing its total time. */
 export function TaskListView({
-  groups,
+  days,
   now,
+  expanded,
   editingId,
+  onToggleExpand,
+  onRerun,
   onStartEdit,
   onCancelEdit,
   onSave,
   onDelete,
 }: TaskListViewProps): ReactElement {
-  if (groups.length === 0) {
+  if (days.length === 0) {
     return <p className="hint">No tasks logged yet. Start one above.</p>;
   }
 
   return (
     <div className="task-days">
-      {groups.map((group) => (
-        <div key={group.key} className="day-group">
+      {days.map((day) => (
+        <div key={day.key} className="day-group">
           <div className="day-group-head">
-            <span className="day-label">{dayLabel(group.key, now)}</span>
-            <span className="day-total">{formatDurationShort(group.totalMs)}</span>
+            <span className="day-label">{dayLabel(day.key, now)}</span>
+            <span className="day-total">{formatDurationShort(day.totalMs)}</span>
           </div>
-          <ul className="task-list">
-            {group.entries.map((entry) => (
-              <TaskRow
-                key={entry.id}
-                entry={entry}
+          <div className="task-list">
+            {day.blocks.map((block) => (
+              <TaskBlockView
+                key={block.rootId}
+                block={block}
+                dayKey={day.key}
                 now={now}
-                isEditing={editingId === entry.id}
+                expanded={expanded}
+                editingId={editingId}
+                onToggleExpand={onToggleExpand}
+                onRerun={onRerun}
                 onStartEdit={onStartEdit}
                 onCancelEdit={onCancelEdit}
                 onSave={onSave}
                 onDelete={onDelete}
               />
             ))}
-          </ul>
+          </div>
         </div>
       ))}
     </div>

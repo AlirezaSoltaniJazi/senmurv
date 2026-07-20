@@ -36,6 +36,10 @@ export interface TimeInterval {
  * A time-logged task (Tasks tool). Accumulates one or more work intervals via
  * play / pause / resume; `stoppedAt === null` means still active (running or
  * paused). Total duration is always derived from `intervals`, never stored.
+ *
+ * Re-running a stopped task creates a new run linked to the original via
+ * `parentId` (the lineage root's id). Runs sharing a root are shown grouped
+ * under an expandable "main task"; a run with no `parentId` is itself a root.
  */
 export interface TimeEntry {
   id: string;
@@ -45,6 +49,7 @@ export interface TimeEntry {
   stoppedAt: number | null;
   createdAt: number;
   updatedAt: number;
+  parentId?: string;
 }
 
 /** Locator generation strategies (Find Element Locator tool). */

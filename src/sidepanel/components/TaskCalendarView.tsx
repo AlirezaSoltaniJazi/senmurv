@@ -3,25 +3,28 @@ import {
   dayKey,
   dayLabel,
   dayTags,
-  entryDayKey,
   formatDurationShort,
   monthLabel,
   tagColorClass,
 } from '@/shared/tasks';
-import type { MonthGrid } from '@/shared/tasks';
+import type { DayBlocks, MonthGrid } from '@/shared/tasks';
 import type { TimeEntry } from '@/shared/types';
-import { TaskRow } from './TaskRow';
+import { TaskBlockView } from './TaskBlockView';
 
 interface TaskCalendarViewProps {
   entries: TimeEntry[];
+  dayBlocks: DayBlocks[];
   grid: MonthGrid;
   totals: Map<string, number>;
   now: number;
   selectedDay: string | null;
+  expanded: Set<string>;
   editingId: string | null;
   onSelectDay: (key: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
+  onToggleExpand: (key: string) => void;
+  onRerun: (entry: TimeEntry) => void;
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
@@ -31,21 +34,21 @@ interface TaskCalendarViewProps {
 const WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
 const MAX_CELL_DOTS = 4;
 
-function startOf(entry: TimeEntry): number {
-  return entry.intervals[0]?.start ?? entry.createdAt;
-}
-
 /** Month grid of per-day totals; clicking a day reveals that day's task list. */
 export function TaskCalendarView({
   entries,
+  dayBlocks,
   grid,
   totals,
   now,
   selectedDay,
+  expanded,
   editingId,
   onSelectDay,
   onPrevMonth,
   onNextMonth,
+  onToggleExpand,
+  onRerun,
   onStartEdit,
   onCancelEdit,
   onSave,
@@ -53,9 +56,7 @@ export function TaskCalendarView({
 }: TaskCalendarViewProps): ReactElement {
   const todayKey = dayKey(now);
   const cells = grid.weeks.flat();
-  const dayEntries = selectedDay
-    ? entries.filter((e) => entryDayKey(e) === selectedDay).sort((a, b) => startOf(b) - startOf(a))
-    : [];
+  const selected = selectedDay ? dayBlocks.find((d) => d.key === selectedDay) : undefined;
 
   return (
     <div className="calendar">
@@ -110,25 +111,29 @@ export function TaskCalendarView({
         <div className="day-group">
           <div className="day-group-head">
             <span className="day-label">{dayLabel(selectedDay, now)}</span>
-            <span className="day-total">{formatDurationShort(totals.get(selectedDay) ?? 0)}</span>
+            <span className="day-total">{formatDurationShort(selected?.totalMs ?? 0)}</span>
           </div>
-          {dayEntries.length === 0 ? (
+          {!selected || selected.blocks.length === 0 ? (
             <p className="hint">No tasks on this day.</p>
           ) : (
-            <ul className="task-list">
-              {dayEntries.map((entry) => (
-                <TaskRow
-                  key={entry.id}
-                  entry={entry}
+            <div className="task-list">
+              {selected.blocks.map((block) => (
+                <TaskBlockView
+                  key={block.rootId}
+                  block={block}
+                  dayKey={selectedDay}
                   now={now}
-                  isEditing={editingId === entry.id}
+                  expanded={expanded}
+                  editingId={editingId}
+                  onToggleExpand={onToggleExpand}
+                  onRerun={onRerun}
                   onStartEdit={onStartEdit}
                   onCancelEdit={onCancelEdit}
                   onSave={onSave}
                   onDelete={onDelete}
                 />
               ))}
-            </ul>
+            </div>
           )}
         </div>
       )}

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildDayBlocks,
   buildMonthGrid,
   dayKey,
   dayLabel,
@@ -7,6 +8,7 @@ import {
   distinctTags,
   entryDayKey,
   entryDurationMs,
+  formatClock,
   formatDuration,
   formatDurationShort,
   fromLocalInputValue,
@@ -15,6 +17,8 @@ import {
   isPaused,
   isRunning,
   monthLabel,
+  rootId,
+  runTimeRange,
   tagColorClass,
   toLocalInputValue,
   totalsByDay,
@@ -210,6 +214,87 @@ describe('monthLabel', () => {
   it('formats a 0-based month with its year', () => {
     expect(monthLabel(2026, 6)).toBe('July 2026');
     expect(monthLabel(2026, 0)).toBe('January 2026');
+  });
+});
+
+describe('rootId', () => {
+  it('is the entry id for a root and the parentId for a child', () => {
+    expect(rootId(makeEntry({ id: 'tsk_a' }))).toBe('tsk_a');
+    expect(rootId(makeEntry({ id: 'tsk_b', parentId: 'tsk_a' }))).toBe('tsk_a');
+  });
+});
+
+describe('formatClock / runTimeRange', () => {
+  it('formats local wall-clock time', () => {
+    expect(formatClock(at(2026, 6, 20, 9, 5))).toBe('09:05');
+  });
+
+  it('shows a closed span and an open span', () => {
+    const closed = makeEntry({
+      intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 30) }],
+    });
+    expect(runTimeRange(closed)).toBe('09:00 – 10:30');
+
+    const open = makeEntry({
+      intervals: [{ start: at(2026, 6, 20, 9, 0), end: null }],
+      stoppedAt: null,
+    });
+    expect(runTimeRange(open)).toBe('09:00 – …');
+  });
+});
+
+describe('buildDayBlocks', () => {
+  const now = at(2026, 6, 20, 18, 0);
+
+  it('renders a single-run task as a non-multiRun block', () => {
+    const solo = makeEntry({
+      id: 'solo',
+      intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }],
+    });
+    const [day] = buildDayBlocks([solo], now);
+    expect(day!.blocks).toHaveLength(1);
+    expect(day!.blocks[0]!.multiRun).toBe(false);
+    expect(day!.blocks[0]!.runs).toHaveLength(1);
+  });
+
+  it('groups re-runs of a lineage under one multiRun block per day', () => {
+    const root = makeEntry({
+      id: 'root',
+      title: 'Write Test Case',
+      intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }],
+    });
+    const rerun = makeEntry({
+      id: 'run2',
+      parentId: 'root',
+      title: 'Write Test Case',
+      intervals: [{ start: at(2026, 6, 20, 14, 0), end: at(2026, 6, 20, 14, 30) }],
+    });
+    const [day] = buildDayBlocks([root, rerun], now);
+    expect(day!.blocks).toHaveLength(1);
+    const block = day!.blocks[0]!;
+    expect(block.rootId).toBe('root');
+    expect(block.multiRun).toBe(true);
+    expect(block.runs.map((r) => r.id)).toEqual(['run2', 'root']); // newest first
+    expect(block.totalMs).toBe(90 * MIN);
+    expect(day!.totalMs).toBe(90 * MIN);
+  });
+
+  it('splits a lineage across days, keeping each day’s total exact', () => {
+    const root = makeEntry({
+      id: 'root',
+      intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }],
+    });
+    const laterRun = makeEntry({
+      id: 'run2',
+      parentId: 'root',
+      intervals: [{ start: at(2026, 6, 21, 9, 0), end: at(2026, 6, 21, 9, 30) }],
+    });
+    const days = buildDayBlocks([root, laterRun], now);
+    expect(days.map((d) => d.key)).toEqual(['2026-07-21', '2026-07-20']);
+    // Both days show the lineage as multiRun, each with that day's single run.
+    expect(days[0]!.blocks[0]!.multiRun).toBe(true);
+    expect(days[0]!.totalMs).toBe(30 * MIN);
+    expect(days[1]!.totalMs).toBe(HOUR);
   });
 });
 

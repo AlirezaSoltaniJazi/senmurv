@@ -4,6 +4,7 @@ import {
   entryDurationMs,
   formatDuration,
   fromLocalInputValue,
+  isActive,
   isPaused,
   isRunning,
   tagColorClass,
@@ -19,6 +20,10 @@ interface TaskRowProps {
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
   onDelete: (id: string) => void;
+  /** When set, render as a child run: show this time-range label instead of tag+title. */
+  runLabel?: string;
+  /** When provided and the entry is stopped, show a Re-run button. */
+  onRerun?: (entry: TimeEntry) => void;
 }
 
 interface IntervalDraft {
@@ -167,27 +172,40 @@ export function TaskRow({
   onCancelEdit,
   onSave,
   onDelete,
+  runLabel,
+  onRerun,
 }: TaskRowProps): ReactElement {
   if (isEditing) {
     return (
-      <li className="task-row task-row-editing">
+      <div className="task-row task-row-editing">
         <TaskEditForm entry={entry} onSave={onSave} onCancel={onCancelEdit} />
-      </li>
+      </div>
     );
   }
 
   const running = isRunning(entry);
   const paused = isPaused(entry);
   return (
-    <li className="task-row">
-      <span className={`task-tag ${tagColorClass(entry.tag)}`}>{entry.tag || 'untagged'}</span>
-      <span className="task-title">{entry.title}</span>
+    <div className="task-row">
+      {runLabel !== undefined ? (
+        <span className="run-time">{runLabel}</span>
+      ) : (
+        <>
+          <span className={`task-tag ${tagColorClass(entry.tag)}`}>{entry.tag || 'untagged'}</span>
+          <span className="task-title">{entry.title}</span>
+        </>
+      )}
       <span className="task-duration">
         {formatDuration(entryDurationMs(entry, now))}
         {running && <span className="task-state is-running">running</span>}
         {paused && <span className="task-state is-paused">paused</span>}
       </span>
       <span className="task-actions">
+        {onRerun && !isActive(entry) && (
+          <button type="button" onClick={() => onRerun(entry)}>
+            ↻ Re-run
+          </button>
+        )}
         <button type="button" onClick={() => onStartEdit(entry.id)}>
           Edit
         </button>
@@ -195,6 +213,6 @@ export function TaskRow({
           Delete
         </button>
       </span>
-    </li>
+    </div>
   );
 }

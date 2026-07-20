@@ -730,8 +730,7 @@ select,
 }
 
 .task-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  display: flex;
   align-items: center;
   gap: 8px;
   background: var(--panel);
@@ -745,9 +744,69 @@ select,
 }
 
 .task-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.run-time {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Re-run lineage: expandable main task + child runs */
+.task-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.expand-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.expand-toggle:hover {
+  color: var(--text);
+  border: none;
+}
+
+.task-runcount {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.task-children {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 18px;
+}
+
+.task-children .task-row {
+  background: var(--bg);
 }
 
 .task-duration {
