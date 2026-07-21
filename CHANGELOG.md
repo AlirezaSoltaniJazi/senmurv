@@ -17,6 +17,9 @@ All notable changes to Senmurv are documented here. The format is based on
   **delete** it, with **color-coded tags** across both views.
 - **Track — re-run** — restart a stopped task; its runs group under an
   expandable parent task, and each day's total stays exact.
+- **Track — logged vs net time** — each day shows the total time **logged**
+  across tasks (concurrent timers add up) and, when timers overlapped, the
+  **net** wall-clock time with overlapping time merged and counted once.
 - **My Tasks — checklists** — plan work as tasks with a **subtask checkbox
   list**. The parent auto-completes when all subtasks are done (and toggling it
   checks/unchecks them all). See a **per-task and overall completion %**, set an
@@ -24,7 +27,10 @@ All notable changes to Senmurv are documented here. The format is based on
   due soon or overdue).
 - **My Tasks → Track** — press **Start** on a task or any subtask to begin
   timing it in Track without leaving the list; the card shows live elapsed time
-  and a Stop button.
+  and a Stop button. The Start button hides once that task or subtask is marked
+  complete.
+- **Notes** — a notes tab to jot things down: create, edit, and delete
+  free-form notes (an optional title plus a body), listed newest-first.
 - **Settings** — choose the panel **font size** (Small / Medium / Large); the
   choice persists and applies in the full-page view too.
 - **Refresh** — a toolbar button re-pulls data from storage, so a panel open in
