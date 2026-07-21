@@ -27,6 +27,17 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  max-width: 920px;
+  margin: 0 auto;
+}
+
+/* Font-size preference — scales the whole UI (Chromium `zoom`). Medium = 1. */
+.app.font-small {
+  zoom: 0.9;
+}
+
+.app.font-large {
+  zoom: 1.15;
 }
 
 .app-header {
@@ -64,8 +75,30 @@ body {
 
 .tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.icon-btn:hover {
+  color: var(--text);
+  border: none;
 }
 
 .tab-btn {
@@ -452,12 +485,15 @@ select,
   color: var(--muted);
 }
 
-/* Fill tool — mode toggle */
-.mode-toggle {
+/* Recorder — Ad-hoc Insert panel */
+.adhoc-panel {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
 }
 
 /* Flow steps */
@@ -580,4 +616,594 @@ select,
   border-radius: 4px;
   padding: 3px 6px;
   word-break: break-all;
+}
+
+/* Tasks — time logging */
+.tag-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.view-toggle {
+  margin-top: 2px;
+}
+
+/* Tag chips + calendar dots (stable per-tag colors, no inline styles) */
+.task-tag {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  white-space: nowrap;
+  color: #0d1017;
+}
+
+.tag-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.tag-c0 {
+  background: #2d7ff9;
+}
+.tag-c1 {
+  background: #3fb950;
+}
+.tag-c2 {
+  background: #d29922;
+}
+.tag-c3 {
+  background: #e5534b;
+}
+.tag-c4 {
+  background: #a371f7;
+}
+.tag-c5 {
+  background: #ec6cb9;
+}
+.tag-c6 {
+  background: #2dd4bf;
+}
+.tag-c7 {
+  background: #f0883e;
+}
+.tag-none {
+  background: var(--border);
+  color: var(--muted);
+}
+
+/* Active (running / paused) tasks */
+.running-list,
+.task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.running-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left-width: 3px;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.running-row.is-running {
+  border-left-color: var(--good);
+}
+
+.running-row.is-paused {
+  border-left-color: var(--warn);
+}
+
+.running-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.running-elapsed {
+  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--good);
+}
+
+.running-actions,
+.task-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.running-actions button,
+.task-actions button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* Day-grouped list */
+.task-days {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.day-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.day-group-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 4px;
+}
+
+.day-label {
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.day-total {
+  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.day-total-net {
+  color: var(--muted);
+}
+
+.task-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.task-row-editing {
+  display: block;
+}
+
+.task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-time {
+  flex: 1;
+  min-width: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* Re-run lineage: expandable main task + child runs */
+.task-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-group-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.expand-toggle {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0 2px;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.expand-toggle:hover {
+  color: var(--text);
+  border: none;
+}
+
+.task-runcount {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.task-children {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 18px;
+}
+
+.task-children .task-row {
+  background: var(--bg);
+}
+
+.task-duration {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.task-state {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.task-state.is-running {
+  color: var(--good);
+}
+
+.task-state.is-paused {
+  color: var(--warn);
+}
+
+/* Inline edit form */
+.task-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-intervals {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.task-interval-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.datetime-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 5px 6px;
+  font-size: 11px;
+  color-scheme: dark;
+}
+
+/* Calendar */
+.calendar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.calendar-month {
+  font-weight: 600;
+}
+
+.calendar-weekdays,
+.calendar-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+
+.calendar-weekday {
+  text-align: center;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.calendar-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  min-height: 46px;
+  padding: 4px 2px;
+  font-size: 11px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+}
+
+.calendar-cell.other-month {
+  opacity: 0.4;
+}
+
+.calendar-cell.today {
+  border-color: var(--accent);
+}
+
+.calendar-cell.selected {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.calendar-daynum {
+  font-weight: 600;
+}
+
+.calendar-total {
+  font-size: 9px;
+  color: var(--good);
+}
+
+.calendar-cell.selected .calendar-total {
+  color: #fff;
+}
+
+.calendar-dots {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 2px;
+}
+
+/* Settings */
+.setting-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.setting-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+/* My Tasks — checklists */
+input[type='checkbox'] {
+  accent-color: var(--accent);
+}
+
+.checklist-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Text progress bar (segmented, no inline widths) */
+.bar {
+  font-family: ui-monospace, Menlo, monospace;
+  letter-spacing: -1px;
+  white-space: nowrap;
+}
+
+.bar-fill {
+  color: var(--accent);
+}
+
+.bar-empty {
+  color: var(--border);
+}
+
+.progress-pct {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.overall-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.checklist-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.checklist-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.checklist-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checklist-title.done,
+.subtask-title.done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.checklist-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.track-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.track-control button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.deadline-badge {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  padding: 1px 7px;
+  border-radius: 10px;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px solid var(--border);
+}
+
+.deadline-badge.is-overdue {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.deadline-badge.is-soon {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.subtask-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 20px;
+}
+
+.subtask-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.subtask-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subtask-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.checklist-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Notes */
+.note-input {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  min-height: 100px;
+  resize: vertical;
+}
+
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.note-actions button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.note-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

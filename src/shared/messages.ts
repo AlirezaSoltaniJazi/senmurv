@@ -1,5 +1,15 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
-import type { DetectedField, LocatorKind, LocatorSet, SavedScript } from '@/shared/types';
+import type {
+  Checklist,
+  DetectedField,
+  LocatorKind,
+  LocatorSet,
+  Note,
+  Prefs,
+  SavedScript,
+  TimeEntry,
+} from '@/shared/types';
+import type { RecordedStep } from '@/shared/workflow';
 
 /**
  * All runtime messages, as a discriminated union keyed on `type`.
@@ -13,12 +23,26 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.ELEMENT_PICKED; payload: LocatorSet }
   | { type: typeof MESSAGE_TYPES.FIELD_PICKED; payload: { field: DetectedField } }
   | { type: typeof MESSAGE_TYPES.PICK_CANCELLED }
+  | { type: typeof MESSAGE_TYPES.START_RECORD }
+  | { type: typeof MESSAGE_TYPES.STOP_RECORD }
+  | { type: typeof MESSAGE_TYPES.ACTION_RECORDED; payload: { step: RecordedStep } }
   | { type: typeof MESSAGE_TYPES.RUN_SCRIPT; payload: { code: string } }
   | { type: typeof MESSAGE_TYPES.GET_SCRIPTS }
   | { type: typeof MESSAGE_TYPES.SAVE_SCRIPT; payload: { script: SavedScript } }
   | { type: typeof MESSAGE_TYPES.SET_SCRIPTS; payload: { scripts: SavedScript[] } }
   | { type: typeof MESSAGE_TYPES.DELETE_SCRIPT; payload: { id: string } }
-  | { type: typeof MESSAGE_TYPES.TEST_LOCATOR; payload: { query: string; kind: LocatorKind } };
+  | { type: typeof MESSAGE_TYPES.TEST_LOCATOR; payload: { query: string; kind: LocatorKind } }
+  | { type: typeof MESSAGE_TYPES.GET_TASKS }
+  | { type: typeof MESSAGE_TYPES.SAVE_TASK; payload: { entry: TimeEntry } }
+  | { type: typeof MESSAGE_TYPES.DELETE_TASK; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.GET_CHECKLISTS }
+  | { type: typeof MESSAGE_TYPES.SAVE_CHECKLIST; payload: { checklist: Checklist } }
+  | { type: typeof MESSAGE_TYPES.DELETE_CHECKLIST; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.GET_NOTES }
+  | { type: typeof MESSAGE_TYPES.SAVE_NOTE; payload: { note: Note } }
+  | { type: typeof MESSAGE_TYPES.DELETE_NOTE; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.GET_PREFS }
+  | { type: typeof MESSAGE_TYPES.SAVE_PREFS; payload: { prefs: Prefs } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

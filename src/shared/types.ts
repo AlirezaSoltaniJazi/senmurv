@@ -26,6 +26,36 @@ export interface SavedScript {
   updatedAt: number;
 }
 
+/** One work interval of a logged task; `end === null` while it is running. */
+export interface TimeInterval {
+  start: number; // epoch ms
+  end: number | null; // epoch ms, or null while the interval is open
+}
+
+/**
+ * A time-logged task (Tasks tool). Accumulates one or more work intervals via
+ * play / pause / resume; `stoppedAt === null` means still active (running or
+ * paused). Total duration is always derived from `intervals`, never stored.
+ *
+ * Re-running a stopped task creates a new run linked to the original via
+ * `parentId` (the lineage root's id). Runs sharing a root are shown grouped
+ * under an expandable "main task"; a run with no `parentId` is itself a root.
+ */
+export interface TimeEntry {
+  id: string;
+  title: string;
+  tag: string;
+  intervals: TimeInterval[];
+  stoppedAt: number | null;
+  createdAt: number;
+  updatedAt: number;
+  parentId?: string;
+  /** Set when the entry was started from a "My Tasks" checklist (its id). */
+  checklistId?: string;
+  /** Set when the entry tracks a specific subtask of that checklist (its id). */
+  subtaskId?: string;
+}
+
 /** Locator generation strategies (Find Element Locator tool). */
 export type LocatorStrategy =
   | 'testId'
@@ -82,6 +112,48 @@ export interface LocatorSet {
 
 /** Standard fallible-operation result. */
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
+
+// ---------------------------------------------------------------------------
+// My Tasks (checklists) + user preferences
+// ---------------------------------------------------------------------------
+
+/** One checklist item (a subtask checkbox). */
+export interface Subtask {
+  id: string; // newId('sub_')
+  title: string;
+  done: boolean;
+}
+
+/**
+ * A "my task": a 2-level checklist. The parent's completion is derived from its
+ * subtasks (all done → complete); `done` is only used when `subtasks` is empty.
+ */
+export interface Checklist {
+  id: string; // newId('chk_')
+  title: string;
+  subtasks: Subtask[];
+  done: boolean;
+  deadline: number | null; // exact epoch ms, or null when unset
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** A free-form saved note (Notes tool). */
+export interface Note {
+  id: string; // newId('note_')
+  title: string;
+  body: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** UI scale for the whole panel. */
+export type FontSize = 'small' | 'medium' | 'large';
+
+/** Persisted user preferences. */
+export interface Prefs {
+  fontSize: FontSize;
+}
 
 // ---------------------------------------------------------------------------
 // Script generator (Fill tool)

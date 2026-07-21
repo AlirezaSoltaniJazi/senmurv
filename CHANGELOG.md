@@ -4,6 +4,65 @@ All notable changes to Senmurv are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/), and the project follows
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- **Track — time logging** — a stopwatch for QA work: start a task with a title
+  and tag, then **pause / resume / stop** (a task accumulates multiple work
+  intervals into one total). Run **several timers at once** and see all
+  currently active ones, then browse history in a **List** view (grouped by day
+  with a per-day total) or a **Calendar** view (per-day totals with tag dots;
+  click a day to drill in). **Edit** a task's title, tag, and start/end times or
+  **delete** it, with **color-coded tags** across both views.
+- **Track — re-run** — restart a stopped task; its runs group under an
+  expandable parent task, and each day's total stays exact.
+- **Track — logged vs net time** — each day shows the total time **logged**
+  across tasks (concurrent timers add up) and, when timers overlapped, the
+  **net** wall-clock time with overlapping time merged and counted once.
+- **My Tasks — checklists** — plan work as tasks with a **subtask checkbox
+  list**. The parent auto-completes when all subtasks are done (and toggling it
+  checks/unchecks them all). See a **per-task and overall completion %**, set an
+  **exact deadline** per task, and get a **remaining-days** badge (colored when
+  due soon or overdue).
+- **My Tasks → Track** — press **Start** on a task or any subtask to begin
+  timing it in Track without leaving the list; the card shows live elapsed time
+  and a Stop button. The Start button hides once that task or subtask is marked
+  complete.
+- **Notes** — a notes tab to jot things down: create, edit, and delete
+  free-form notes (an optional title plus a body), listed newest-first.
+- **Settings** — choose the panel **font size** (Small / Medium / Large); the
+  choice persists and applies in the full-page view too.
+- **Refresh** — a toolbar button re-pulls data from storage, so a panel open in
+  one window picks up changes made in another.
+- **Open in full page** — a toolbar button opens the whole toolkit in a browser
+  tab for a roomier view.
+- **Recorder — record a flow** — press **Record** and your clicks, inputs, and
+  selects on the page are captured as editable steps (top frame), or build steps
+  by hand. New step types beyond click / fill / select / checkbox / radio:
+  **Click element** (by CSS selector), **Press key**, **Wait for element**, and
+  **Run JS**. **Ad-hoc Insert** keeps the fast path — pick many fields at once to
+  fill live or add them as steps. Then **Run** the whole flow, **Run from any
+  step**, **Copy as script**, or **Save to Scripts**.
+- **Recorder — live run HUD** — running a flow shows an on-page panel that marks
+  each step running / done / failed in real time (with the error inline),
+  replacing the blocking end-of-run alert. Works for saved scripts too.
+- **Stable selectors on Dynamics 365 / Power Apps** — the element picker now
+  ignores session-generated ids (any id embedding a GUID) and prefers the stable
+  `data-id`, so recorded and suggested selectors survive page reloads (also
+  improves the Locator tool).
+
+### Changed
+
+- The **Fill** tab is now the unified **Recorder** — the old **Fields / Flow**
+  toggle is gone; both are folded into one step list.
+- A flow **Click button** step that can't find its target now **fails** (red in
+  the run HUD) instead of silently passing.
+- Recorder steps are **kept while you switch side-panel tabs** — an in-progress
+  flow is no longer lost when you leave the tab.
+- The transient **"Saved."** confirmation in Track now clears itself after a few
+  seconds instead of lingering.
+
 ## [0.2.0] - 2026-06-22
 
 ### Added
@@ -78,5 +137,6 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
 
+[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.3.0...HEAD
 [0.2.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.2.0
 [0.1.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.1.0

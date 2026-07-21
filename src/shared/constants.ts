@@ -1,6 +1,9 @@
 /** chrome.storage.local keys. */
 export const STORAGE_KEYS = {
   SCRIPTS: 'senmurv:scripts',
+  TASKS: 'senmurv:tasks',
+  CHECKLISTS: 'senmurv:checklists',
+  NOTES: 'senmurv:notes',
   PREFS: 'senmurv:prefs',
 } as const;
 
@@ -12,12 +15,26 @@ export const MESSAGE_TYPES = {
   ELEMENT_PICKED: 'ELEMENT_PICKED',
   FIELD_PICKED: 'FIELD_PICKED',
   PICK_CANCELLED: 'PICK_CANCELLED',
+  START_RECORD: 'START_RECORD',
+  STOP_RECORD: 'STOP_RECORD',
+  ACTION_RECORDED: 'ACTION_RECORDED',
   RUN_SCRIPT: 'RUN_SCRIPT',
   GET_SCRIPTS: 'GET_SCRIPTS',
   SAVE_SCRIPT: 'SAVE_SCRIPT',
   SET_SCRIPTS: 'SET_SCRIPTS',
   DELETE_SCRIPT: 'DELETE_SCRIPT',
   TEST_LOCATOR: 'TEST_LOCATOR',
+  GET_TASKS: 'GET_TASKS',
+  SAVE_TASK: 'SAVE_TASK',
+  DELETE_TASK: 'DELETE_TASK',
+  GET_CHECKLISTS: 'GET_CHECKLISTS',
+  SAVE_CHECKLIST: 'SAVE_CHECKLIST',
+  DELETE_CHECKLIST: 'DELETE_CHECKLIST',
+  GET_NOTES: 'GET_NOTES',
+  SAVE_NOTE: 'SAVE_NOTE',
+  DELETE_NOTE: 'DELETE_NOTE',
+  GET_PREFS: 'GET_PREFS',
+  SAVE_PREFS: 'SAVE_PREFS',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -67,6 +84,10 @@ export const TEST_ID_ATTRS = [
   'data-test',
   'data-cy',
   'data-qa',
+  // Dynamics 365 / Power Apps expose a stable `data-id` on every control while
+  // their element `id` is regenerated per session (see isStableId). Lowest
+  // preference so genuine test-ids still win.
+  'data-id',
 ] as const;
 
 /** Locator strategy ranking — earlier is more stable / preferred. */

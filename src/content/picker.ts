@@ -3,6 +3,7 @@ import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
+import { isRecording, startRecording, stopRecording } from './recorder';
 
 type PickMode = 'locator' | 'fields';
 
@@ -149,6 +150,7 @@ function onKeyDown(e: KeyboardEvent): void {
 }
 
 function startPicking(nextMode: PickMode): void {
+  if (isRecording()) return; // picking and recording are mutually exclusive
   mode = nextMode;
   if (active) return;
   active = true;
@@ -178,6 +180,10 @@ chrome.runtime.onMessage.addListener((message: unknown) => {
     startPicking('fields');
   } else if (message.type === MESSAGE_TYPES.CANCEL_PICK) {
     stopPicking();
+  } else if (message.type === MESSAGE_TYPES.START_RECORD) {
+    if (!active) startRecording();
+  } else if (message.type === MESSAGE_TYPES.STOP_RECORD) {
+    stopRecording();
   }
   return false;
 });
