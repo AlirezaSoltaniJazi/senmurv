@@ -75,6 +75,34 @@ describe('buildCssSelector', () => {
   });
 });
 
+describe('Dynamics 365 / Power Apps ids', () => {
+  const dataId =
+    'fmc_erpindustrycodeid.fieldControl-LookupResultsDropdown_fmc_erpindustrycodeid_textInputBox_with_filter_new';
+  beforeEach(() => {
+    setBody(`
+      <div id="id-eb031c6a-d851-ec11-8c62-6045bd8f59e9-16-fmc_erpindustrycodeid_28_x"
+           data-id="${dataId}">field</div>
+    `);
+  });
+
+  it('rejects an id embedding a GUID (session/render-generated), keeps a plain id', () => {
+    expect(isStableId('id-eb031c6a-d851-ec11-8c62-6045bd8f59e9-16-fmc_field')).toBe(false);
+    expect(isStableId('patient-form')).toBe(true);
+  });
+
+  it('detects data-id as a test-id attribute', () => {
+    const el = document.querySelector('[data-id]')!;
+    expect(getTestIdAttr(el)).toEqual({ attr: 'data-id', value: dataId });
+  });
+
+  it('prefers the stable data-id over the GUID id', () => {
+    const el = document.querySelector('[data-id]')!;
+    const selector = buildCssSelector(el, document);
+    expect(selector).toBe(`[data-id="${dataId}"]`);
+    expect(document.querySelectorAll(selector).length).toBe(1);
+  });
+});
+
 describe('Angular formControlName + auto-id handling', () => {
   beforeEach(() => {
     setBody(`

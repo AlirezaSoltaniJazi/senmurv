@@ -196,8 +196,9 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const start = Date.now();
     let b = findButton(text);
     while (!b && Date.now() - start < 6000) { await sleep(200); b = findButton(text); }
-    if (b) { b.click(); await sleep(500); return; }
-    console.warn('[flow] button not found, skipping:', text);
+    if (!b) throw new Error('button not found: "' + text + '"');
+    b.click();
+    await sleep(500);
   }
   // Framework-agnostic label resolution: gather a control's accessible label from
   // every common source (standard <label for>/wrapping <label>, aria-label,
@@ -357,6 +358,40 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   async function runJs(step) {
     const fn = new Function('sleep', 'waitFor', 'return (async () => {' + (step.code || '') + '})();');
     await fn(sleep, waitFor);
+  }
+  // On-page progress HUD (best-effort; never breaks the flow). Corner-pinned and
+  // pointer-events:none so it never intercepts the clicks the flow performs.
+  function createHud(steps) {
+    var host = null, header = null, rows = [], done = 0;
+    try {
+      host = document.createElement('senmurv-flow-hud');
+      host.style.cssText = 'all: initial; position: fixed; top: 12px; right: 12px; z-index: 2147483647; pointer-events: none;';
+      var shadow = host.attachShadow({ mode: 'open' });
+      var style = document.createElement('style');
+      style.textContent = '.hud{font:12px/1.45 ui-monospace,Menlo,monospace;color:#e7e8ec;background:#26272e;border:1px solid #3a3c45;border-radius:8px;box-shadow:0 6px 20px rgba(0,0,0,.45);width:300px;max-height:60vh;display:flex;flex-direction:column;overflow:hidden}.h{padding:6px 10px;font-weight:700;background:#2d7ff9;color:#fff}.l{margin:0;padding:4px;list-style:none;overflow:auto}.r{display:flex;gap:6px;padding:3px 6px;border-radius:4px;align-items:flex-start}.r.run{background:rgba(45,127,249,.18)}.i{width:14px;flex:0 0 auto;text-align:center}.b{flex:1;min-width:0}.t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.e{color:#e5534b;font-size:11px;white-space:normal;word-break:break-word}.dim{color:#9a9cab}.ok .i{color:#3fb950}.fail .i{color:#e5534b}.run .i{color:#2d7ff9}';
+      var wrap = document.createElement('div'); wrap.className = 'hud';
+      header = document.createElement('div'); header.className = 'h'; header.textContent = 'Senmurv flow \\u2014 0/' + steps.length;
+      var list = document.createElement('ul'); list.className = 'l';
+      for (var i = 0; i < steps.length; i += 1) {
+        var s = steps[i];
+        var label = s.label || s.text || s.selector || s.key || (s.code ? 'JS' : (s.ms != null ? s.ms + 'ms' : ''));
+        var li = document.createElement('li'); li.className = 'r dim';
+        var icon = document.createElement('span'); icon.className = 'i'; icon.textContent = '\\u25cb';
+        var body = document.createElement('div'); body.className = 'b';
+        var txt = document.createElement('div'); txt.className = 't'; txt.textContent = (i + 1) + '. ' + s.kind + ' ' + label;
+        body.appendChild(txt); li.appendChild(icon); li.appendChild(body);
+        list.appendChild(li); rows.push({ li: li, icon: icon, body: body });
+      }
+      wrap.appendChild(header); wrap.appendChild(list); shadow.appendChild(style); shadow.appendChild(wrap);
+      document.documentElement.appendChild(host);
+    } catch (e) { /* HUD is best-effort */ }
+    function count() { if (header) header.textContent = 'Senmurv flow \\u2014 ' + done + '/' + steps.length; }
+    return {
+      setRunning: function (i) { var r = rows[i]; if (r) { r.li.className = 'r run'; r.icon.textContent = '\\u25b6'; try { r.li.scrollIntoView({ block: 'nearest' }); } catch (e) {} } },
+      setOk: function (i) { var r = rows[i]; if (r) { r.li.className = 'r ok'; r.icon.textContent = '\\u2713'; } done += 1; count(); },
+      setFail: function (i, msg) { var r = rows[i]; if (r) { r.li.className = 'r fail'; r.icon.textContent = '\\u2717'; var e = document.createElement('div'); e.className = 'e'; e.textContent = msg || 'failed'; r.body.appendChild(e); } done += 1; count(); },
+      finish: function (ok, fail) { if (header) { header.textContent = 'Flow done \\u2014 ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''); header.style.background = fail ? '#e5534b' : '#3fb950'; } if (host) { var h = host; setTimeout(function () { try { h.remove(); } catch (e) {} }, fail ? 15000 : 6000); } }
+    };
   }`;
 
 /**
@@ -369,10 +404,13 @@ export function buildWorkflowScript(steps: WorkflowStep[]): string {
   return `(async () => {
   const STEPS = ${data};
   ${PREAMBLE}
+  const hud = createHud(STEPS);
   const skipped = [];
   let okCount = 0;
-  for (const step of STEPS) {
+  for (let i = 0; i < STEPS.length; i += 1) {
+    const step = STEPS[i];
     const tag = step.label || step.text || step.selector || step.key || (step.code ? 'js' : step.ms + 'ms');
+    hud.setRunning(i);
     try {
       if (step.kind === 'click') await clickButton(step.text);
       else if (step.kind === 'clickEl') await clickEl(step);
@@ -385,20 +423,20 @@ export function buildWorkflowScript(steps: WorkflowStep[]): string {
       else if (step.kind === 'check') await setCheck(step);
       else if (step.kind === 'runjs') await runJs(step);
       okCount += 1;
+      hud.setOk(i);
       console.info('[flow] ok:', step.kind, tag);
     } catch (e) {
       skipped.push(step.kind + ' ' + tag + ' (' + e.message + ')');
+      hud.setFail(i, e.message);
       console.warn('[flow] SKIPPED:', step.kind, tag, '-', e.message);
     }
   }
+  hud.finish(okCount, skipped.length);
   console.info('[flow] done. ok=' + okCount + ', skipped=' + skipped.length);
   if (skipped.length) {
     const labels = [...document.querySelectorAll('mat-label')].filter(isVisible).map((l) => l.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean);
     console.warn('[flow] skipped steps:', skipped);
     console.warn('[flow] labels on page:', labels);
-    alert('Flow done — filled ' + okCount + ', skipped ' + skipped.length + ':\\n\\n' + skipped.join('\\n'));
-  } else {
-    alert('Flow done — ' + okCount + ' steps completed.');
   }
 })();`;
 }

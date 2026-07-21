@@ -65,13 +65,16 @@ function isUnique(doc: Document, selector: string): boolean {
 
 /**
  * True if an `id` is author-defined and stable, false for framework-generated
- * ids (Angular Material / CDK: `mat-input-12`, `mat-select-3`, `cdk-…`,
- * `…-<counter>`). Those change every page load, so we never recommend them.
+ * ids that change every page load, so we never recommend them:
+ *  - Angular Material / CDK: `mat-input-12`, `mat-select-3`, `cdk-…`, `…-<counter>`.
+ *  - Dynamics 365 / Power Apps: `id-<guid>-16-fmc_field…` — any id embedding a GUID.
  */
 export function isStableId(id: string): boolean {
   if (!id) return false;
   if (/^(mat-|cdk-|ng-)/i.test(id)) return false;
   if (/[-_]\d+$/.test(id)) return false;
+  // A GUID anywhere in the id means it's session/render-generated (Dynamics, etc.).
+  if (/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i.test(id)) return false;
   return true;
 }
 

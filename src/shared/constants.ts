@@ -84,6 +84,10 @@ export const TEST_ID_ATTRS = [
   'data-test',
   'data-cy',
   'data-qa',
+  // Dynamics 365 / Power Apps expose a stable `data-id` on every control while
+  // their element `id` is regenerated per session (see isStableId). Lowest
+  // preference so genuine test-ids still win.
+  'data-id',
 ] as const;
 
 /** Locator strategy ranking — earlier is more stable / preferred. */

@@ -13,3 +13,4 @@ coverage/
 /patient
 /senmurv-scripts*.json
 *.bookmarklet
+/temp/

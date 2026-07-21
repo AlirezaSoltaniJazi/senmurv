@@ -1,3 +1,4 @@
+import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
   buildWorkflowScript,
@@ -37,6 +38,40 @@ describe('buildWorkflowScript', () => {
     expect(code).toContain('setRadio(step)');
     expect(code).toContain('"Continue"');
     expect(isWorkflowScript(code)).toBe(true);
+  });
+
+  it('drives a live progress HUD and no longer blocks with an alert', () => {
+    const code = buildWorkflowScript(steps);
+    expect(code).toContain('createHud(STEPS)');
+    expect(code).toContain('hud.setRunning(i)');
+    expect(code).toContain('hud.setOk(i)');
+    expect(code).toContain('hud.setFail(i, e.message)');
+    expect(code).toContain('hud.finish(okCount, skipped.length)');
+    expect(code).not.toContain('alert(');
+  });
+
+  it('fails a click when the button is not found (no silent success)', () => {
+    const code = buildWorkflowScript(steps);
+    expect(code).toContain("throw new Error('button not found:");
+    expect(code).not.toContain('button not found, skipping');
+  });
+
+  it('generates syntactically valid JS across every step kind', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'click', text: 'Save' },
+      { id: '2', kind: 'clickEl', selector: '.x' },
+      { id: '3', kind: 'wait', ms: 100 },
+      { id: '4', kind: 'waitEl', selector: '.y', ms: 5000 },
+      { id: '5', kind: 'press', key: 'Enter' },
+      { id: '6', kind: 'fill', selector: '#z', value: 'v' },
+      { id: '7', kind: 'select', selector: 'sel', optionMode: 'first' },
+      { id: '8', kind: 'radio', selector: 'r', value: 'a' },
+      { id: '9', kind: 'check', selector: 'c', checked: true },
+      { id: '10', kind: 'runjs', code: 'void 0;' },
+    ]);
+    // Compile-only (no execution) — catches any syntax error in the generated
+    // interpreter / HUD string.
+    expect(() => new vm.Script(code)).not.toThrow();
   });
 });
 
