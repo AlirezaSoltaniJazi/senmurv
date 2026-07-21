@@ -1,13 +1,26 @@
 import type { GeneratorId, PickedField } from '@/shared/types';
 import { newId } from '@/utils/id';
 
-/** What the Scripts "Customize" button hands to the Fill tab. */
-export type FillSeed =
-  | { mode: 'fields'; fields: PickedField[] }
-  | { mode: 'flow'; steps: WorkflowStep[] };
+/** What the Scripts "Customize" button hands to the Recorder tab. */
+export interface RecorderSeed {
+  steps: WorkflowStep[];
+}
+
+/** A step streamed from the in-page recorder (the panel mints the `id`). */
+export type RecordedStep = Omit<WorkflowStep, 'id'>;
 
 /** A workflow step kind. */
-export type StepKind = 'click' | 'wait' | 'fill' | 'select' | 'radio' | 'check';
+export type StepKind =
+  | 'click'
+  | 'clickEl'
+  | 'wait'
+  | 'waitEl'
+  | 'press'
+  | 'fill'
+  | 'select'
+  | 'radio'
+  | 'check'
+  | 'runjs';
 
 /** How a `select` step chooses its option. */
 export type SelectMode = 'text' | 'first' | 'random';
@@ -20,25 +33,42 @@ export interface WorkflowStep {
   id: string;
   kind: StepKind;
   text?: string; // click: button text
-  ms?: number; // wait: milliseconds
-  label?: string; // fill/select/radio/check: mat-label text
-  selector?: string; // fill/select/radio/check: CSS selector (alternative to label)
+  ms?: number; // wait: milliseconds; waitEl: timeout
+  label?: string; // fill/select/radio/check/clickEl: mat-label text
+  selector?: string; // fill/select/radio/check/clickEl/waitEl/press: CSS selector
   value?: string; // fill: value to type; select(text)/radio: option text/value
   optionMode?: SelectMode; // select
   checked?: boolean; // check
-  index?: number; // fill/select/radio/check: pick the Nth element matching `selector` (0-based)
+  index?: number; // target-by-selector kinds: pick the Nth match (0-based)
   generator?: GeneratorId; // fill: random-value generator; falls back to the static `value`
+  key?: string; // press: key name (e.g. "Enter")
+  code?: string; // runjs: JS source to run
 }
 
-export const STEP_KINDS: StepKind[] = ['click', 'wait', 'fill', 'select', 'radio', 'check'];
+export const STEP_KINDS: StepKind[] = [
+  'click',
+  'clickEl',
+  'wait',
+  'waitEl',
+  'press',
+  'fill',
+  'select',
+  'radio',
+  'check',
+  'runjs',
+];
 
 export const STEP_KIND_LABELS: Record<StepKind, string> = {
   click: 'Click button',
+  clickEl: 'Click element',
   wait: 'Wait',
+  waitEl: 'Wait for element',
+  press: 'Press key',
   fill: 'Fill field',
   select: 'Select option',
   radio: 'Radio',
   check: 'Checkbox',
+  runjs: 'Run JS',
 };
 
 /** Create a step of `kind` with sensible defaults. */
@@ -47,8 +77,16 @@ export function newStep(kind: StepKind): WorkflowStep {
   switch (kind) {
     case 'click':
       return { ...base, text: '' };
+    case 'clickEl':
+      return { ...base, selector: '' };
     case 'wait':
       return { ...base, ms: 1000 };
+    case 'waitEl':
+      return { ...base, selector: '' };
+    case 'press':
+      return { ...base, key: 'Enter' };
+    case 'runjs':
+      return { ...base, code: '' };
     case 'fill':
       return { ...base, label: '', value: '' };
     case 'select':
@@ -67,8 +105,16 @@ export function describeStep(s: WorkflowStep): string {
   switch (s.kind) {
     case 'click':
       return `Click “${s.text ?? ''}”`;
+    case 'clickEl':
+      return `Click ${target}`;
     case 'wait':
       return `Wait ${s.ms ?? 0} ms`;
+    case 'waitEl':
+      return `Wait for ${s.selector ?? ''}`;
+    case 'press':
+      return `Press ${s.key ?? ''}`;
+    case 'runjs':
+      return `Run JS (${(s.code ?? '').length} chars)`;
     case 'fill':
       return s.generator && s.generator !== 'custom'
         ? `Fill ${target} = «random ${s.generator}»`
@@ -90,23 +136,37 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
   const o: Record<string, unknown> = { kind: s.kind };
   if (s.kind === 'click') {
     o.text = s.text ?? '';
-  } else if (s.kind === 'wait') {
+    return o;
+  }
+  if (s.kind === 'wait') {
     o.ms = s.ms ?? 0;
-  } else {
-    if (s.label) o.label = s.label;
+    return o;
+  }
+  if (s.kind === 'runjs') {
+    o.code = s.code ?? '';
+    return o;
+  }
+  if (s.kind === 'press') {
+    o.key = s.key ?? 'Enter';
     if (s.selector) o.selector = s.selector;
     if (typeof s.index === 'number' && s.index > 0) o.index = s.index;
-    if (s.kind === 'fill') {
-      o.value = s.value ?? '';
-      if (s.generator && s.generator !== 'custom') o.generator = s.generator;
-    }
-    if (s.kind === 'select') {
-      o.value = s.value ?? '';
-      o.optionMode = s.optionMode ?? 'text';
-    }
-    if (s.kind === 'radio') o.value = s.value ?? '';
-    if (s.kind === 'check') o.checked = s.checked ?? true;
+    return o;
   }
+  // Target-by-label-or-selector kinds: clickEl / waitEl / fill / select / radio / check.
+  if (s.label) o.label = s.label;
+  if (s.selector) o.selector = s.selector;
+  if (typeof s.index === 'number' && s.index > 0) o.index = s.index;
+  if (s.kind === 'waitEl' && typeof s.ms === 'number' && s.ms > 0) o.ms = s.ms;
+  if (s.kind === 'fill') {
+    o.value = s.value ?? '';
+    if (s.generator && s.generator !== 'custom') o.generator = s.generator;
+  }
+  if (s.kind === 'select') {
+    o.value = s.value ?? '';
+    o.optionMode = s.optionMode ?? 'text';
+  }
+  if (s.kind === 'radio') o.value = s.value ?? '';
+  if (s.kind === 'check') o.checked = s.checked ?? true;
   return o;
 }
 
@@ -271,6 +331,32 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     const msos = box.closest && box.closest('li.msos-option');
     const on = !!box.checked || !!(msos && msos.classList.contains('msos-option-selected'));
     if (on !== !!step.checked) (box.click ? box : el).click();
+  }
+  async function clickEl(step) {
+    const el = await waitFor(() => (step.selector ? queryNth(step.selector, step.index) : null), 'element ' + (step.selector || step.label));
+    if (el.scrollIntoView) el.scrollIntoView({ block: 'center' });
+    el.click();
+    await sleep(200);
+  }
+  async function pressKey(step) {
+    const target = step.selector ? (queryNth(step.selector, step.index) || document.activeElement) : (document.activeElement || document.body);
+    const key = step.key || 'Enter';
+    const opts = { key: key, code: key, bubbles: true, cancelable: true };
+    for (const t of ['keydown', 'keypress', 'keyup']) target.dispatchEvent(new KeyboardEvent(t, opts));
+    await sleep(150);
+  }
+  async function waitForVisible(step) {
+    const timeout = typeof step.ms === 'number' && step.ms > 0 ? step.ms : 15000;
+    await waitFor(() => { const el = queryNth(step.selector, step.index); return el && isVisible(el) ? el : null; }, 'element ' + step.selector, timeout);
+  }
+  // runjs: run the user's snippet with sleep/waitFor in scope. The new Function
+  // below lives only as TEXT inside this PREAMBLE string (not extension code);
+  // the whole generated script runs in the page's MAIN world under the page CSP
+  // via the one sanctioned runner (see agents.md §Security). Never add eval/new
+  // Function to extension source.
+  async function runJs(step) {
+    const fn = new Function('sleep', 'waitFor', 'return (async () => {' + (step.code || '') + '})();');
+    await fn(sleep, waitFor);
   }`;
 
 /**
@@ -286,14 +372,18 @@ export function buildWorkflowScript(steps: WorkflowStep[]): string {
   const skipped = [];
   let okCount = 0;
   for (const step of STEPS) {
-    const tag = step.label || step.text || step.selector || (step.ms + 'ms');
+    const tag = step.label || step.text || step.selector || step.key || (step.code ? 'js' : step.ms + 'ms');
     try {
       if (step.kind === 'click') await clickButton(step.text);
+      else if (step.kind === 'clickEl') await clickEl(step);
       else if (step.kind === 'wait') await sleep(step.ms);
+      else if (step.kind === 'waitEl') await waitForVisible(step);
+      else if (step.kind === 'press') await pressKey(step);
       else if (step.kind === 'fill') await setInput(step);
       else if (step.kind === 'select') await setSelect(step);
       else if (step.kind === 'radio') await setRadio(step);
       else if (step.kind === 'check') await setCheck(step);
+      else if (step.kind === 'runjs') await runJs(step);
       okCount += 1;
       console.info('[flow] ok:', step.kind, tag);
     } catch (e) {
@@ -334,6 +424,8 @@ function toStep(item: unknown): WorkflowStep | null {
   if (typeof o.checked === 'boolean') step.checked = o.checked;
   if (typeof o.index === 'number') step.index = o.index;
   if (typeof o.generator === 'string') step.generator = o.generator as GeneratorId;
+  if (typeof o.key === 'string') step.key = o.key;
+  if (typeof o.code === 'string') step.code = o.code;
   return step;
 }
 
@@ -354,4 +446,34 @@ export function parseWorkflowScript(code: string): WorkflowStep[] | null {
     if (step) steps.push(step);
   }
   return steps.length > 0 ? steps : null;
+}
+
+/**
+ * Convert a picked field into a Fill-flow step — used by "Ad-hoc Insert" and by
+ * re-opening legacy fill scripts for editing. Preserves the generator so Fill
+ * steps re-randomize on each run (matching Flow semantics).
+ */
+export function fieldToStep(f: PickedField): WorkflowStep {
+  const base: WorkflowStep = { id: newId('stp_'), kind: 'fill', selector: f.selector };
+  if (f.label) base.label = f.label;
+  switch (f.fieldType) {
+    case 'checkbox':
+      return { ...base, kind: 'check', checked: f.generator !== 'uncheck' };
+    case 'select':
+    case 'combobox':
+      return {
+        ...base,
+        kind: 'select',
+        optionMode: f.generator === 'pickFirst' ? 'first' : 'random',
+      };
+    case 'radio':
+      return { ...base, kind: 'radio' };
+    default:
+      return {
+        ...base,
+        kind: 'fill',
+        generator: f.generator,
+        value: f.generator === 'custom' ? (f.customValue ?? '') : '',
+      };
+  }
 }

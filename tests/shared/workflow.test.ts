@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildWorkflowScript,
+  fieldToStep,
   isWorkflowScript,
   newStep,
   parseWorkflowScript,
 } from '@/shared/workflow';
 import type { WorkflowStep } from '@/shared/workflow';
+import type { PickedField } from '@/shared/types';
 
 const steps: WorkflowStep[] = [
   { id: 'a', kind: 'click', text: 'Continue' },
@@ -105,5 +107,121 @@ describe('parseWorkflowScript', () => {
       { id: 'c', kind: 'fill', selector: '#x', generator: 'custom', value: 'static' },
     ]);
     expect(code).not.toContain('"generator"');
+  });
+});
+
+describe('new step kinds', () => {
+  it('newStep gives sensible defaults', () => {
+    expect(newStep('clickEl').selector).toBe('');
+    expect(newStep('waitEl').selector).toBe('');
+    expect(newStep('press').key).toBe('Enter');
+    expect(newStep('runjs').code).toBe('');
+  });
+
+  it('buildWorkflowScript wires every new kind into the interpreter', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'clickEl', selector: '.save' },
+      { id: '2', kind: 'waitEl', selector: '.ready', ms: 8000 },
+      { id: '3', kind: 'press', key: 'Enter' },
+      { id: '4', kind: 'runjs', code: 'window.scrollTo(0, 0);' },
+    ]);
+    expect(code).toContain('clickEl(step)');
+    expect(code).toContain('waitForVisible(step)');
+    expect(code).toContain('pressKey(step)');
+    expect(code).toContain('runJs(step)');
+    expect(code).toContain('"key": "Enter"');
+    expect(code).toContain('window.scrollTo(0, 0);');
+    expect(code).toContain('"ms": 8000');
+  });
+
+  it('round-trips each new kind', () => {
+    const input: WorkflowStep[] = [
+      { id: '1', kind: 'clickEl', selector: '.save', index: 2 },
+      { id: '2', kind: 'waitEl', selector: '.ready', ms: 8000 },
+      { id: '3', kind: 'press', key: 'Escape', selector: '#field' },
+      { id: '4', kind: 'runjs', code: 'document.title = "x";' },
+    ];
+    const parsed = parseWorkflowScript(buildWorkflowScript(input));
+    expect(parsed!.map((s) => s.kind)).toEqual(['clickEl', 'waitEl', 'press', 'runjs']);
+    expect(parsed![0]).toMatchObject({ kind: 'clickEl', selector: '.save', index: 2 });
+    expect(parsed![1]).toMatchObject({ kind: 'waitEl', selector: '.ready', ms: 8000 });
+    expect(parsed![2]).toMatchObject({ kind: 'press', key: 'Escape', selector: '#field' });
+    expect(parsed![3]).toMatchObject({ kind: 'runjs', code: 'document.title = "x";' });
+  });
+
+  it('serializes only the relevant keys per kind', () => {
+    expect(buildWorkflowScript([{ id: '1', kind: 'press', key: 'Enter' }])).not.toContain(
+      '"value"'
+    );
+    expect(buildWorkflowScript([{ id: '1', kind: 'runjs', code: 'x' }])).not.toContain('"label"');
+    // waitEl omits a zero/absent timeout.
+    expect(buildWorkflowScript([{ id: '1', kind: 'waitEl', selector: '.x' }])).not.toContain(
+      '"ms"'
+    );
+  });
+
+  it('still parses a legacy 6-kind script (backward-compatible)', () => {
+    const legacy = buildWorkflowScript([
+      { id: 'a', kind: 'click', text: 'Save' },
+      { id: 'b', kind: 'fill', label: 'Name', value: 'x' },
+    ]);
+    const parsed = parseWorkflowScript(legacy);
+    expect(parsed!.map((s) => s.kind)).toEqual(['click', 'fill']);
+  });
+});
+
+describe('fieldToStep', () => {
+  function field(overrides: Partial<PickedField> = {}): PickedField {
+    return {
+      id: 'fld_1',
+      selector: '#f',
+      fieldType: 'text',
+      label: 'Field',
+      hint: '',
+      generator: 'firstName',
+      ...overrides,
+    };
+  }
+
+  it('maps a text field to a Fill step preserving the generator', () => {
+    expect(fieldToStep(field())).toMatchObject({
+      kind: 'fill',
+      selector: '#f',
+      generator: 'firstName',
+    });
+  });
+
+  it('maps a custom text field to a Fill step with the static value', () => {
+    expect(fieldToStep(field({ generator: 'custom', customValue: 'ABC' }))).toMatchObject({
+      kind: 'fill',
+      generator: 'custom',
+      value: 'ABC',
+    });
+  });
+
+  it('maps a checkbox to a Check step', () => {
+    expect(fieldToStep(field({ fieldType: 'checkbox', generator: 'check' }))).toMatchObject({
+      kind: 'check',
+      checked: true,
+    });
+    expect(fieldToStep(field({ fieldType: 'checkbox', generator: 'uncheck' }))).toMatchObject({
+      kind: 'check',
+      checked: false,
+    });
+  });
+
+  it('maps a select to a Select step with an option mode', () => {
+    expect(fieldToStep(field({ fieldType: 'select', generator: 'pickFirst' }))).toMatchObject({
+      kind: 'select',
+      optionMode: 'first',
+    });
+    expect(fieldToStep(field({ fieldType: 'combobox', generator: 'pickRandom' }))).toMatchObject({
+      kind: 'select',
+      optionMode: 'random',
+    });
+  });
+
+  it('maps a radio to a Radio step', () => {
+    expect(fieldToStep(field({ fieldType: 'radio' })).kind).toBe('radio');
   });
 });

@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { FontSize, Prefs, Result } from '@/shared/types';
-import type { FillSeed } from '@/shared/workflow';
+import type { RecorderSeed } from '@/shared/workflow';
 
 // Lazy-load each tab so the panel shell renders instantly; heavy deps (faker
 // locales in Data/Fill, js-beautify in Scripts) load only when that tab opens.
@@ -13,7 +13,9 @@ const GenerateDataTab = lazy(() =>
 const LocatorTab = lazy(() =>
   import('./components/LocatorTab').then((m) => ({ default: m.LocatorTab }))
 );
-const FillTab = lazy(() => import('./components/FillTab').then((m) => ({ default: m.FillTab })));
+const RecorderTab = lazy(() =>
+  import('./components/RecorderTab').then((m) => ({ default: m.RecorderTab }))
+);
 const ScriptsTab = lazy(() =>
   import('./components/ScriptsTab').then((m) => ({ default: m.ScriptsTab }))
 );
@@ -26,12 +28,20 @@ const SettingsTab = lazy(() =>
   import('./components/SettingsTab').then((m) => ({ default: m.SettingsTab }))
 );
 
-type TabKey = 'data' | 'locator' | 'fill' | 'scripts' | 'track' | 'mytasks' | 'notes' | 'settings';
+type TabKey =
+  | 'data'
+  | 'locator'
+  | 'recorder'
+  | 'scripts'
+  | 'track'
+  | 'mytasks'
+  | 'notes'
+  | 'settings';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'data', label: 'Data' },
   { key: 'locator', label: 'Locator' },
-  { key: 'fill', label: 'Recorder' },
+  { key: 'recorder', label: 'Recorder' },
   { key: 'scripts', label: 'Scripts' },
   { key: 'track', label: 'Track' },
   { key: 'mytasks', label: 'My Tasks' },
@@ -48,15 +58,15 @@ function openFullPage(): void {
 
 export function App(): ReactElement {
   const [tab, setTab] = useState<TabKey>('data');
-  const [fillSeed, setFillSeed] = useState<FillSeed | null>(null);
+  const [recorderSeed, setRecorderSeed] = useState<RecorderSeed | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
 
-  const customizeInFill = useCallback((s: FillSeed) => {
-    setFillSeed(s);
-    setTab('fill');
+  const customizeInRecorder = useCallback((s: RecorderSeed) => {
+    setRecorderSeed(s);
+    setTab('recorder');
   }, []);
-  const clearFillSeed = useCallback(() => setFillSeed(null), []);
+  const clearSeed = useCallback(() => setRecorderSeed(null), []);
 
   // Load persisted preferences (font size) on mount.
   useEffect(() => {
@@ -123,9 +133,9 @@ export function App(): ReactElement {
         <Suspense fallback={<p className="hint">Loading…</p>}>
           {tab === 'data' && <GenerateDataTab />}
           {tab === 'locator' && <LocatorTab />}
-          {tab === 'fill' && <FillTab seed={fillSeed} onSeedConsumed={clearFillSeed} />}
+          {tab === 'recorder' && <RecorderTab seed={recorderSeed} onSeedConsumed={clearSeed} />}
           {tab === 'scripts' && (
-            <ScriptsTab onCustomize={customizeInFill} reloadNonce={reloadNonce} />
+            <ScriptsTab onCustomize={customizeInRecorder} reloadNonce={reloadNonce} />
           )}
           {tab === 'track' && <TrackTab reloadNonce={reloadNonce} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}

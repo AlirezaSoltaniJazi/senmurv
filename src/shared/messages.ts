@@ -9,6 +9,7 @@ import type {
   SavedScript,
   TimeEntry,
 } from '@/shared/types';
+import type { RecordedStep } from '@/shared/workflow';
 
 /**
  * All runtime messages, as a discriminated union keyed on `type`.
@@ -22,6 +23,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.ELEMENT_PICKED; payload: LocatorSet }
   | { type: typeof MESSAGE_TYPES.FIELD_PICKED; payload: { field: DetectedField } }
   | { type: typeof MESSAGE_TYPES.PICK_CANCELLED }
+  | { type: typeof MESSAGE_TYPES.START_RECORD }
+  | { type: typeof MESSAGE_TYPES.STOP_RECORD }
+  | { type: typeof MESSAGE_TYPES.ACTION_RECORDED; payload: { step: RecordedStep } }
   | { type: typeof MESSAGE_TYPES.RUN_SCRIPT; payload: { code: string } }
   | { type: typeof MESSAGE_TYPES.GET_SCRIPTS }
   | { type: typeof MESSAGE_TYPES.SAVE_SCRIPT; payload: { script: SavedScript } }

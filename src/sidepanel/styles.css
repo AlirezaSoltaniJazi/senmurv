@@ -485,12 +485,15 @@ select,
   color: var(--muted);
 }
 
-/* Fill tool — mode toggle */
-.mode-toggle {
+/* Recorder — Ad-hoc Insert panel */
+.adhoc-panel {
   display: flex;
-  gap: 4px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
 }
 
 /* Flow steps */

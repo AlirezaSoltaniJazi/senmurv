@@ -12,14 +12,14 @@ import {
   serializeScripts,
 } from '@/shared/script-io';
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
-import { isWorkflowScript, parseWorkflowScript } from '@/shared/workflow';
-import type { FillSeed } from '@/shared/workflow';
+import { fieldToStep, isWorkflowScript, parseWorkflowScript } from '@/shared/workflow';
+import type { RecorderSeed } from '@/shared/workflow';
 import type { Result, SavedScript } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 interface Props {
   /** Open a generated fill/flow script in the Recorder tab for customization. */
-  onCustomize: (seed: FillSeed) => void;
+  onCustomize: (seed: RecorderSeed) => void;
   /** Bumped by the header refresh button to re-pull data from storage. */
   reloadNonce: number;
 }
@@ -71,16 +71,17 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
   }
 
   function customizeScript(s: SavedScript): void {
-    if (isFillScript(s.code)) {
-      const fields = parseFillScript(s.code);
-      if (fields) {
-        onCustomize({ mode: 'fields', fields });
-        return;
-      }
-    } else if (isWorkflowScript(s.code)) {
+    if (isWorkflowScript(s.code)) {
       const steps = parseWorkflowScript(s.code);
       if (steps) {
-        onCustomize({ mode: 'flow', steps });
+        onCustomize({ steps });
+        return;
+      }
+    } else if (isFillScript(s.code)) {
+      // Legacy fill scripts open as editable Fill steps.
+      const fields = parseFillScript(s.code);
+      if (fields) {
+        onCustomize({ steps: fields.map(fieldToStep) });
         return;
       }
     }

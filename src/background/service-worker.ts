@@ -125,12 +125,15 @@ async function injectPicker(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files });
 }
 
-type PickStart = typeof MESSAGE_TYPES.START_PICK | typeof MESSAGE_TYPES.START_PICK_FIELDS;
+type TabStart =
+  | typeof MESSAGE_TYPES.START_PICK
+  | typeof MESSAGE_TYPES.START_PICK_FIELDS
+  | typeof MESSAGE_TYPES.START_RECORD;
 
-/** Send a pick-start message, retrying briefly while a just-injected script loads. */
+/** Send a start message, retrying briefly while a just-injected script loads. */
 async function sendTabMessageWithRetry(
   tabId: number,
-  type: PickStart,
+  type: TabStart,
   attempts = 12
 ): Promise<void> {
   let lastError: unknown;
@@ -147,11 +150,11 @@ async function sendTabMessageWithRetry(
 }
 
 /**
- * Start picking (single locator or continuous field mode). If the content
- * script isn't there yet (pre-existing tab), inject it and retry — the picker's
+ * Start an in-page mode (locator pick, field pick, or record). If the content
+ * script isn't there yet (pre-existing tab), inject it and retry — the content
  * listener registers asynchronously after its loader resolves.
  */
-async function startPicking(tabId: number, type: PickStart): Promise<Result<void>> {
+async function startPicking(tabId: number, type: TabStart): Promise<Result<void>> {
   try {
     await sendTabMessage(tabId, { type });
     return { ok: true, value: undefined };
@@ -166,12 +169,17 @@ async function startPicking(tabId: number, type: PickStart): Promise<Result<void
   }
 }
 
-/** Cancel picking; a no-op (still ok) if the content script isn't present. */
-async function cancelPick(tabId: number): Promise<Result<void>> {
+/** Stop an in-page mode (cancel pick / stop record); a no-op if no content script. */
+async function cancelPick(
+  tabId: number,
+  type:
+    | typeof MESSAGE_TYPES.CANCEL_PICK
+    | typeof MESSAGE_TYPES.STOP_RECORD = MESSAGE_TYPES.CANCEL_PICK
+): Promise<Result<void>> {
   try {
-    await sendTabMessage(tabId, { type: MESSAGE_TYPES.CANCEL_PICK });
+    await sendTabMessage(tabId, { type });
   } catch {
-    // Nothing to cancel — the picker isn't running on this tab.
+    // Nothing to stop — the content script isn't running on this tab.
   }
   return { ok: true, value: undefined };
 }
@@ -346,8 +354,21 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       withActiveRunnableTab((tabId) => cancelPick(tabId)).then(sendResponse);
       return true;
 
+    case MESSAGE_TYPES.START_RECORD:
+      withActiveRunnableTab((tabId) => startPicking(tabId, MESSAGE_TYPES.START_RECORD)).then(
+        sendResponse
+      );
+      return true;
+
+    case MESSAGE_TYPES.STOP_RECORD:
+      withActiveRunnableTab((tabId) => cancelPick(tabId, MESSAGE_TYPES.STOP_RECORD)).then(
+        sendResponse
+      );
+      return true;
+
     default:
-      // ELEMENT_PICKED / PICK_CANCELLED are addressed to the side panel.
+      // ELEMENT_PICKED / PICK_CANCELLED / FIELD_PICKED / ACTION_RECORDED are
+      // addressed to the side panel, which listens directly.
       return false;
   }
 });
