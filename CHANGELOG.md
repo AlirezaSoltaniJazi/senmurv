@@ -37,10 +37,29 @@ All notable changes to Senmurv are documented here. The format is based on
   one window picks up changes made in another.
 - **Open in full page** — a toolbar button opens the whole toolkit in a browser
   tab for a roomier view.
+- **Recorder — record a flow** — press **Record** and your clicks, inputs, and
+  selects on the page are captured as editable steps (top frame), or build steps
+  by hand. New step types beyond click / fill / select / checkbox / radio:
+  **Click element** (by CSS selector), **Press key**, **Wait for element**, and
+  **Run JS**. **Ad-hoc Insert** keeps the fast path — pick many fields at once to
+  fill live or add them as steps. Then **Run** the whole flow, **Run from any
+  step**, **Copy as script**, or **Save to Scripts**.
+- **Recorder — live run HUD** — running a flow shows an on-page panel that marks
+  each step running / done / failed in real time (with the error inline),
+  replacing the blocking end-of-run alert. Works for saved scripts too.
+- **Stable selectors on Dynamics 365 / Power Apps** — the element picker now
+  ignores session-generated ids (any id embedding a GUID) and prefers the stable
+  `data-id`, so recorded and suggested selectors survive page reloads (also
+  improves the Locator tool).
 
 ### Changed
 
-- Renamed the **Fill** tab to **Recorder**.
+- The **Fill** tab is now the unified **Recorder** — the old **Fields / Flow**
+  toggle is gone; both are folded into one step list.
+- A flow **Click button** step that can't find its target now **fails** (red in
+  the run HUD) instead of silently passing.
+- Recorder steps are **kept while you switch side-panel tabs** — an in-progress
+  flow is no longer lost when you leave the tab.
 - The transient **"Saved."** confirmation in Track now clears itself after a few
   seconds instead of lingering.
 
