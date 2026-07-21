@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import {
   DEFAULT_LOCALE,
   LOCALE_LABELS,
@@ -40,14 +40,16 @@ import { newId } from '@/utils/id';
 interface Props {
   seed: RecorderSeed | null;
   onSeedConsumed: () => void;
+  /** Steps are held in App so they survive switching tabs (this tab unmounts). */
+  steps: WorkflowStep[];
+  setSteps: Dispatch<SetStateAction<WorkflowStep[]>>;
 }
 
 type PickTarget = { mode: 'step'; id: string } | { mode: 'adhoc' } | null;
 
 const TARGET_KINDS: StepKind[] = ['fill', 'select', 'check', 'radio', 'clickEl', 'waitEl'];
 
-export function RecorderTab({ seed, onSeedConsumed }: Props): ReactElement {
-  const [steps, setSteps] = useState<WorkflowStep[]>([]);
+export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): ReactElement {
   const [picking, setPicking] = useState(false);
   const [recording, setRecording] = useState(false);
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
@@ -120,7 +122,7 @@ export function RecorderTab({ seed, onSeedConsumed }: Props): ReactElement {
       chrome.runtime.onMessage.removeListener(onMessage);
       if (recordingRef.current) void sendRuntimeMessage({ type: MESSAGE_TYPES.STOP_RECORD });
     };
-  }, []);
+  }, [setSteps]);
 
   // One-shot seed from Scripts → Customize (syncs into local state, then clears).
   /* eslint-disable react-hooks/set-state-in-effect */
@@ -129,7 +131,7 @@ export function RecorderTab({ seed, onSeedConsumed }: Props): ReactElement {
     setSteps(seed.steps);
     setStatus(`Loaded ${seed.steps.length} step(s) — customize, then Run or Save.`);
     onSeedConsumed();
-  }, [seed, onSeedConsumed]);
+  }, [seed, onSeedConsumed, setSteps]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   // ── Record ────────────────────────────────────────────────────────────────
@@ -204,29 +206,39 @@ export function RecorderTab({ seed, onSeedConsumed }: Props): ReactElement {
   }
 
   // Bake random-value fill generators into concrete values (faker can't run in
-  // the page). Fresh each call: "Run flow" re-randomizes; Save/Copy snapshot.
-  async function buildFlow(): Promise<string> {
+  // the page). Fresh each call: "Run" re-randomizes; Save/Copy snapshot.
+  async function buildScriptFor(list: WorkflowStep[]): Promise<string> {
     await ensureFaker(locale);
-    const resolved = steps.map((s) =>
+    const resolved = list.map((s) =>
       s.kind === 'fill' && s.generator && s.generator !== 'custom'
         ? { ...s, value: generateValue(s.generator, locale, s.value) ?? '' }
         : s
     );
     return buildWorkflowScript(resolved);
   }
-  async function runFlow(): Promise<void> {
+  function buildFlow(): Promise<string> {
+    return buildScriptFor(steps);
+  }
+  async function runSteps(list: WorkflowStep[], done: string): Promise<void> {
     setError(null);
     setStatus(null);
-    if (!steps.length) {
+    if (!list.length) {
       setError('Add or record some steps first.');
       return;
     }
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
-      payload: { code: await buildFlow() },
+      payload: { code: await buildScriptFor(list) },
     });
-    if (res.ok) setStatus(`Ran ${steps.length} step(s). Check the page (console has details).`);
+    if (res.ok) setStatus(done);
     else setError(res.error);
+  }
+  async function runFlow(): Promise<void> {
+    await runSteps(steps, `Ran ${steps.length} step(s). Check the page (console has details).`);
+  }
+  async function runFrom(index: number): Promise<void> {
+    const list = steps.slice(index);
+    await runSteps(list, `Ran ${list.length} step(s) from step ${index + 1}.`);
   }
   async function copyFlow(): Promise<void> {
     if (!steps.length) return;
@@ -439,6 +451,16 @@ export function RecorderTab({ seed, onSeedConsumed }: Props): ReactElement {
                 {describeStep(s)}
               </span>
               <span className="step-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={busy}
+                  title="Run the flow from this step to the end"
+                  aria-label="Run from this step"
+                  onClick={() => void runFrom(i)}
+                >
+                  ▶
+                </button>
                 <button type="button" disabled={i === 0} onClick={() => moveStep(s.id, -1)}>
                   ▲
                 </button>

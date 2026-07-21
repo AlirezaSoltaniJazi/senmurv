@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { FontSize, Prefs, Result } from '@/shared/types';
-import type { RecorderSeed } from '@/shared/workflow';
+import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
 
 // Lazy-load each tab so the panel shell renders instantly; heavy deps (faker
 // locales in Data/Fill, js-beautify in Scripts) load only when that tab opens.
@@ -59,6 +59,8 @@ function openFullPage(): void {
 export function App(): ReactElement {
   const [tab, setTab] = useState<TabKey>('data');
   const [recorderSeed, setRecorderSeed] = useState<RecorderSeed | null>(null);
+  // Kept here so an in-progress recorded flow survives switching side-panel tabs.
+  const [recorderSteps, setRecorderSteps] = useState<WorkflowStep[]>([]);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
 
@@ -133,7 +135,14 @@ export function App(): ReactElement {
         <Suspense fallback={<p className="hint">Loading…</p>}>
           {tab === 'data' && <GenerateDataTab />}
           {tab === 'locator' && <LocatorTab />}
-          {tab === 'recorder' && <RecorderTab seed={recorderSeed} onSeedConsumed={clearSeed} />}
+          {tab === 'recorder' && (
+            <RecorderTab
+              seed={recorderSeed}
+              onSeedConsumed={clearSeed}
+              steps={recorderSteps}
+              setSteps={setRecorderSteps}
+            />
+          )}
           {tab === 'scripts' && (
             <ScriptsTab onCustomize={customizeInRecorder} reloadNonce={reloadNonce} />
           )}
