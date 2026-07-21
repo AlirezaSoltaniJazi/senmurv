@@ -2,6 +2,7 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import type {
   Checklist,
   FontSize,
+  Note,
   Prefs,
   SavedScript,
   Subtask,
@@ -168,6 +169,53 @@ export async function deleteChecklist(id: string): Promise<Checklist[]> {
   const checklists = await getChecklists();
   const next = checklists.filter((c) => c.id !== id);
   await saveChecklists(next);
+  return next;
+}
+
+// ---------------------------------------------------------------------------
+// Notes
+// ---------------------------------------------------------------------------
+
+/** Type guard for a stored note (rejects corrupt / legacy data). */
+export function isNote(value: unknown): value is Note {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.title === 'string' &&
+    typeof v.body === 'string' &&
+    typeof v.createdAt === 'number' &&
+    typeof v.updatedAt === 'number'
+  );
+}
+
+/** Read all notes (silently drops anything that fails validation). */
+export async function getNotes(): Promise<Note[]> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.NOTES);
+  const raw = result[STORAGE_KEYS.NOTES];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isNote);
+}
+
+/** Overwrite the full note list. */
+export async function saveNotes(notes: Note[]): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: notes });
+}
+
+/** Insert or update a note by id; returns the new list. */
+export async function upsertNote(note: Note): Promise<Note[]> {
+  const notes = await getNotes();
+  const exists = notes.some((n) => n.id === note.id);
+  const next = exists ? notes.map((n) => (n.id === note.id ? note : n)) : [...notes, note];
+  await saveNotes(next);
+  return next;
+}
+
+/** Remove a note by id; returns the new list. */
+export async function deleteNote(id: string): Promise<Note[]> {
+  const notes = await getNotes();
+  const next = notes.filter((n) => n.id !== id);
+  await saveNotes(next);
   return next;
 }
 

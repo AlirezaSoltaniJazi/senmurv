@@ -165,6 +165,37 @@ export function totalsByDay(entries: TimeEntry[], now: number): Map<string, numb
   return totals;
 }
 
+/**
+ * Wall-clock ("net") total across entries: overlapping intervals are merged into
+ * a union and counted once, so concurrent timers don't double-count. Always
+ * <= the plain sum of {@link entryDurationMs}.
+ */
+export function mergedDurationMs(entries: TimeEntry[], now: number): number {
+  const spans: { start: number; end: number }[] = [];
+  for (const entry of entries) {
+    for (const interval of entry.intervals) {
+      const end = interval.end ?? now;
+      if (end > interval.start) spans.push({ start: interval.start, end });
+    }
+  }
+  if (spans.length === 0) return 0;
+  spans.sort((a, b) => a.start - b.start);
+  let total = 0;
+  let curStart = spans[0]!.start;
+  let curEnd = spans[0]!.end;
+  for (let i = 1; i < spans.length; i += 1) {
+    const span = spans[i]!;
+    if (span.start <= curEnd) {
+      if (span.end > curEnd) curEnd = span.end; // overlaps/touches → extend the union
+    } else {
+      total += curEnd - curStart; // disjoint → close the current union
+      curStart = span.start;
+      curEnd = span.end;
+    }
+  }
+  return total + (curEnd - curStart);
+}
+
 // ---------------------------------------------------------------------------
 // Day blocks — within a day, runs of the same task (lineage) collapse under an
 // expandable "main task". A lineage with more than one run total is `multiRun`.
@@ -180,11 +211,12 @@ export interface TaskBlock {
   multiRun: boolean; // the lineage has >1 run total → render as an expandable group
 }
 
-/** A day's task blocks with the day's grand total. */
+/** A day's task blocks with the day's totals (summed vs merged wall-clock). */
 export interface DayBlocks {
   key: string;
   blocks: TaskBlock[];
-  totalMs: number;
+  totalMs: number; // sum of every task's time (concurrent timers add up)
+  mergedMs: number; // wall-clock: overlapping time counted once
 }
 
 function firstStart(entry: TimeEntry): number {
@@ -241,6 +273,7 @@ export function buildDayBlocks(entries: TimeEntry[], now: number): DayBlocks[] {
       key,
       blocks,
       totalMs: blocks.reduce((sum, b) => sum + b.totalMs, 0),
+      mergedMs: mergedDurationMs(dayEntries, now),
     });
   }
 

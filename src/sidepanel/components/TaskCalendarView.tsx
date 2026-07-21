@@ -111,7 +111,20 @@ export function TaskCalendarView({
         <div className="day-group">
           <div className="day-group-head">
             <span className="day-label">{dayLabel(selectedDay, now)}</span>
-            <span className="day-total">{formatDurationShort(selected?.totalMs ?? 0)}</span>
+            <span
+              className="day-total"
+              title={`${formatDurationShort(selected?.totalMs ?? 0)} logged across tasks · ${formatDurationShort(
+                selected?.mergedMs ?? 0
+              )} net wall-clock (overlaps merged)`}
+            >
+              {formatDurationShort(selected?.totalMs ?? 0)}
+              {selected && selected.mergedMs < selected.totalMs && (
+                <span className="day-total-net">
+                  {' '}
+                  · {formatDurationShort(selected.mergedMs)} net
+                </span>
+              )}
+            </span>
           </div>
           {!selected || selected.blocks.length === 0 ? (
             <p className="hint">No tasks on this day.</p>

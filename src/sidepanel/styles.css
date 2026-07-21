@@ -762,6 +762,10 @@ select,
   font-size: 12px;
 }
 
+.day-total-net {
+  color: var(--muted);
+}
+
 .task-row {
   display: flex;
   align-items: center;
@@ -1134,4 +1138,69 @@ input[type='checkbox'] {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* Notes */
+.note-input {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: inherit;
+  min-height: 100px;
+  resize: vertical;
+}
+
+.note-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.note-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-title {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.note-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.note-actions button {
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+.note-body {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
 }

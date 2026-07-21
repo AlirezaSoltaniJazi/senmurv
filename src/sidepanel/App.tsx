@@ -21,11 +21,12 @@ const TrackTab = lazy(() => import('./components/TrackTab').then((m) => ({ defau
 const MyTasksTab = lazy(() =>
   import('./components/MyTasksTab').then((m) => ({ default: m.MyTasksTab }))
 );
+const NotesTab = lazy(() => import('./components/NotesTab').then((m) => ({ default: m.NotesTab })));
 const SettingsTab = lazy(() =>
   import('./components/SettingsTab').then((m) => ({ default: m.SettingsTab }))
 );
 
-type TabKey = 'data' | 'locator' | 'fill' | 'scripts' | 'track' | 'mytasks' | 'settings';
+type TabKey = 'data' | 'locator' | 'fill' | 'scripts' | 'track' | 'mytasks' | 'notes' | 'settings';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'data', label: 'Data' },
@@ -34,6 +35,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'scripts', label: 'Scripts' },
   { key: 'track', label: 'Track' },
   { key: 'mytasks', label: 'My Tasks' },
+  { key: 'notes', label: 'Notes' },
   { key: 'settings', label: 'Settings' },
 ];
 
@@ -127,6 +129,7 @@ export function App(): ReactElement {
           )}
           {tab === 'track' && <TrackTab reloadNonce={reloadNonce} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}
+          {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} />}
           {tab === 'settings' && (
             <SettingsTab fontSize={fontSize} onFontSizeChange={changeFontSize} />
           )}

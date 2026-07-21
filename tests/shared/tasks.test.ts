@@ -16,6 +16,7 @@ import {
   isActive,
   isPaused,
   isRunning,
+  mergedDurationMs,
   monthLabel,
   rootId,
   runTimeRange,
@@ -176,6 +177,46 @@ describe('groupEntriesByDay', () => {
     expect(groups[0]!.entries.map((e) => e.id)).toEqual(['b', 'a']); // 11:00 before 09:00
     expect(groups[1]!.key).toBe('2026-07-19');
     expect(groups[1]!.totalMs).toBe(HOUR);
+  });
+});
+
+describe('mergedDurationMs (wall-clock, overlaps merged)', () => {
+  const now = at(2026, 6, 20, 18, 0);
+
+  it('equals the plain sum when tasks do not overlap', () => {
+    const entries = [
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }] }),
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 11, 0), end: at(2026, 6, 20, 11, 30) }] }),
+    ];
+    expect(mergedDurationMs(entries, now)).toBe(90 * MIN);
+  });
+
+  it('counts overlapping time once', () => {
+    const entries = [
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }] }),
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 9, 30), end: at(2026, 6, 20, 10, 30) }] }),
+    ];
+    // Union 09:00–10:30 = 90m, even though the plain sum is 120m.
+    expect(mergedDurationMs(entries, now)).toBe(90 * MIN);
+  });
+
+  it('handles full containment and touching spans', () => {
+    const contained = [
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 11, 0) }] }),
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 9, 30), end: at(2026, 6, 20, 10, 0) }] }),
+    ];
+    expect(mergedDurationMs(contained, now)).toBe(2 * HOUR);
+
+    const touching = [
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }] }),
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 10, 0), end: at(2026, 6, 20, 11, 0) }] }),
+    ];
+    expect(mergedDurationMs(touching, now)).toBe(2 * HOUR);
+  });
+
+  it('uses now for an open (running) interval', () => {
+    const entries = [makeEntry({ intervals: [{ start: at(2026, 6, 20, 17, 0), end: null }] })];
+    expect(mergedDurationMs(entries, now)).toBe(HOUR);
   });
 });
 

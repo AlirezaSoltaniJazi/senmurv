@@ -3,21 +3,25 @@ import { STORAGE_KEYS } from '@/shared/constants';
 import {
   DEFAULT_PREFS,
   deleteChecklist,
+  deleteNote,
   deleteScript,
   deleteTask,
   getChecklists,
+  getNotes,
   getPrefs,
   getScripts,
   getTasks,
   isChecklist,
+  isNote,
   isSavedScript,
   isTimeEntry,
   savePrefs,
   upsertChecklist,
+  upsertNote,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
-import type { Checklist, SavedScript, TimeEntry } from '@/shared/types';
+import type { Checklist, Note, SavedScript, TimeEntry } from '@/shared/types';
 import { store } from '../setup';
 
 function makeScript(overrides: Partial<SavedScript> = {}): SavedScript {
@@ -51,6 +55,17 @@ function makeList(overrides: Partial<Checklist> = {}): Checklist {
     subtasks: [{ id: 'sub_1', title: 'Test', done: false }],
     done: false,
     deadline: null,
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeNote(overrides: Partial<Note> = {}): Note {
+  return {
+    id: 'note_1',
+    title: 'Standup',
+    body: 'Discuss the release plan.',
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -185,6 +200,44 @@ describe('checklist storage', () => {
     await upsertChecklist(makeList({ id: 'chk_2' }));
     const remaining = await deleteChecklist('chk_1');
     expect(remaining.map((c) => c.id)).toEqual(['chk_2']);
+  });
+});
+
+describe('isNote', () => {
+  it('accepts a well-formed note (incl. empty title/body) and rejects junk', () => {
+    expect(isNote(makeNote())).toBe(true);
+    expect(isNote(makeNote({ title: '', body: '' }))).toBe(true);
+    expect(isNote({ id: 'x' })).toBe(false);
+    expect(isNote(null)).toBe(false);
+    expect(isNote({ ...makeNote(), body: 123 })).toBe(false);
+  });
+});
+
+describe('note storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getNotes()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.NOTES] = [makeNote(), { id: 'bad' }];
+    expect(await getNotes()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertNote(makeNote());
+    let all = await getNotes();
+    expect(all).toHaveLength(1);
+
+    all = await upsertNote(makeNote({ title: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.title).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertNote(makeNote());
+    await upsertNote(makeNote({ id: 'note_2' }));
+    const remaining = await deleteNote('note_1');
+    expect(remaining.map((n) => n.id)).toEqual(['note_2']);
   });
 });
 

@@ -138,6 +138,15 @@ export interface Checklist {
   updatedAt: number;
 }
 
+/** A free-form saved note (Notes tool). */
+export interface Note {
+  id: string; // newId('note_')
+  title: string;
+  body: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
 /** UI scale for the whole panel. */
 export type FontSize = 'small' | 'medium' | 'large';
 

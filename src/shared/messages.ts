@@ -4,6 +4,7 @@ import type {
   DetectedField,
   LocatorKind,
   LocatorSet,
+  Note,
   Prefs,
   SavedScript,
   TimeEntry,
@@ -33,6 +34,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.GET_CHECKLISTS }
   | { type: typeof MESSAGE_TYPES.SAVE_CHECKLIST; payload: { checklist: Checklist } }
   | { type: typeof MESSAGE_TYPES.DELETE_CHECKLIST; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.GET_NOTES }
+  | { type: typeof MESSAGE_TYPES.SAVE_NOTE; payload: { note: Note } }
+  | { type: typeof MESSAGE_TYPES.DELETE_NOTE; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.GET_PREFS }
   | { type: typeof MESSAGE_TYPES.SAVE_PREFS; payload: { prefs: Prefs } };
 

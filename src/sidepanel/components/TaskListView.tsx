@@ -40,7 +40,15 @@ export function TaskListView({
         <div key={day.key} className="day-group">
           <div className="day-group-head">
             <span className="day-label">{dayLabel(day.key, now)}</span>
-            <span className="day-total">{formatDurationShort(day.totalMs)}</span>
+            <span
+              className="day-total"
+              title={`${formatDurationShort(day.totalMs)} logged across tasks · ${formatDurationShort(day.mergedMs)} net wall-clock (overlaps merged)`}
+            >
+              {formatDurationShort(day.totalMs)}
+              {day.mergedMs < day.totalMs && (
+                <span className="day-total-net"> · {formatDurationShort(day.mergedMs)} net</span>
+              )}
+            </span>
           </div>
           <div className="task-list">
             {day.blocks.map((block) => (
