@@ -231,12 +231,23 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     }
     return null;
   }
+  // Date tokens: "{today}" / "{today+N}" / "{today-N}" resolve to dd/mm/yyyy at
+  // run time so a mandatory date is always valid; any other value is unchanged.
+  function resolveValue(v) {
+    if (typeof v !== 'string') return v;
+    const m = v.match(/^\\{today([+-]\\d+)?\\}$/);
+    if (!m) return v;
+    const d = new Date();
+    if (m[1]) d.setDate(d.getDate() + parseInt(m[1], 10));
+    const p = (n) => String(n).padStart(2, '0');
+    return p(d.getDate()) + '/' + p(d.getMonth() + 1) + '/' + d.getFullYear();
+  }
   async function setInput(step) {
     const input = await waitFor(() => resolveField(step, 'input, textarea'), 'input ' + (step.label || step.selector));
     const iSet = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
     const tSet = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set;
     input.focus();
-    (input.tagName === 'TEXTAREA' ? tSet : iSet).call(input, step.value || '');
+    (input.tagName === 'TEXTAREA' ? tSet : iSet).call(input, resolveValue(step.value) || '');
     for (const t of ['input', 'change', 'blur']) input.dispatchEvent(new Event(t, { bubbles: true }));
   }
   function pickOption(step, opts) {
@@ -467,17 +478,151 @@ function toStep(item: unknown): WorkflowStep | null {
   return step;
 }
 
-/** Reverse of {@link buildWorkflowScript}: rebuild editable steps, or null. */
-export function parseWorkflowScript(code: string): WorkflowStep[] | null {
-  const match = /const STEPS\s*=\s*(\[[\s\S]*?\n\]);/.exec(code);
-  if (!match) return null;
-  let arr: unknown;
-  try {
-    arr = JSON.parse(match[1]!);
-  } catch {
-    return null;
+/**
+ * Read one array of flat objects (primitive values only) from the start of
+ * `src`, tolerating what a HAND-WRITTEN `STEPS` array uses that JSON forbids:
+ * single or double quotes (including quotes embedded in the other kind), unquoted
+ * keys, `//` and block comments, trailing commas, and any indentation. Strict
+ * JSON is a subset, so Recorder-generated arrays parse through here too. Returns
+ * the parsed objects, or null on the first thing it can't read.
+ */
+function parseObjectArray(src: string): Record<string, unknown>[] | null {
+  let i = 0;
+  const len = src.length;
+
+  const skipWs = (): void => {
+    for (;;) {
+      const c = src.charAt(i);
+      if (c === ' ' || c === '\t' || c === '\n' || c === '\r') {
+        i += 1;
+      } else if (c === '/' && src.charAt(i + 1) === '/') {
+        i += 2;
+        while (i < len && src.charAt(i) !== '\n') i += 1;
+      } else if (c === '/' && src.charAt(i + 1) === '*') {
+        i += 2;
+        while (i < len && !(src.charAt(i) === '*' && src.charAt(i + 1) === '/')) i += 1;
+        i += 2;
+      } else {
+        return;
+      }
+    }
+  };
+
+  const parseString = (): string | null => {
+    const quote = src.charAt(i);
+    if (quote !== '"' && quote !== "'") return null;
+    i += 1;
+    let out = '';
+    while (i < len) {
+      const c = src.charAt(i);
+      i += 1;
+      if (c === '\\') {
+        const e = src.charAt(i);
+        i += 1;
+        out += e === 'n' ? '\n' : e === 't' ? '\t' : e === 'r' ? '\r' : e;
+      } else if (c === quote) {
+        return out;
+      } else {
+        out += c;
+      }
+    }
+    return null; // unterminated
+  };
+
+  const parseIdent = (): string | null => {
+    const start = i;
+    while (i < len && /[A-Za-z0-9_$]/.test(src.charAt(i))) i += 1;
+    return i > start ? src.slice(start, i) : null;
+  };
+
+  const parseValue = (): { value: unknown } | null => {
+    skipWs();
+    const c = src.charAt(i);
+    if (c === '"' || c === "'") {
+      const s = parseString();
+      return s === null ? null : { value: s };
+    }
+    if (c === '-' || (c >= '0' && c <= '9')) {
+      const start = i;
+      i += 1;
+      while (i < len && /[0-9.eE+-]/.test(src.charAt(i))) i += 1;
+      const num = Number(src.slice(start, i));
+      return Number.isFinite(num) ? { value: num } : null;
+    }
+    const id = parseIdent();
+    if (id === 'true') return { value: true };
+    if (id === 'false') return { value: false };
+    if (id === 'null') return { value: null };
+    return null; // objects/arrays/other values are not supported in a step
+  };
+
+  const parseObject = (): Record<string, unknown> | null => {
+    skipWs();
+    if (src.charAt(i) !== '{') return null;
+    i += 1;
+    const obj: Record<string, unknown> = {};
+    for (;;) {
+      skipWs();
+      if (src.charAt(i) === '}') {
+        i += 1;
+        return obj;
+      }
+      const key = src.charAt(i) === '"' || src.charAt(i) === "'" ? parseString() : parseIdent();
+      if (key === null) return null;
+      skipWs();
+      if (src.charAt(i) !== ':') return null;
+      i += 1;
+      const v = parseValue();
+      if (!v) return null;
+      obj[key] = v.value;
+      skipWs();
+      const sep = src.charAt(i);
+      if (sep === ',') {
+        i += 1;
+      } else if (sep === '}') {
+        i += 1;
+        return obj;
+      } else {
+        return null;
+      }
+    }
+  };
+
+  skipWs();
+  if (src.charAt(i) !== '[') return null;
+  i += 1;
+  const arr: Record<string, unknown>[] = [];
+  for (;;) {
+    skipWs();
+    if (src.charAt(i) === ']') {
+      i += 1;
+      return arr;
+    }
+    const obj = parseObject();
+    if (obj === null) return null;
+    arr.push(obj);
+    skipWs();
+    const sep = src.charAt(i);
+    if (sep === ',') {
+      i += 1;
+    } else if (sep === ']') {
+      i += 1;
+      return arr;
+    } else {
+      return null;
+    }
   }
-  if (!Array.isArray(arr)) return null;
+}
+
+/**
+ * Reverse of {@link buildWorkflowScript}: rebuild editable steps, or null.
+ * Parses both Recorder-generated (strict JSON) and hand-written `STEPS` arrays.
+ */
+export function parseWorkflowScript(code: string): WorkflowStep[] | null {
+  const match = /const\s+STEPS\s*=\s*(\[[\s\S]*)/.exec(code);
+  if (!match) return null;
+  const arr = parseObjectArray(match[1]!);
+  if (!arr) return null;
   const steps: WorkflowStep[] = [];
   for (const item of arr) {
     const step = toStep(item);

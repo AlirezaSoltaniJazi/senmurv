@@ -178,6 +178,47 @@ select,
   color: var(--muted);
 }
 
+/* Typeahead input (existing titles/tags) */
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete .name-input {
+  width: 100%;
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.autocomplete-option {
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.autocomplete-option.active {
+  background: var(--accent);
+  color: #fff;
+}
+
 .checkbox-inline {
   display: flex;
   align-items: center;
@@ -619,7 +660,9 @@ select,
 }
 
 /* Tasks — time logging */
-.tag-input {
+/* Row-filling inputs: the tag typeahead wrapper and the checklist "Add subtask" box. */
+.tag-input,
+.tag-autocomplete {
   flex: 1;
   min-width: 0;
 }

@@ -260,3 +260,38 @@ describe('fieldToStep', () => {
     expect(fieldToStep(field({ fieldType: 'radio' })).kind).toBe('radio');
   });
 });
+
+describe('parseWorkflowScript — hand-written STEPS', () => {
+  it('parses a JS-object array (single quotes, unquoted keys, comments, trailing comma, embedded quotes)', () => {
+    const code = `(async () => {
+  const STEPS = [
+    // ---- Demographics (mandatory) ----
+    { kind: 'fill', selector: 'input[aria-label="Mobile number input"]', index: 0, value: '7700900123' },
+    { kind: 'select', selector: 'mat-select[formcontrolname="gender"]', optionMode: 'first' },
+    { kind: 'fill', label: 'Home treatment start date', value: '{today+1}' },
+    { kind: 'check', label: 'Patient consent obtained', checked: true },
+  ];
+  const FLOW = 'LIGHT';
+})();`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.map((s) => s.kind)).toEqual(['fill', 'select', 'fill', 'check']);
+    // The single-quoted selector keeps its embedded double quotes intact.
+    expect(parsed![0]).toMatchObject({
+      kind: 'fill',
+      selector: 'input[aria-label="Mobile number input"]',
+      value: '7700900123',
+    });
+    expect(parsed![1]).toMatchObject({ kind: 'select', optionMode: 'first' });
+    expect(parsed![2]).toMatchObject({ kind: 'fill', value: '{today+1}' });
+    expect(parsed![3]).toMatchObject({ kind: 'check', checked: true });
+  });
+
+  it('the generated engine resolves {today} date tokens at run time', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#d', value: '{today+1}' },
+    ]);
+    expect(code).toContain('function resolveValue');
+    expect(code).toContain('resolveValue(step.value)');
+  });
+});
