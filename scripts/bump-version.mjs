@@ -2,13 +2,16 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promoteChangelog } from './changelog.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 
 const bump = process.argv[2];
-if (!['patch', 'minor', 'major'].includes(bump)) {
-  console.error('Usage: node scripts/bump-version.mjs <patch|minor|major>');
+// `current` releases the current version without bumping (e.g. the first tag, or
+// re-cutting a release) — it still promotes the changelog's [Unreleased] section.
+if (!['patch', 'minor', 'major', 'current'].includes(bump)) {
+  console.error('Usage: node scripts/bump-version.mjs <patch|minor|major|current>');
   process.exit(1);
 }
 
@@ -18,7 +21,8 @@ const manifestPath = resolve(root, 'manifest.json');
 const pkgText = readFileSync(pkgPath, 'utf8');
 const manifestText = readFileSync(manifestPath, 'utf8');
 
-const pkgVersion = JSON.parse(pkgText).version;
+const pkg = JSON.parse(pkgText);
+const pkgVersion = pkg.version;
 const manifestVersion = JSON.parse(manifestText).version;
 
 if (pkgVersion !== manifestVersion) {
@@ -38,7 +42,8 @@ const [major, minor, patch] = parts;
 let next;
 if (bump === 'patch') next = `${major}.${minor}.${patch + 1}`;
 else if (bump === 'minor') next = `${major}.${minor + 1}.0`;
-else next = `${major + 1}.0.0`;
+else if (bump === 'major') next = `${major + 1}.0.0`;
+else next = pkgVersion; // current
 
 // Replace only the top-level "version" field in each file. This preserves
 // the rest of the file's formatting exactly (so Prettier check still passes
@@ -51,19 +56,34 @@ function replaceVersion(text, current, next) {
   return text.replace(needle, `"version": "${next}"`);
 }
 
-writeFileSync(pkgPath, replaceVersion(pkgText, pkgVersion, next));
-writeFileSync(manifestPath, replaceVersion(manifestText, manifestVersion, next));
+// `current` releases the existing version, so leave the version files untouched.
+if (bump !== 'current') {
+  writeFileSync(pkgPath, replaceVersion(pkgText, pkgVersion, next));
+  writeFileSync(manifestPath, replaceVersion(manifestText, manifestVersion, next));
 
-// Keep package-lock.json in sync so the lockfile version doesn't drift on CI
-// bumps. It's prettier-ignored, so re-serializing with 2-space indent is fine.
-const lockPath = resolve(root, 'package-lock.json');
-if (existsSync(lockPath)) {
-  const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
-  lock.version = next;
-  if (lock.packages && lock.packages['']) {
-    lock.packages[''].version = next;
+  // Keep package-lock.json in sync so the lockfile version doesn't drift on CI
+  // bumps. It's prettier-ignored, so re-serializing with 2-space indent is fine.
+  const lockPath = resolve(root, 'package-lock.json');
+  if (existsSync(lockPath)) {
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    lock.version = next;
+    if (lock.packages && lock.packages['']) {
+      lock.packages[''].version = next;
+    }
+    writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
   }
-  writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+}
+
+// Promote the changelog's [Unreleased] section to this release and re-seed a
+// fresh empty [Unreleased]. The GitHub Release notes are taken from the newly
+// promoted section by the release workflow.
+const changelogPath = resolve(root, 'CHANGELOG.md');
+if (existsSync(changelogPath)) {
+  const md = readFileSync(changelogPath, 'utf8');
+  const repoUrl = (pkg.repository && pkg.repository.url) || pkg.repository || '';
+  const date = new Date().toISOString().slice(0, 10);
+  const rolled = promoteChangelog(md, { version: next, date, repoUrl, prevVersion: pkgVersion });
+  if (rolled !== md) writeFileSync(changelogPath, rolled);
 }
 
 console.log(next);
