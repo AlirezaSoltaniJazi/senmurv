@@ -20,6 +20,7 @@ import { newId } from '@/utils/id';
 import { AutocompleteInput } from './AutocompleteInput';
 import { TaskCalendarView } from './TaskCalendarView';
 import { TaskListView } from './TaskListView';
+import { TrackExport } from './TrackExport';
 
 type View = 'list' | 'calendar';
 
@@ -286,6 +287,8 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
           </ul>
         </>
       )}
+
+      <TrackExport entries={entries} now={now} />
 
       <div className="chips view-toggle">
         <button

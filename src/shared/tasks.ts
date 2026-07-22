@@ -113,15 +113,20 @@ export function entryDayKey(entry: TimeEntry): string {
   return dayKey(entry.intervals[0]?.start ?? entry.createdAt);
 }
 
+/** Absolute "Mon 20 Jul 2026" label for a "YYYY-MM-DD" key (no Today/Yesterday). */
+export function absoluteDayLabel(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y!, m! - 1, d!);
+  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 /** "Today" / "Yesterday" / "Mon 20 Jul 2026" for a "YYYY-MM-DD" key. */
 export function dayLabel(key: string, now: number): string {
   const today = new Date(now);
   if (key === dayKey(now)) return 'Today';
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
   if (key === dayKey(yesterday.getTime())) return 'Yesterday';
-  const [y, m, d] = key.split('-').map(Number);
-  const date = new Date(y!, m! - 1, d!);
-  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+  return absoluteDayLabel(key);
 }
 
 // ---------------------------------------------------------------------------

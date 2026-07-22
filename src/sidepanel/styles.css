@@ -667,6 +667,45 @@ select,
   min-width: 0;
 }
 
+/* Export report (collapsible) */
+.export-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.export-panel > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  list-style-position: inside;
+}
+
+.export-panel[open] > summary {
+  margin-bottom: 8px;
+}
+
+.export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.export-format {
+  flex: 1;
+  min-width: 0;
+}
+
 .view-toggle {
   margin-top: 2px;
 }
