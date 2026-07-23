@@ -187,6 +187,7 @@ export type GeneratorId =
   | 'email'
   | 'phone'
   | 'phoneNational'
+  | 'phoneIntl'
   | 'streetAddress'
   | 'city'
   | 'postalCode'

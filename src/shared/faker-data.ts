@@ -151,6 +151,23 @@ export function generatePhone(locale: Locale, withCode = true): string {
   return code ? `${code} ${national.replace(/^0/, '')}`.trim() : national;
 }
 
+/**
+ * A valid mobile in **international NSN form** — the national number WITHOUT the
+ * trunk `0`, which is the shape an intl-tel field (one that already carries a
+ * +country-code selector) expects; a leading `0` makes such a widget read
+ * `+44 0785…`, which is rejected.
+ *
+ * The number comes from a real, assignable mobile range so it passes strict
+ * server-side validation (e.g. libphonenumber `is_valid_number`, the check behind
+ * most phone-number form fields). Reserved "fictional" ranges — such as the UK
+ * 07700 900xxx drama block — are deliberately NOT used: libphonenumber marks them
+ * invalid, so a backend would reject them on submit. The result is therefore a
+ * random valid mobile, not a guaranteed-unassigned one.
+ */
+export function generatePhoneIntl(locale: Locale): string {
+  return nationalMobile(locale, getFaker(locale)).replace(/^0/, '');
+}
+
 /** Options controlling generated data. */
 export interface TestDataOptions {
   phoneWithCode?: boolean;

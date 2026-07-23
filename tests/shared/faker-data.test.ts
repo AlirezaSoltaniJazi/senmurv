@@ -1,6 +1,11 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { SUPPORTED_LOCALES } from '@/shared/constants';
-import { ensureFaker, generatePhone, generateTestData } from '@/shared/faker-data';
+import {
+  ensureFaker,
+  generatePhone,
+  generatePhoneIntl,
+  generateTestData,
+} from '@/shared/faker-data';
 import type { GeneratedData } from '@/shared/types';
 
 // Lazy per-locale loading means the cache must be primed before the synchronous
@@ -86,6 +91,21 @@ describe('generatePhone', () => {
       expect(national, national).toMatch(/^(6\d{8}|7[1-9]\d{7})$/);
       expect(national.startsWith('70'), national).toBe(false);
     }
+  });
+
+  it('generatePhoneIntl gives a valid UK mobile NSN with no trunk 0 (+code-field form)', () => {
+    for (let i = 0; i < 40; i += 1) {
+      const nsn = generatePhoneIntl('en_GB');
+      // Real assignable mobile prefixes (074/075/077/078/079) so a strict server-side
+      // validator (libphonenumber is_valid_number) accepts it; no leading trunk 0.
+      expect(nsn, nsn).toMatch(/^7[45789]\d{8}$/);
+      expect(nsn.startsWith('0'), nsn).toBe(false);
+    }
+  });
+
+  it('generatePhoneIntl strips the trunk 0 for other locales', () => {
+    expect(generatePhoneIntl('de').startsWith('0')).toBe(false);
+    expect(generatePhoneIntl('fr').startsWith('0')).toBe(false);
   });
 
   it('produces digits-only mobile numbers for every locale (no landline text)', () => {

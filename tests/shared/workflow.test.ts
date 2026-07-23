@@ -185,6 +185,16 @@ describe('parseWorkflowScript', () => {
     expect(buildWorkflowScript(parsed!)).toContain('"value": "{random:number:1-99}"');
   });
 
+  it('emits the phoneIntl generator as a {random:phoneIntl} token and round-trips it', () => {
+    const code = buildWorkflowScript([
+      { id: 'p', kind: 'fill', selector: '#tel', generator: 'phoneIntl' },
+    ]);
+    expect(code).toContain('"value": "{random:phoneIntl}"');
+    // The in-page resolver must know the token (Ofcom reserved NSN, no trunk 0).
+    expect(code).toContain("case 'phoneIntl'");
+    expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'phoneIntl' });
+  });
+
   it('still collapses a BARE {random:number} token to the generator dropdown', () => {
     const code = buildWorkflowScript([
       { id: 'b', kind: 'fill', selector: '#n', value: '{random:number}' },

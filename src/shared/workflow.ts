@@ -146,6 +146,7 @@ const RANDOM_TOKEN_GENERATORS = new Set<GeneratorId>([
   'email',
   'phone',
   'phoneNational',
+  'phoneIntl',
   'streetAddress',
   'city',
   'postalCode',
@@ -317,6 +318,10 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       case 'email': return pick(RND.first).toLowerCase() + '.' + pick(RND.last).toLowerCase() + rint(1, 999) + '@example.com';
       case 'phone': return '+44 7' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
       case 'phoneNational': return '07' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
+      // International NSN (no trunk 0) for a +code field: a valid, assignable UK
+      // mobile (074/075/077/078/079 + 8 digits) so strict server-side validators
+      // (libphonenumber is_valid_number) accept it on submit.
+      case 'phoneIntl': return '7' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
       case 'streetAddress': return rint(1, 199) + ' ' + pick(RND.streets);
       case 'city': return pick(RND.cities);
       case 'postalCode': return rLetters(rint(1, 2), true) + rint(1, 9) + ' ' + rint(1, 9) + rLetters(2, true);

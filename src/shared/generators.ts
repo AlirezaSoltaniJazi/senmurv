@@ -1,4 +1,4 @@
-import { generatePhone, getFaker } from '@/shared/faker-data';
+import { generatePhone, generatePhoneIntl, getFaker } from '@/shared/faker-data';
 import type { FieldType, FillInstruction, GeneratorId, Locale, PickedField } from '@/shared/types';
 import { newId } from '@/utils/id';
 
@@ -9,6 +9,7 @@ export const GENERATOR_LABELS: Record<GeneratorId, string> = {
   email: 'Email',
   phone: 'Phone (+ code)',
   phoneNational: 'Phone (national)',
+  phoneIntl: 'Phone (no 0, for +code field)',
   streetAddress: 'Street address',
   city: 'City',
   postalCode: 'Postal code',
@@ -63,6 +64,7 @@ const TEXT_GENERATORS: GeneratorId[] = [
   'email',
   'phone',
   'phoneNational',
+  'phoneIntl',
   'streetAddress',
   'city',
   'postalCode',
@@ -89,7 +91,7 @@ export function generatorsFor(type: FieldType): GeneratorId[] {
     case 'email':
       return ['email', 'word', 'custom'];
     case 'tel':
-      return ['phone', 'phoneNational', 'number', 'custom'];
+      return ['phone', 'phoneNational', 'phoneIntl', 'number', 'custom'];
     case 'number':
       return ['number', 'custom'];
     case 'date':
@@ -166,6 +168,8 @@ export function generateValue(
       return generatePhone(locale, true);
     case 'phoneNational':
       return generatePhone(locale, false);
+    case 'phoneIntl':
+      return generatePhoneIntl(locale);
     case 'streetAddress':
       return faker.location.streetAddress();
     case 'city':
