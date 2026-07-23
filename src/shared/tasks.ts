@@ -113,15 +113,20 @@ export function entryDayKey(entry: TimeEntry): string {
   return dayKey(entry.intervals[0]?.start ?? entry.createdAt);
 }
 
+/** Absolute "Mon 20 Jul 2026" label for a "YYYY-MM-DD" key (no Today/Yesterday). */
+export function absoluteDayLabel(key: string): string {
+  const [y, m, d] = key.split('-').map(Number);
+  const date = new Date(y!, m! - 1, d!);
+  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+}
+
 /** "Today" / "Yesterday" / "Mon 20 Jul 2026" for a "YYYY-MM-DD" key. */
 export function dayLabel(key: string, now: number): string {
   const today = new Date(now);
   if (key === dayKey(now)) return 'Today';
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
   if (key === dayKey(yesterday.getTime())) return 'Yesterday';
-  const [y, m, d] = key.split('-').map(Number);
-  const date = new Date(y!, m! - 1, d!);
-  return `${WEEKDAYS[date.getDay()]} ${date.getDate()} ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+  return absoluteDayLabel(key);
 }
 
 // ---------------------------------------------------------------------------
@@ -350,6 +355,21 @@ export function distinctTags(entries: TimeEntry[]): string[] {
   return [...tags].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Distinct non-empty task titles, most-recently-used first (by the newest
+ * `updatedAt` seen for each title) — the order a typeahead should surface them.
+ */
+export function distinctTitles(entries: TimeEntry[]): string[] {
+  const lastUsed = new Map<string, number>();
+  for (const entry of entries) {
+    const title = entry.title.trim();
+    if (!title) continue;
+    const seen = lastUsed.get(title);
+    if (seen === undefined || entry.updatedAt > seen) lastUsed.set(title, entry.updatedAt);
+  }
+  return [...lastUsed.entries()].sort((a, b) => b[1] - a[1]).map(([title]) => title);
+}
+
 /** Distinct non-empty tags used on a given day (for calendar cell dots). */
 export function dayTags(entries: TimeEntry[], key: string): string[] {
   return distinctTags(entries.filter((e) => entryDayKey(e) === key));
@@ -369,6 +389,29 @@ export function tagColorClass(tag: string): string {
     hash = (hash * 31 + tag.charCodeAt(i)) | 0;
   }
   return `tag-c${Math.abs(hash) % TAG_COLOR_COUNT}`;
+}
+
+// ---------------------------------------------------------------------------
+// Typeahead — case-insensitive suggestions from existing titles/tags
+// ---------------------------------------------------------------------------
+
+/**
+ * Rank `candidates` for a typeahead against `query`. An empty query returns the
+ * first `limit` candidates unchanged (their given order); otherwise prefix
+ * matches rank ahead of substring matches, each group keeping the input order,
+ * capped at `limit`. Case-insensitive; leading/trailing query space is ignored.
+ */
+export function filterSuggestions(candidates: string[], query: string, limit = 8): string[] {
+  const q = query.trim().toLowerCase();
+  if (q === '') return candidates.slice(0, limit);
+  const prefix: string[] = [];
+  const infix: string[] = [];
+  for (const candidate of candidates) {
+    const lower = candidate.toLowerCase();
+    if (lower.startsWith(q)) prefix.push(candidate);
+    else if (lower.includes(q)) infix.push(candidate);
+  }
+  return [...prefix, ...infix].slice(0, limit);
 }
 
 // ---------------------------------------------------------------------------

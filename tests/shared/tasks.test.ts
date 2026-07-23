@@ -6,8 +6,10 @@ import {
   dayLabel,
   dayTags,
   distinctTags,
+  distinctTitles,
   entryDayKey,
   entryDurationMs,
+  filterSuggestions,
   formatClock,
   formatDuration,
   formatDurationShort,
@@ -349,6 +351,55 @@ describe('distinctTags', () => {
       makeEntry({ tag: '   ' }),
     ];
     expect(distinctTags(entries)).toEqual(['Client X', 'My Company']);
+  });
+});
+
+describe('distinctTitles', () => {
+  it('dedupes, drops empty/whitespace, and orders by most-recent use', () => {
+    // Insertion order (first appearance) is ['Write Test Case', 'Fix Bug'], but by
+    // newest use it must be ['Fix Bug' (700), 'Write Test Case' (500)] — so this case
+    // fails for a stable/insertion-order impl and only passes when the sort runs.
+    const entries = [
+      makeEntry({ title: 'Write Test Case', updatedAt: 100 }),
+      makeEntry({ title: 'Fix Bug', updatedAt: 700 }),
+      makeEntry({ title: 'Write Test Case', updatedAt: 500 }), // newest use of this title
+      makeEntry({ title: '', updatedAt: 900 }),
+      makeEntry({ title: '   ', updatedAt: 900 }),
+    ];
+    expect(distinctTitles(entries)).toEqual(['Fix Bug', 'Write Test Case']);
+  });
+});
+
+describe('filterSuggestions', () => {
+  const candidates = ['Write Test Case', 'Fix Bug', 'Review PR', 'Write Docs'];
+
+  it('returns the first `limit` candidates unchanged for an empty query', () => {
+    expect(filterSuggestions(candidates, '')).toEqual(candidates);
+    expect(filterSuggestions(candidates, '   ', 2)).toEqual(['Write Test Case', 'Fix Bug']);
+  });
+
+  it('matches case-insensitively', () => {
+    // Only the two "Write …" items contain 'write'.
+    expect(filterSuggestions(candidates, 'write')).toEqual(['Write Test Case', 'Write Docs']);
+  });
+
+  it('ranks prefix matches before infix matches', () => {
+    const list = ['Bugfix', 'Fix Bug', 'Prefix'];
+    // query 'fix': 'Fix Bug' starts with it; 'Bugfix'/'Prefix' merely contain it.
+    expect(filterSuggestions(list, 'fix')).toEqual(['Fix Bug', 'Bugfix', 'Prefix']);
+  });
+
+  it('caps results at `limit`', () => {
+    expect(filterSuggestions(candidates, 'i', 2)).toHaveLength(2);
+  });
+
+  it('applies `limit` after ranking, so a later prefix match beats an earlier infix', () => {
+    // 'zab' (infix) appears before 'abc' (prefix); with limit 1 the prefix must win.
+    expect(filterSuggestions(['zab', 'abc'], 'ab', 1)).toEqual(['abc']);
+  });
+
+  it('returns nothing when no candidate matches', () => {
+    expect(filterSuggestions(candidates, 'zzz')).toEqual([]);
   });
 });
 

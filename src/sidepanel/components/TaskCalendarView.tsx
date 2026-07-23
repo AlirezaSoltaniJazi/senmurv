@@ -20,6 +20,9 @@ interface TaskCalendarViewProps {
   selectedDay: string | null;
   expanded: Set<string>;
   editingId: string | null;
+  /** Existing titles/tags for the inline editor's typeahead. */
+  titleOptions: string[];
+  tagOptions: string[];
   onSelectDay: (key: string) => void;
   onPrevMonth: () => void;
   onNextMonth: () => void;
@@ -44,6 +47,8 @@ export function TaskCalendarView({
   selectedDay,
   expanded,
   editingId,
+  titleOptions,
+  tagOptions,
   onSelectDay,
   onPrevMonth,
   onNextMonth,
@@ -138,6 +143,8 @@ export function TaskCalendarView({
                   now={now}
                   expanded={expanded}
                   editingId={editingId}
+                  titleOptions={titleOptions}
+                  tagOptions={tagOptions}
                   onToggleExpand={onToggleExpand}
                   onRerun={onRerun}
                   onStartEdit={onStartEdit}

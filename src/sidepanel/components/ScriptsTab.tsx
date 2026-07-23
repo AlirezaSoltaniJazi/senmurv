@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, ReactElement } from 'react';
+import type { ChangeEvent, DragEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { decodeBookmarklet } from '@/shared/bookmarklet';
@@ -9,6 +9,7 @@ import {
   applyScriptImport,
   importConflicts,
   parseScriptsImport,
+  reorderScripts,
   serializeScripts,
 } from '@/shared/script-io';
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
@@ -40,6 +41,8 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
   const [pending, setPending] = useState<ImportedScript[] | null>(null);
   const [pendingSel, setPendingSel] = useState<boolean[]>([]);
   const [importMode, setImportMode] = useState<ImportMode>('overwrite');
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [overIndex, setOverIndex] = useState<number | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -74,14 +77,14 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
     if (isWorkflowScript(s.code)) {
       const steps = parseWorkflowScript(s.code);
       if (steps) {
-        onCustomize({ steps });
+        onCustomize({ steps, name: s.name });
         return;
       }
     } else if (isFillScript(s.code)) {
       // Legacy fill scripts open as editable Fill steps.
       const fields = parseFillScript(s.code);
       if (fields) {
-        onCustomize({ steps: fields.map(fieldToStep) });
+        onCustomize({ steps: fields.map(fieldToStep), name: s.name });
         return;
       }
     }
@@ -184,6 +187,44 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
       else next.add(id);
       return next;
     });
+  }
+
+  // ── Drag-to-reorder ─────────────────────────────────────────────────────────
+  function onRowDragStart(e: DragEvent, index: number): void {
+    setDragIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(index)); // Firefox requires data
+  }
+  function onRowDragOver(e: DragEvent, index: number): void {
+    if (dragIndex === null) return;
+    e.preventDefault(); // allow the drop
+    e.dataTransfer.dropEffect = 'move';
+    if (overIndex !== index) setOverIndex(index);
+  }
+  function endDrag(): void {
+    setDragIndex(null);
+    setOverIndex(null);
+  }
+  async function onRowDrop(e: DragEvent, index: number): Promise<void> {
+    e.preventDefault();
+    const from = dragIndex;
+    endDrag();
+    if (from === null) return;
+    const prev = scripts;
+    const next = reorderScripts(prev, from, index);
+    if (next === prev) return;
+    setScripts(next); // optimistic — reflect the new order immediately
+    const res = await sendRuntimeMessage<Result<SavedScript[]>>({
+      type: MESSAGE_TYPES.SET_SCRIPTS,
+      payload: { scripts: next },
+    });
+    if (res.ok) {
+      setScripts(res.value);
+      setStatus('Reordered scripts.');
+    } else {
+      setScripts(prev); // roll back the optimistic reorder — the write did not land
+      setError(res.error);
+    }
   }
 
   function exportScripts(): void {
@@ -326,8 +367,27 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
 
       <ul className="script-list">
         {scripts.length === 0 && <li className="hint">No saved scripts yet.</li>}
-        {scripts.map((s) => (
-          <li key={s.id} className="script-row">
+        {scripts.map((s, i) => (
+          <li
+            key={s.id}
+            className={
+              'script-row' +
+              (dragIndex === i ? ' dragging' : '') +
+              (overIndex === i && dragIndex !== i ? ' drag-over' : '')
+            }
+            onDragOver={(e) => onRowDragOver(e, i)}
+            onDrop={(e) => void onRowDrop(e, i)}
+          >
+            <span
+              className="drag-handle"
+              draggable
+              onDragStart={(e) => onRowDragStart(e, i)}
+              onDragEnd={endDrag}
+              title="Drag to reorder"
+              aria-label="Drag to reorder"
+            >
+              ⠿
+            </span>
             <input
               type="checkbox"
               checked={selected.has(s.id)}

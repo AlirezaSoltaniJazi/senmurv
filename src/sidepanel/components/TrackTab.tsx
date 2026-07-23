@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { KeyboardEvent, ReactElement } from 'react';
+import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import {
   buildDayBlocks,
   buildMonthGrid,
   distinctTags,
+  distinctTitles,
   entryDurationMs,
   formatDuration,
   isActive,
@@ -16,8 +17,10 @@ import {
 } from '@/shared/tasks';
 import type { Result, TimeEntry } from '@/shared/types';
 import { newId } from '@/utils/id';
+import { AutocompleteInput } from './AutocompleteInput';
 import { TaskCalendarView } from './TaskCalendarView';
 import { TaskListView } from './TaskListView';
+import { TrackExport } from './TrackExport';
 
 type View = 'list' | 'calendar';
 
@@ -215,39 +218,35 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
     });
   }
 
-  function onStartKey(e: KeyboardEvent<HTMLInputElement>): void {
-    if (e.key === 'Enter') void start();
-  }
-
   const activeEntries = [...entries].filter(isActive).sort((a, b) => firstStart(b) - firstStart(a));
   const dayBlocks = buildDayBlocks(entries, now);
   const grid = buildMonthGrid(cursor.year, cursor.month);
   const totals = totalsByDay(entries, now);
   const tags = distinctTags(entries);
+  const titles = distinctTitles(entries);
 
   return (
     <div className="tab">
-      <input
+      <AutocompleteInput
         className="name-input"
         placeholder="Task title (e.g. Write Test Case)"
+        ariaLabel="Task title"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onKeyDown={onStartKey}
+        onChange={setTitle}
+        options={titles}
+        onEnter={() => void start()}
       />
       <div className="row">
-        <input
-          className="name-input tag-input"
-          list="task-tags"
+        <AutocompleteInput
+          className="name-input"
+          wrapperClassName="tag-autocomplete"
           placeholder="Tag (e.g. My Company)"
+          ariaLabel="Tag"
           value={tag}
-          onChange={(e) => setTag(e.target.value)}
-          onKeyDown={onStartKey}
+          onChange={setTag}
+          options={tags}
+          onEnter={() => void start()}
         />
-        <datalist id="task-tags">
-          {tags.map((t) => (
-            <option key={t} value={t} />
-          ))}
-        </datalist>
         <button type="button" className="primary" onClick={() => void start()}>
           ▶ Start
         </button>
@@ -289,6 +288,8 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
         </>
       )}
 
+      <TrackExport entries={entries} />
+
       <div className="chips view-toggle">
         <button
           type="button"
@@ -312,6 +313,8 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
           now={now}
           expanded={expanded}
           editingId={editingId}
+          titleOptions={titles}
+          tagOptions={tags}
           onToggleExpand={toggleExpand}
           onRerun={(entry) => void rerun(entry)}
           onStartEdit={(id) => setEditingId(id)}
@@ -329,6 +332,8 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
           selectedDay={selectedDay}
           expanded={expanded}
           editingId={editingId}
+          titleOptions={titles}
+          tagOptions={tags}
           onSelectDay={selectDay}
           onPrevMonth={() => shiftMonth(-1)}
           onNextMonth={() => shiftMonth(1)}

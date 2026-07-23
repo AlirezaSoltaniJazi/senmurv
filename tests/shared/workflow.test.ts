@@ -56,6 +56,21 @@ describe('buildWorkflowScript', () => {
     expect(code).not.toContain('button not found, skipping');
   });
 
+  it('scrolls each step target into view before acting on it', () => {
+    const code = buildWorkflowScript(steps);
+    // The reveal() helper is defined and used by the fill / checkbox interpreters.
+    expect(code).toContain("el.scrollIntoView({ block: 'center', inline: 'nearest' })");
+    expect(code).toContain('reveal(input)');
+    expect(code).toContain('reveal(el)');
+  });
+
+  it('scans the page (scrolls) while a target is not yet found', () => {
+    const code = buildWorkflowScript(steps);
+    expect(code).toContain('scanStep');
+    expect(code).toContain('window.innerHeight');
+    expect(code).toContain("behavior: 'smooth'");
+  });
+
   it('generates syntactically valid JS across every step kind', () => {
     const code = buildWorkflowScript([
       { id: '1', kind: 'click', text: 'Save' },
@@ -128,20 +143,80 @@ describe('parseWorkflowScript', () => {
     expect(code).not.toContain('"index"');
   });
 
-  it('round-trips a fill-step random generator', () => {
+  it('emits a random fill generator as an in-page {random:…} token (re-randomizes each run)', () => {
     const code = buildWorkflowScript([
       { id: 'g', kind: 'fill', selector: '#name', generator: 'fullName', value: 'Jane Doe' },
     ]);
-    expect(code).toContain('"generator": "fullName"');
+    // The static value is replaced by a token — nothing is baked/frozen.
+    expect(code).toContain('"value": "{random:fullName}"');
+    expect(code).not.toContain('"generator"');
+    expect(code).not.toContain('Jane Doe');
     const parsed = parseWorkflowScript(code);
-    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'fullName', value: 'Jane Doe' });
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'fullName' });
+    expect(parsed![0]!.value).toBeUndefined();
   });
 
-  it('omits a custom (static) generator from the script', () => {
+  it('keeps a custom (static) fill value literal, with no generator/token', () => {
     const code = buildWorkflowScript([
       { id: 'c', kind: 'fill', selector: '#x', generator: 'custom', value: 'static' },
     ]);
+    expect(code).toContain('"value": "static"');
     expect(code).not.toContain('"generator"');
+    // The step's value must not be a random token (the resolver itself mentions
+    // {random:…} in its comments/regex, so scope the check to the STEPS value).
+    expect(code).not.toContain('"value": "{random:');
+  });
+
+  it('keeps a ranged {random:number:1-99} token literal (does not drop the bound)', () => {
+    const step: WorkflowStep = {
+      id: 'r',
+      kind: 'fill',
+      selector: '#n',
+      value: '{random:number:1-99}',
+    };
+    const code = buildWorkflowScript([step]);
+    expect(code).toContain('"value": "{random:number:1-99}"');
+    const parsed = parseWorkflowScript(code);
+    // A token WITH an arg stays a literal value (the generator dropdown has nowhere
+    // to hold the arg), so it must NOT collapse to generator:'number'.
+    expect(parsed![0]!.generator).toBeUndefined();
+    expect(parsed![0]!.value).toBe('{random:number:1-99}');
+    // Re-saving keeps the 1-99 bound instead of re-emitting an unbounded token.
+    expect(buildWorkflowScript(parsed!)).toContain('"value": "{random:number:1-99}"');
+  });
+
+  it('emits the phoneIntl generator as a {random:phoneIntl} token and round-trips it', () => {
+    const code = buildWorkflowScript([
+      { id: 'p', kind: 'fill', selector: '#tel', generator: 'phoneIntl' },
+    ]);
+    expect(code).toContain('"value": "{random:phoneIntl}"');
+    // The in-page resolver must know the token (Ofcom reserved NSN, no trunk 0).
+    expect(code).toContain("case 'phoneIntl'");
+    expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'phoneIntl' });
+  });
+
+  it('still collapses a BARE {random:number} token to the generator dropdown', () => {
+    const code = buildWorkflowScript([
+      { id: 'b', kind: 'fill', selector: '#n', value: '{random:number}' },
+    ]);
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'number' });
+    expect(parsed![0]!.value).toBeUndefined();
+  });
+
+  it('round-trips control characters (\\uXXXX / \\b / \\f escapes) without corruption', () => {
+    const raw = 'a\u000bb\u0008c\u000cd\u0000e'; // vertical tab, backspace, form feed, NUL
+    const code = buildWorkflowScript([{ id: 'u', kind: 'fill', selector: '#c', value: raw }]);
+    expect(parseWorkflowScript(code)![0]!.value).toBe(raw);
+  });
+
+  it('embeds the in-page random resolver so tokens work in a saved script', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#e', generator: 'email' },
+    ]);
+    expect(code).toContain('"value": "{random:email}"');
+    expect(code).toContain('function randomValue');
+    expect(code).toContain('random:([a-zA-Z]+)');
   });
 });
 
@@ -205,6 +280,41 @@ describe('new step kinds', () => {
   });
 });
 
+describe('disabled steps', () => {
+  it('round-trips a disabled step and wires the interpreter to skip it', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#a', value: 'x', disabled: true },
+      { id: '2', kind: 'click', text: 'Save' },
+    ]);
+    expect(code).toContain('"disabled": true');
+    expect(code).toContain('if (step.disabled) continue;');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', disabled: true });
+    expect(parsed![1]!.disabled).toBeUndefined();
+  });
+
+  it('omits the disabled flag for enabled steps', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'click', text: 'Go' }]);
+    expect(code).not.toContain('"disabled"');
+  });
+
+  it('counts only enabled steps in the run-HUD total', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'click', text: 'A', disabled: true },
+      { id: '2', kind: 'click', text: 'B' },
+    ]);
+    expect(code).toContain('if (!steps[ti].disabled) total += 1;');
+  });
+
+  it('generates syntactically valid JS with a disabled step present', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#a', value: 'x', disabled: true },
+      { id: '2', kind: 'click', text: 'B' },
+    ]);
+    expect(() => new vm.Script(code)).not.toThrow();
+  });
+});
+
 describe('fieldToStep', () => {
   function field(overrides: Partial<PickedField> = {}): PickedField {
     return {
@@ -258,5 +368,61 @@ describe('fieldToStep', () => {
 
   it('maps a radio to a Radio step', () => {
     expect(fieldToStep(field({ fieldType: 'radio' })).kind).toBe('radio');
+  });
+});
+
+describe('parseWorkflowScript — hand-written STEPS', () => {
+  it('parses a JS-object array (single quotes, unquoted keys, comments, trailing comma, embedded quotes)', () => {
+    const code = `(async () => {
+  const STEPS = [
+    // ---- Demographics (mandatory) ----
+    { kind: 'fill', selector: 'input[aria-label="Mobile number input"]', index: 0, value: '7700900123' },
+    { kind: 'select', selector: 'mat-select[formcontrolname="gender"]', optionMode: 'first' },
+    { kind: 'fill', label: 'Home treatment start date', value: '{today+1}' },
+    { kind: 'check', label: 'Patient consent obtained', checked: true },
+  ];
+  const FLOW = 'LIGHT';
+})();`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed).not.toBeNull();
+    expect(parsed!.map((s) => s.kind)).toEqual(['fill', 'select', 'fill', 'check']);
+    // The single-quoted selector keeps its embedded double quotes intact.
+    expect(parsed![0]).toMatchObject({
+      kind: 'fill',
+      selector: 'input[aria-label="Mobile number input"]',
+      value: '7700900123',
+    });
+    expect(parsed![1]).toMatchObject({ kind: 'select', optionMode: 'first' });
+    expect(parsed![2]).toMatchObject({ kind: 'fill', value: '{today+1}' });
+    expect(parsed![3]).toMatchObject({ kind: 'check', checked: true });
+  });
+
+  it('the generated engine resolves {today} date tokens at run time', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#d', value: '{today+1}' },
+    ]);
+    expect(code).toContain('function resolveValue');
+    expect(code).toContain('resolveValue(step.value)');
+  });
+
+  it('parses a hand-written {random:…} token back into a random generator', () => {
+    const code = `const STEPS = [{ kind: 'fill', selector: '#p', value: '{random:phone}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'phone' });
+    expect(parsed![0]!.value).toBeUndefined();
+  });
+
+  it('leaves an unknown {random:…} token as a literal static value', () => {
+    const code = `const STEPS = [{ kind: 'fill', selector: '#p', value: '{random:bogus}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', value: '{random:bogus}' });
+    expect(parsed![0]!.generator).toBeUndefined();
+  });
+
+  it('does not treat a {random:…} value on a non-fill step as a generator', () => {
+    const code = `const STEPS = [{ kind: 'radio', value: '{random:phone}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'radio', value: '{random:phone}' });
+    expect(parsed![0]!.generator).toBeUndefined();
   });
 });

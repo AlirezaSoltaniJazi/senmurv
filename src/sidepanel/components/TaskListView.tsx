@@ -9,6 +9,9 @@ interface TaskListViewProps {
   now: number;
   expanded: Set<string>;
   editingId: string | null;
+  /** Existing titles/tags for the inline editor's typeahead. */
+  titleOptions: string[];
+  tagOptions: string[];
   onToggleExpand: (key: string) => void;
   onRerun: (entry: TimeEntry) => void;
   onStartEdit: (id: string) => void;
@@ -23,6 +26,8 @@ export function TaskListView({
   now,
   expanded,
   editingId,
+  titleOptions,
+  tagOptions,
   onToggleExpand,
   onRerun,
   onStartEdit,
@@ -59,6 +64,8 @@ export function TaskListView({
                 now={now}
                 expanded={expanded}
                 editingId={editingId}
+                titleOptions={titleOptions}
+                tagOptions={tagOptions}
                 onToggleExpand={onToggleExpand}
                 onRerun={onRerun}
                 onStartEdit={onStartEdit}

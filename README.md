@@ -6,7 +6,7 @@
 
 **A QA & test-automation toolkit that lives in your Chrome Side Panel.**
 
-Generate test data · find robust element locators · run saved scripts · auto-fill forms — on any page.
+Generate test data · find robust locators · record & run page scripts · track time & tasks — on any page.
 
 ![Manifest V3](https://img.shields.io/badge/Manifest-V3-4285F4)
 ![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6)
@@ -44,9 +44,25 @@ data-testid › formControlName › id › value / aria-label › role + name �
 
 Save, edit, **format** (pretty-print), and **import / export** your scripts (and decode `javascript:` bookmarklets), then run your own JavaScript in the page's context — like a bookmarklet manager, but in the side panel.
 
-### ⚡ Fill (script generator)
+### ⏺ Recorder
 
-Pick a form's fields with continuous multi-pick; Senmurv **auto-detects each field's type** and assigns a random-data generator (override any of them). Then **Generate & Fill** the page live, **Copy as script**, or **Save to Scripts**.
+**Record a flow** of your real interactions — clicks, inputs, selects — into an editable step list (or build steps by hand), then **Run** it, **Run from any step**, **Copy as script**, or **Save to Scripts**. Steps cover click (by text or selector), fill, select, checkbox, radio, wait, wait-for-element, press key, and run JS. A live **on-page HUD** marks each step running / done / failed as it goes. **Ad-hoc Insert** keeps the fast path — pick many form fields at once to fill live or add them as steps. Generated scripts are self-contained and replay like a bookmarklet.
+
+### ⏱️ Track (time logging)
+
+A stopwatch for QA work: start a task with a title + tag, then **pause / resume / stop** — with several timers at once. Review history as a **List** (grouped by day, with per-day totals — time _logged_ vs _net_ wall-clock when timers overlap) or a **Calendar**; **edit / delete** entries and **re-run** a stopped task (its runs group under one expandable task). Color-coded tags throughout.
+
+### ✅ My Tasks
+
+Plan work as **checklists** — a task with a subtask checkbox list, a per-task and overall **completion %**, and an **exact deadline** with a days-remaining badge. Hit **Start** on a task (or subtask) to begin timing it in **Track** without leaving the list.
+
+### 🗒️ Notes
+
+Jot down quick free-form notes (optional title + body), newest first.
+
+### ⚙️ Settings & toolbar
+
+Choose the panel **font size** (Small / Medium / Large). A toolbar **Refresh** re-syncs data across open panels, and **Open in full page** launches the whole toolkit in a browser tab.
 
 ## Install
 

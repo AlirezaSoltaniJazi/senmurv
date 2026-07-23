@@ -10,6 +10,9 @@ interface TaskBlockViewProps {
   now: number;
   expanded: Set<string>;
   editingId: string | null;
+  /** Existing titles/tags for the inline editor's typeahead. */
+  titleOptions: string[];
+  tagOptions: string[];
   onToggleExpand: (key: string) => void;
   onRerun: (entry: TimeEntry) => void;
   onStartEdit: (id: string) => void;
@@ -28,6 +31,8 @@ export function TaskBlockView({
   now,
   expanded,
   editingId,
+  titleOptions,
+  tagOptions,
   onToggleExpand,
   onRerun,
   onStartEdit,
@@ -42,6 +47,8 @@ export function TaskBlockView({
         entry={entry}
         now={now}
         isEditing={editingId === entry.id}
+        titleOptions={titleOptions}
+        tagOptions={tagOptions}
         onRerun={onRerun}
         onStartEdit={onStartEdit}
         onCancelEdit={onCancelEdit}
@@ -84,6 +91,8 @@ export function TaskBlockView({
               now={now}
               isEditing={editingId === run.id}
               runLabel={runTimeRange(run)}
+              titleOptions={titleOptions}
+              tagOptions={tagOptions}
               onStartEdit={onStartEdit}
               onCancelEdit={onCancelEdit}
               onSave={onSave}

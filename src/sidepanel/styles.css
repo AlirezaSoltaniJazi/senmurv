@@ -40,9 +40,17 @@ body {
   zoom: 1.15;
 }
 
+.app.font-xlarge {
+  zoom: 1.3;
+}
+
 .app-header {
   position: sticky;
   top: 0;
+  /* Opaque background + z-index so scrolled body content (incl. the
+     position:relative autocomplete inputs) passes UNDER the sticky header
+     instead of painting over it. */
+  z-index: 40;
   background: var(--bg);
   border-bottom: 1px solid var(--border);
   padding: 10px 12px 0;
@@ -176,6 +184,47 @@ select,
 
 .field-label {
   color: var(--muted);
+}
+
+/* Typeahead input (existing titles/tags) */
+.autocomplete {
+  position: relative;
+}
+
+.autocomplete .name-input {
+  width: 100%;
+}
+
+.autocomplete-list {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  right: 0;
+  z-index: 30;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.45);
+  max-height: 210px;
+  overflow-y: auto;
+}
+
+.autocomplete-option {
+  padding: 5px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.autocomplete-option.active {
+  background: var(--accent);
+  color: #fff;
 }
 
 .checkbox-inline {
@@ -347,6 +396,29 @@ select,
   border: 1px solid var(--border);
   border-radius: 6px;
   padding: 6px 8px;
+}
+
+/* Drag-to-reorder handle + drop feedback */
+.drag-handle {
+  cursor: grab;
+  color: var(--muted);
+  user-select: none;
+  line-height: 1;
+  padding: 0 2px;
+  flex: 0 0 auto;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.script-row.dragging {
+  opacity: 0.4;
+}
+
+.script-row.drag-over {
+  border-top-color: var(--accent);
+  box-shadow: inset 0 2px 0 var(--accent);
 }
 
 .script-name {
@@ -548,6 +620,46 @@ select,
   line-height: 1;
 }
 
+/* Enable/disable toggle: green power glyph when on, muted when off. */
+.toggle-step {
+  color: var(--muted);
+}
+
+.toggle-step.on {
+  color: var(--good);
+}
+
+/* A disabled step stays visible but reads as inert: struck-through summary and
+   dimmed body, while the head actions (incl. the re-enable toggle) stay crisp. */
+.step-card.disabled {
+  border-style: dashed;
+}
+
+.step-card.disabled > :not(.step-head) {
+  opacity: 0.45;
+}
+
+.step-card.disabled .step-desc {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+
+/* Briefly highlight a just-added / duplicated step (also scrolled into view). */
+@keyframes step-flash {
+  from {
+    background: rgba(45, 127, 249, 0.28);
+    border-color: var(--accent);
+  }
+  to {
+    background: var(--panel);
+    border-color: var(--border);
+  }
+}
+
+.step-card.flash {
+  animation: step-flash 1.2s ease-out;
+}
+
 .step-target {
   display: flex;
   gap: 6px;
@@ -619,7 +731,48 @@ select,
 }
 
 /* Tasks — time logging */
-.tag-input {
+/* Row-filling inputs: the tag typeahead wrapper and the checklist "Add subtask" box. */
+.tag-input,
+.tag-autocomplete {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Export report (collapsible) */
+.export-panel {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.export-panel > summary {
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  list-style-position: inside;
+}
+
+.export-panel[open] > summary {
+  margin-bottom: 8px;
+}
+
+.export-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.export-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.export-format {
   flex: 1;
   min-width: 0;
 }
@@ -993,6 +1146,22 @@ select,
 .setting-label {
   color: var(--muted);
   font-size: 12px;
+}
+
+/* Appearance — manual font-scale slider */
+.font-scale {
+  flex: 1;
+  min-width: 140px;
+  accent-color: var(--accent);
+}
+
+.font-scale-value {
+  font-family: ui-monospace, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  font-size: 12px;
+  min-width: 3.5em;
+  text-align: right;
 }
 
 /* My Tasks — checklists */

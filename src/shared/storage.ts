@@ -1,4 +1,4 @@
-import { STORAGE_KEYS } from '@/shared/constants';
+import { FONT_SCALE_MAX, FONT_SCALE_MIN, STORAGE_KEYS } from '@/shared/constants';
 import type {
   Checklist,
   FontSize,
@@ -226,7 +226,7 @@ export async function deleteNote(id: string): Promise<Note[]> {
 export const DEFAULT_PREFS: Prefs = { fontSize: 'medium' };
 
 function isFontSize(value: unknown): value is FontSize {
-  return value === 'small' || value === 'medium' || value === 'large';
+  return value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge';
 }
 
 /** Read prefs, merging stored valid fields over the defaults. */
@@ -235,7 +235,11 @@ export async function getPrefs(): Promise<Prefs> {
   const raw = result[STORAGE_KEYS.PREFS];
   if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_PREFS };
   const v = raw as Record<string, unknown>;
-  return { fontSize: isFontSize(v.fontSize) ? v.fontSize : DEFAULT_PREFS.fontSize };
+  const prefs: Prefs = { fontSize: isFontSize(v.fontSize) ? v.fontSize : DEFAULT_PREFS.fontSize };
+  if (typeof v.fontScale === 'number' && Number.isFinite(v.fontScale)) {
+    prefs.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, v.fontScale));
+  }
+  return prefs;
 }
 
 /** Overwrite the stored prefs object. */

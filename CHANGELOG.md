@@ -8,6 +8,49 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ### Added
 
+- **Recorder — enable / disable a step** — toggle any step off to keep it in the
+  flow (and in the saved script) but skip it at run time; it shows dimmed in the
+  list, greyed in the run HUD, and the run count reflects only enabled steps.
+- **Recorder — duplicate a step** — copy a step with all its settings directly
+  below it; newly added or duplicated steps scroll into view and briefly
+  highlight so they're easy to find in a long flow.
+- **Recorder — the page follows the run** — each step scrolls its target element
+  into view before acting on it, and while a target isn't found the flow scrolls
+  the page to hunt for it, so lazy or below-the-fold fields render and get filled
+  instead of timing out.
+- **Scripts — drag to reorder** — drag the handle on a saved script to reorder
+  the list; the new order is saved.
+- **Settings — larger text** — added an **X-Large** font preset and a
+  **fine-tune slider** for exact UI scaling (80–170%), alongside Small / Medium /
+  Large.
+
+### Changed
+
+- **Recorder — random data re-randomizes on every run** — a Fill field set to a
+  random generator (name, email, phone, postal code, date, number, UUID, …) now
+  emits a `{random:…}` token that produces fresh, valid data on **every run,
+  including saved scripts**, instead of freezing a single value when saved.
+  Static fields also accept inline tokens such as `{today+1}`, `{random:email}`,
+  and `{random:number:1-99}`.
+- **Recorder — name your saved flow** — "Save to Scripts" now requires a name
+  (pre-filled when you open a script via **Customize**); saving under a name that
+  already exists warns and lets you **Overwrite** it or **Save as a copy**
+  (auto-numbered).
+
+### Fixed
+
+- **Valid mobile phone numbers** — random phone data no longer produces landline,
+  freephone, or too-short numbers that failed "valid mobile" validation; it now
+  generates real mobile numbers per locale (UK and US verified).
+- **Track — header overlap on scroll** — the sticky panel header now stays above
+  scrolled content, so task rows and inputs no longer bleed over it.
+- **Tab switches start at the top** — moving between side-panel tabs no longer
+  inherits the previous tab's scroll position.
+
+## [0.4.0] - 2026-07-22
+
+### Added
+
 - **Track — time logging** — a stopwatch for QA work: start a task with a title
   and tag, then **pause / resume / stop** (a task accumulates multiple work
   intervals into one total). Run **several timers at once** and see all
@@ -137,6 +180,7 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
 
-[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.4.0
 [0.2.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.2.0
 [0.1.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.1.0

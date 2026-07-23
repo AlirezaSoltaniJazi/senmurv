@@ -11,11 +11,15 @@ import {
   toLocalInputValue,
 } from '@/shared/tasks';
 import type { TimeEntry, TimeInterval } from '@/shared/types';
+import { AutocompleteInput } from './AutocompleteInput';
 
 interface TaskRowProps {
   entry: TimeEntry;
   now: number;
   isEditing: boolean;
+  /** Existing titles/tags for the inline editor's typeahead. */
+  titleOptions: string[];
+  tagOptions: string[];
   onStartEdit: (id: string) => void;
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
@@ -33,12 +37,20 @@ interface IntervalDraft {
 
 interface EditFormProps {
   entry: TimeEntry;
+  titleOptions: string[];
+  tagOptions: string[];
   onSave: (entry: TimeEntry) => void;
   onCancel: () => void;
 }
 
 /** Inline editor — mounted only while editing, so its state seeds fresh from `entry`. */
-function TaskEditForm({ entry, onSave, onCancel }: EditFormProps): ReactElement {
+function TaskEditForm({
+  entry,
+  titleOptions,
+  tagOptions,
+  onSave,
+  onCancel,
+}: EditFormProps): ReactElement {
   const [title, setTitle] = useState(entry.title);
   const [tag, setTag] = useState(entry.tag);
   const [rows, setRows] = useState<IntervalDraft[]>(() =>
@@ -110,18 +122,21 @@ function TaskEditForm({ entry, onSave, onCancel }: EditFormProps): ReactElement 
 
   return (
     <div className="task-edit">
-      <input
+      <AutocompleteInput
         className="name-input"
         placeholder="Task title"
+        ariaLabel="Task title"
         value={title}
-        onChange={(e) => setTitle(e.target.value)}
+        onChange={setTitle}
+        options={titleOptions}
       />
-      <input
+      <AutocompleteInput
         className="name-input"
-        list="task-tags"
         placeholder="Tag (optional)"
+        ariaLabel="Tag"
         value={tag}
-        onChange={(e) => setTag(e.target.value)}
+        onChange={setTag}
+        options={tagOptions}
       />
       <div className="task-intervals">
         {rows.map((row, i) => (
@@ -168,6 +183,8 @@ export function TaskRow({
   entry,
   now,
   isEditing,
+  titleOptions,
+  tagOptions,
   onStartEdit,
   onCancelEdit,
   onSave,
@@ -178,7 +195,13 @@ export function TaskRow({
   if (isEditing) {
     return (
       <div className="task-row task-row-editing">
-        <TaskEditForm entry={entry} onSave={onSave} onCancel={onCancelEdit} />
+        <TaskEditForm
+          entry={entry}
+          titleOptions={titleOptions}
+          tagOptions={tagOptions}
+          onSave={onSave}
+          onCancel={onCancelEdit}
+        />
       </div>
     );
   }
