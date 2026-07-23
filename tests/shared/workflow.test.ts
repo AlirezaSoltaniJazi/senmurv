@@ -56,6 +56,21 @@ describe('buildWorkflowScript', () => {
     expect(code).not.toContain('button not found, skipping');
   });
 
+  it('scrolls each step target into view before acting on it', () => {
+    const code = buildWorkflowScript(steps);
+    // The reveal() helper is defined and used by the fill / checkbox interpreters.
+    expect(code).toContain("el.scrollIntoView({ block: 'center', inline: 'nearest' })");
+    expect(code).toContain('reveal(input)');
+    expect(code).toContain('reveal(el)');
+  });
+
+  it('scans the page (scrolls) while a target is not yet found', () => {
+    const code = buildWorkflowScript(steps);
+    expect(code).toContain('scanStep');
+    expect(code).toContain('window.innerHeight');
+    expect(code).toContain("behavior: 'smooth'");
+  });
+
   it('generates syntactically valid JS across every step kind', () => {
     const code = buildWorkflowScript([
       { id: '1', kind: 'click', text: 'Save' },
@@ -128,20 +143,37 @@ describe('parseWorkflowScript', () => {
     expect(code).not.toContain('"index"');
   });
 
-  it('round-trips a fill-step random generator', () => {
+  it('emits a random fill generator as an in-page {random:…} token (re-randomizes each run)', () => {
     const code = buildWorkflowScript([
       { id: 'g', kind: 'fill', selector: '#name', generator: 'fullName', value: 'Jane Doe' },
     ]);
-    expect(code).toContain('"generator": "fullName"');
+    // The static value is replaced by a token — nothing is baked/frozen.
+    expect(code).toContain('"value": "{random:fullName}"');
+    expect(code).not.toContain('"generator"');
+    expect(code).not.toContain('Jane Doe');
     const parsed = parseWorkflowScript(code);
-    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'fullName', value: 'Jane Doe' });
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'fullName' });
+    expect(parsed![0]!.value).toBeUndefined();
   });
 
-  it('omits a custom (static) generator from the script', () => {
+  it('keeps a custom (static) fill value literal, with no generator/token', () => {
     const code = buildWorkflowScript([
       { id: 'c', kind: 'fill', selector: '#x', generator: 'custom', value: 'static' },
     ]);
+    expect(code).toContain('"value": "static"');
     expect(code).not.toContain('"generator"');
+    // The step's value must not be a random token (the resolver itself mentions
+    // {random:…} in its comments/regex, so scope the check to the STEPS value).
+    expect(code).not.toContain('"value": "{random:');
+  });
+
+  it('embeds the in-page random resolver so tokens work in a saved script', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#e', generator: 'email' },
+    ]);
+    expect(code).toContain('"value": "{random:email}"');
+    expect(code).toContain('function randomValue');
+    expect(code).toContain('random:([a-zA-Z]+)');
   });
 });
 
@@ -202,6 +234,41 @@ describe('new step kinds', () => {
     ]);
     const parsed = parseWorkflowScript(legacy);
     expect(parsed!.map((s) => s.kind)).toEqual(['click', 'fill']);
+  });
+});
+
+describe('disabled steps', () => {
+  it('round-trips a disabled step and wires the interpreter to skip it', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#a', value: 'x', disabled: true },
+      { id: '2', kind: 'click', text: 'Save' },
+    ]);
+    expect(code).toContain('"disabled": true');
+    expect(code).toContain('if (step.disabled) continue;');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', disabled: true });
+    expect(parsed![1]!.disabled).toBeUndefined();
+  });
+
+  it('omits the disabled flag for enabled steps', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'click', text: 'Go' }]);
+    expect(code).not.toContain('"disabled"');
+  });
+
+  it('counts only enabled steps in the run-HUD total', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'click', text: 'A', disabled: true },
+      { id: '2', kind: 'click', text: 'B' },
+    ]);
+    expect(code).toContain('if (!steps[ti].disabled) total += 1;');
+  });
+
+  it('generates syntactically valid JS with a disabled step present', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#a', value: 'x', disabled: true },
+      { id: '2', kind: 'click', text: 'B' },
+    ]);
+    expect(() => new vm.Script(code)).not.toThrow();
   });
 });
 
@@ -293,5 +360,26 @@ describe('parseWorkflowScript — hand-written STEPS', () => {
     ]);
     expect(code).toContain('function resolveValue');
     expect(code).toContain('resolveValue(step.value)');
+  });
+
+  it('parses a hand-written {random:…} token back into a random generator', () => {
+    const code = `const STEPS = [{ kind: 'fill', selector: '#p', value: '{random:phone}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'phone' });
+    expect(parsed![0]!.value).toBeUndefined();
+  });
+
+  it('leaves an unknown {random:…} token as a literal static value', () => {
+    const code = `const STEPS = [{ kind: 'fill', selector: '#p', value: '{random:bogus}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', value: '{random:bogus}' });
+    expect(parsed![0]!.generator).toBeUndefined();
+  });
+
+  it('does not treat a {random:…} value on a non-fill step as a generator', () => {
+    const code = `const STEPS = [{ kind: 'radio', value: '{random:phone}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'radio', value: '{random:phone}' });
+    expect(parsed![0]!.generator).toBeUndefined();
   });
 });

@@ -2,19 +2,18 @@ import { useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   buildTrackReport,
+  entriesDateSpan,
   entriesInRange,
   renderReport,
   reportFilename,
   reportMimeType,
 } from '@/shared/report';
 import type { ReportFormat } from '@/shared/report';
-import { dayKey, entryDayKey } from '@/shared/tasks';
+import { dayKey } from '@/shared/tasks';
 import type { TimeEntry } from '@/shared/types';
 
 interface Props {
   entries: TimeEntry[];
-  /** Current clock — open intervals accrue up to here in the report. */
-  now: number;
 }
 
 type Preset = 'today' | 'week' | 'month' | 'all';
@@ -25,55 +24,69 @@ const FORMATS: { id: ReportFormat; label: string }[] = [
   { id: 'json', label: 'JSON (.json)' },
 ];
 
-/** ISO timestamp for the report header — wrapped so the clock read stays out of render. */
+/** Current epoch ms — wrapped so clock reads stay out of render-purity analysis. */
+function nowMs(): number {
+  return Date.now();
+}
+
+/** ISO timestamp for the report header. */
 function nowIso(): string {
   return new Date().toISOString();
 }
 
 /** Export a Track report over a chosen date range as a .txt, .csv, or .json file. */
-export function TrackExport({ entries, now }: Props): ReactElement {
-  const today = dayKey(now);
-  const [from, setFrom] = useState(today);
-  const [to, setTo] = useState(today);
+export function TrackExport({ entries }: Props): ReactElement {
+  const [from, setFrom] = useState(() => dayKey(nowMs()));
+  const [to, setTo] = useState(() => dayKey(nowMs()));
   const [format, setFormat] = useState<ReportFormat>('txt');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  function applyPreset(preset: Preset): void {
-    setError(null);
+  function resetMessages(): void {
     setStatus(null);
+    setError(null);
+  }
+
+  // Presets read a fresh clock each time so "Today"/ranges stay correct even if the
+  // panel was opened before midnight (the parent only ticks its clock while running).
+  function applyPreset(preset: Preset): void {
+    resetMessages();
+    const today = dayKey(nowMs());
     if (preset === 'today') {
       setFrom(today);
       setTo(today);
       return;
     }
     if (preset === 'week') {
-      const start = new Date(now);
+      const start = new Date(nowMs());
       start.setDate(start.getDate() - 6);
       setFrom(dayKey(start.getTime()));
       setTo(today);
       return;
     }
     if (preset === 'month') {
-      const d = new Date(now);
+      const d = new Date(nowMs());
       setFrom(dayKey(new Date(d.getFullYear(), d.getMonth(), 1).getTime()));
       setTo(today);
       return;
     }
     // 'all' — span the earliest and latest days that have entries.
-    const keys = entries.map(entryDayKey).sort();
-    setFrom(keys[0] ?? today);
-    setTo(keys[keys.length - 1] ?? today);
+    const span = entriesDateSpan(entries, today);
+    setFrom(span.from);
+    setTo(span.to);
   }
 
   function doExport(): void {
-    setError(null);
-    setStatus(null);
+    resetMessages();
+    if (!from || !to) {
+      setError('Pick both a From and To date.');
+      return;
+    }
     if (entriesInRange(entries, from, to).length === 0) {
       setError('No tasks in the selected date range.');
       return;
     }
-    const report = buildTrackReport(entries, from, to, now, nowIso());
+    const report = buildTrackReport(entries, from, to, nowMs(), nowIso());
     const blob = new Blob([renderReport(report, format)], { type: reportMimeType(format) });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -96,7 +109,10 @@ export function TrackExport({ entries, now }: Props): ReactElement {
               className="datetime-input"
               value={from}
               max={to}
-              onChange={(e) => setFrom(e.target.value)}
+              onChange={(e) => {
+                resetMessages();
+                setFrom(e.target.value);
+              }}
             />
           </label>
           <label className="export-field">
@@ -106,7 +122,10 @@ export function TrackExport({ entries, now }: Props): ReactElement {
               className="datetime-input"
               value={to}
               min={from}
-              onChange={(e) => setTo(e.target.value)}
+              onChange={(e) => {
+                resetMessages();
+                setTo(e.target.value);
+              }}
             />
           </label>
         </div>
@@ -128,7 +147,10 @@ export function TrackExport({ entries, now }: Props): ReactElement {
           <select
             className="export-format"
             value={format}
-            onChange={(e) => setFormat(e.target.value as ReportFormat)}
+            onChange={(e) => {
+              resetMessages();
+              setFormat(e.target.value as ReportFormat);
+            }}
             aria-label="Export format"
           >
             {FORMATS.map((f) => (

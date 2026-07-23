@@ -147,12 +147,18 @@ export interface Note {
   updatedAt: number;
 }
 
-/** UI scale for the whole panel. */
-export type FontSize = 'small' | 'medium' | 'large';
+/** UI scale preset for the whole panel. */
+export type FontSize = 'small' | 'medium' | 'large' | 'xlarge';
 
 /** Persisted user preferences. */
 export interface Prefs {
+  /** The active preset chip. */
   fontSize: FontSize;
+  /**
+   * Manual fine-tune zoom multiplier (e.g. 1.25). When set it overrides the
+   * preset; omitted when the user is on a plain preset.
+   */
+  fontScale?: number;
 }
 
 // ---------------------------------------------------------------------------

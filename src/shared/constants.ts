@@ -102,6 +102,19 @@ export const LOCATOR_PRIORITY = [
   'xpath',
 ] as const;
 
+/** Manual UI-zoom (font-scale) slider bounds + step. */
+export const FONT_SCALE_MIN = 0.8;
+export const FONT_SCALE_MAX = 1.7;
+export const FONT_SCALE_STEP = 0.05;
+
+/** Preset chip → zoom multiplier (mirrors the `.app.font-*` CSS). */
+export const FONT_PRESET_ZOOM = {
+  small: 0.9,
+  medium: 1,
+  large: 1.15,
+  xlarge: 1.3,
+} as const;
+
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;
 

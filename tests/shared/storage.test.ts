@@ -250,12 +250,37 @@ describe('prefs storage', () => {
     store[STORAGE_KEYS.PREFS] = { fontSize: 'large' };
     expect((await getPrefs()).fontSize).toBe('large');
 
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'xlarge' };
+    expect((await getPrefs()).fontSize).toBe('xlarge');
+
     store[STORAGE_KEYS.PREFS] = { fontSize: 'enormous' };
     expect((await getPrefs()).fontSize).toBe(DEFAULT_PREFS.fontSize);
   });
 
-  it('round-trips through savePrefs', async () => {
+  it('reads a manual fontScale, clamped to the slider bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', fontScale: 1.25 };
+    expect((await getPrefs()).fontScale).toBe(1.25);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', fontScale: 99 };
+    expect((await getPrefs()).fontScale).toBe(1.7); // FONT_SCALE_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', fontScale: 0.1 };
+    expect((await getPrefs()).fontScale).toBe(0.8); // FONT_SCALE_MIN
+  });
+
+  it('omits fontScale when absent or non-numeric', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).fontScale).toBeUndefined();
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', fontScale: 'big' };
+    expect((await getPrefs()).fontScale).toBeUndefined();
+  });
+
+  it('round-trips through savePrefs (preset and manual scale)', async () => {
     await savePrefs({ fontSize: 'small' });
-    expect((await getPrefs()).fontSize).toBe('small');
+    expect(await getPrefs()).toEqual({ fontSize: 'small' });
+
+    await savePrefs({ fontSize: 'large', fontScale: 1.4 });
+    expect(await getPrefs()).toEqual({ fontSize: 'large', fontScale: 1.4 });
   });
 });

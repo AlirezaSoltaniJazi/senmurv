@@ -70,14 +70,67 @@ export const DIAL_CODES: Record<Locale, string> = {
 };
 
 /**
- * A region-correct phone number. `withCode` prepends the locale's dialing code
- * (and drops the national trunk `0`); otherwise the national format is returned.
+ * Valid **mobile** number ranges per locale: real mobile prefixes (national
+ * form, including the trunk `0` where the country uses one) and the total
+ * national digit length. faker's `phone.number()` mixes in landline / freephone
+ * / short numbers that fail "valid mobile" validation, so we build the national
+ * number from these ranges instead. US is special-cased (NANP, no trunk `0`).
+ */
+interface MobilePlan {
+  prefixes: string[];
+  /** Total national digits, including the prefix (and trunk `0` where used). */
+  length: number;
+}
+
+const MOBILE_PLANS: Record<Locale, MobilePlan> = {
+  en_GB: { prefixes: ['074', '075', '077', '078', '079'], length: 11 },
+  en_US: { prefixes: [], length: 10 }, // special-cased in nationalMobile()
+  pt_PT: { prefixes: ['91', '92', '93', '96'], length: 9 },
+  nl_BE: {
+    prefixes: ['0470', '0472', '0473', '0474', '0475', '0476', '0477', '0478', '0479'],
+    length: 10,
+  },
+  nl: { prefixes: ['06'], length: 10 },
+  de_CH: { prefixes: ['076', '077', '078', '079'], length: 10 },
+  de: { prefixes: ['0151', '0152', '0157', '0160', '0170', '0171', '0172', '0175'], length: 11 },
+  it: {
+    prefixes: ['320', '328', '333', '338', '340', '347', '348', '349', '366', '380', '388', '391'],
+    length: 10,
+  },
+  fr: { prefixes: ['06', '07'], length: 10 },
+  es: { prefixes: ['6', '7'], length: 9 },
+  nb_NO: { prefixes: ['4', '9'], length: 8 },
+  sv: { prefixes: ['070', '072', '073', '076', '079'], length: 10 },
+  fi: { prefixes: ['040', '044', '045', '050'], length: 10 },
+  cs_CZ: { prefixes: ['60', '72', '73', '77', '79'], length: 9 },
+  de_AT: { prefixes: ['0650', '0660', '0664', '0676', '0699'], length: 11 },
+};
+
+function randomDigits(faker: Faker, n: number): string {
+  let s = '';
+  for (let i = 0; i < n; i += 1) s += faker.number.int({ min: 0, max: 9 });
+  return s;
+}
+
+/** A valid national-format mobile number for the locale (trunk `0` where used). */
+function nationalMobile(locale: Locale, faker: Faker): string {
+  if (locale === 'en_US') {
+    // NANP: area and exchange codes both start 2-9; no trunk `0`.
+    const nxx = (): string => String(faker.number.int({ min: 2, max: 9 })) + randomDigits(faker, 2);
+    return nxx() + nxx() + randomDigits(faker, 4);
+  }
+  const plan = MOBILE_PLANS[locale] ?? MOBILE_PLANS.en_GB;
+  const prefix = plan.prefixes[faker.number.int({ min: 0, max: plan.prefixes.length - 1 })]!;
+  return prefix + randomDigits(faker, plan.length - prefix.length);
+}
+
+/**
+ * A region-correct **mobile** phone number. `withCode` prepends the locale's
+ * dialing code (and drops the national trunk `0`); otherwise the national format
+ * is returned. Always a valid mobile range — never a landline/freephone number.
  */
 export function generatePhone(locale: Locale, withCode = true): string {
-  const national = getFaker(locale)
-    .phone.number()
-    .replace(/^\+\d+[\s-]*/, '') // strip any country code faker already emitted
-    .trim();
+  const national = nationalMobile(locale, getFaker(locale));
   if (!withCode) return national;
   const code = DIAL_CODES[locale];
   return code ? `${code} ${national.replace(/^0/, '')}`.trim() : national;

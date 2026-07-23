@@ -54,4 +54,25 @@ describe('generatePhone', () => {
   it('returns national format without a code', () => {
     expect(generatePhone('en_GB', false).startsWith('+')).toBe(false);
   });
+
+  it('generates valid UK mobiles (11 national digits, 07[4/5/7/8/9] prefix)', () => {
+    for (let i = 0; i < 40; i += 1) {
+      expect(generatePhone('en_GB', false)).toMatch(/^07[45789]\d{8}$/);
+      expect(generatePhone('en_GB', true)).toMatch(/^\+44 7[45789]\d{8}$/);
+    }
+  });
+
+  it('generates valid US mobiles (NANP: area & exchange start 2-9, 10 digits)', () => {
+    for (let i = 0; i < 40; i += 1) {
+      expect(generatePhone('en_US', false)).toMatch(/^[2-9]\d{2}[2-9]\d{6}$/);
+    }
+  });
+
+  it('produces digits-only mobile numbers for every locale (no landline text)', () => {
+    for (const locale of SUPPORTED_LOCALES) {
+      const national = generatePhone(locale, false);
+      expect(national, locale).toMatch(/^\d+$/);
+      expect(national.length, locale).toBeGreaterThanOrEqual(8);
+    }
+  });
 });

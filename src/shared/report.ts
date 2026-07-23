@@ -61,6 +61,15 @@ export function entriesInRange(entries: TimeEntry[], from: string, to: string): 
   });
 }
 
+/** Earliest and latest day-keys among `entries`; `fallback` for both when empty. */
+export function entriesDateSpan(
+  entries: TimeEntry[],
+  fallback: string
+): { from: string; to: string } {
+  const keys = entries.map(entryDayKey).sort();
+  return { from: keys[0] ?? fallback, to: keys[keys.length - 1] ?? fallback };
+}
+
 /**
  * Build a structured report for the inclusive [from, to] range. Entries are
  * grouped by day, then by task lineage within each day (re-runs merged), exactly
@@ -177,9 +186,16 @@ export function reportToTxt(report: TrackReport): string {
 
 const CSV_HEADER = ['Date', 'Title', 'Tag', 'Start', 'End', 'Runs', 'Duration', 'Hours'] as const;
 
-/** Quote a CSV field when it holds a comma, quote, or newline; double inner quotes. */
+/**
+ * Prepare a CSV field: neutralize spreadsheet formula injection, then quote when
+ * the value holds a comma, quote, or newline (doubling any inner quotes).
+ */
 function csvField(value: string | number): string {
-  const s = String(value);
+  let s = String(value);
+  // A cell starting with = + - @ (or a leading control char) is run as a formula
+  // by Excel/Sheets; a leading apostrophe forces it to render as literal text.
+  // Task titles/tags are the only free-text cells here.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 

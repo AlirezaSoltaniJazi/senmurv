@@ -63,6 +63,7 @@ export function App(): ReactElement {
   const [recorderSteps, setRecorderSteps] = useState<WorkflowStep[]>([]);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
+  const [fontScale, setFontScale] = useState<number | undefined>(undefined);
 
   const customizeInRecorder = useCallback((s: RecorderSeed) => {
     setRecorderSeed(s);
@@ -75,23 +76,50 @@ export function App(): ReactElement {
     let cancelled = false;
     void (async () => {
       const res = await sendRuntimeMessage<Result<Prefs>>({ type: MESSAGE_TYPES.GET_PREFS });
-      if (!cancelled && res.ok) setFontSize(res.value.fontSize);
+      if (!cancelled && res.ok) {
+        setFontSize(res.value.fontSize);
+        setFontScale(res.value.fontScale);
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
 
+  // Reset scroll to the top of the panel whenever the active tab changes, so a
+  // new tab always starts at its header instead of inheriting the prior scroll.
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [tab]);
+
+  // Choosing a preset clears any manual fine-tune so the preset's zoom applies.
   const changeFontSize = useCallback((size: FontSize) => {
     setFontSize(size);
+    setFontScale(undefined);
     void sendRuntimeMessage({
       type: MESSAGE_TYPES.SAVE_PREFS,
       payload: { prefs: { fontSize: size } },
     });
   }, []);
 
+  // The slider overrides the preset with an exact zoom (kept alongside fontSize
+  // so the nearest preset chip can still show as active).
+  const changeFontScale = useCallback(
+    (scale: number) => {
+      setFontScale(scale);
+      void sendRuntimeMessage({
+        type: MESSAGE_TYPES.SAVE_PREFS,
+        payload: { prefs: { fontSize, fontScale: scale } },
+      });
+    },
+    [fontSize]
+  );
+
   return (
-    <div className={`app font-${fontSize}`}>
+    <div
+      className={`app font-${fontSize}`}
+      style={fontScale !== undefined ? { zoom: fontScale } : undefined}
+    >
       <header className="app-header">
         <div className="brand">
           <img className="brand-logo" src={LOGO_URL} alt="" />
@@ -150,7 +178,12 @@ export function App(): ReactElement {
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}
           {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} />}
           {tab === 'settings' && (
-            <SettingsTab fontSize={fontSize} onFontSizeChange={changeFontSize} />
+            <SettingsTab
+              fontSize={fontSize}
+              onFontSizeChange={changeFontSize}
+              fontScale={fontScale}
+              onFontScaleChange={changeFontScale}
+            />
           )}
         </Suspense>
       </main>

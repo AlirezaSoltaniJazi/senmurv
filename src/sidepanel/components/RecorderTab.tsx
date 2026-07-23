@@ -15,9 +15,9 @@ import {
   FIELD_TYPES,
   GENERATOR_LABELS,
   generatorsFor,
-  generateValue,
 } from '@/shared/generators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
+import { uniqueName } from '@/shared/script-io';
 import {
   buildWorkflowScript,
   describeStep,
@@ -49,6 +49,11 @@ type PickTarget = { mode: 'step'; id: string } | { mode: 'adhoc' } | null;
 
 const TARGET_KINDS: StepKind[] = ['fill', 'select', 'check', 'radio', 'clickEl', 'waitEl'];
 
+/** Current epoch ms — wrapped so clock reads stay outside render-purity analysis. */
+function nowMs(): number {
+  return Date.now();
+}
+
 export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): ReactElement {
   const [picking, setPicking] = useState(false);
   const [recording, setRecording] = useState(false);
@@ -58,6 +63,12 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   const [adhocOpen, setAdhocOpen] = useState(false);
   const [adhocFields, setAdhocFields] = useState<PickedField[]>([]);
   const [pickMode, setPickMode] = useState<'step' | 'adhoc' | null>(null);
+  // Name for "Save to Scripts" — pre-filled when opened via Scripts → Customize.
+  const [flowName, setFlowName] = useState('');
+  // Id of a just-added/duplicated step — scrolled into view and briefly flashed.
+  const [flashId, setFlashId] = useState<string | null>(null);
+
+  const stepListRef = useRef<HTMLOListElement>(null);
 
   const pickTargetRef = useRef<PickTarget>(null);
   const recordingRef = useRef(false);
@@ -129,10 +140,21 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   useEffect(() => {
     if (!seed) return;
     setSteps(seed.steps);
+    setFlowName(seed.name ?? '');
     setStatus(`Loaded ${seed.steps.length} step(s) — customize, then Run or Save.`);
     onSeedConsumed();
   }, [seed, onSeedConsumed, setSteps]);
   /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Scroll a newly added/duplicated step into view and flash it, then clear.
+  useEffect(() => {
+    if (!flashId) return undefined;
+    stepListRef.current
+      ?.querySelector(`[data-step-id="${flashId}"]`)
+      ?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    const t = setTimeout(() => setFlashId(null), 1200);
+    return () => clearTimeout(t);
+  }, [flashId]);
 
   // ── Record ────────────────────────────────────────────────────────────────
   async function toggleRecord(): Promise<void> {
@@ -175,7 +197,21 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
 
   // ── Steps ─────────────────────────────────────────────────────────────────
   function addStep(kind: StepKind): void {
-    setSteps((prev) => [...prev, newStep(kind)]);
+    const step = newStep(kind);
+    setSteps((prev) => [...prev, step]);
+    setFlashId(step.id);
+  }
+  // Insert an exact copy of a step (new id) right after it, then flash it.
+  function duplicateStep(id: string): void {
+    const copyId = newId('stp_');
+    setSteps((prev) => {
+      const i = prev.findIndex((s) => s.id === id);
+      if (i < 0) return prev;
+      const next = [...prev];
+      next.splice(i + 1, 0, { ...prev[i]!, id: copyId });
+      return next;
+    });
+    setFlashId(copyId);
   }
   function updateStep(id: string, patch: Partial<WorkflowStep>): void {
     setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -204,19 +240,26 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   function removeStep(id: string): void {
     setSteps((prev) => prev.filter((s) => s.id !== id));
   }
-
-  // Bake random-value fill generators into concrete values (faker can't run in
-  // the page). Fresh each call: "Run" re-randomizes; Save/Copy snapshot.
-  async function buildScriptFor(list: WorkflowStep[]): Promise<string> {
-    await ensureFaker(locale);
-    const resolved = list.map((s) =>
-      s.kind === 'fill' && s.generator && s.generator !== 'custom'
-        ? { ...s, value: generateValue(s.generator, locale, s.value) ?? '' }
-        : s
+  // Toggle a step on/off: a disabled step stays in the flow (and in a saved
+  // script) but is skipped at run time. The key is deleted when re-enabling.
+  function toggleStep(id: string): void {
+    setSteps((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const next: WorkflowStep = { ...s };
+        if (next.disabled) delete next.disabled;
+        else next.disabled = true;
+        return next;
+      })
     );
-    return buildWorkflowScript(resolved);
   }
-  function buildFlow(): Promise<string> {
+
+  // Fill generators are emitted as in-page `{random:…}` tokens (see workflow.ts),
+  // so a saved/copied flow re-randomizes on every run — no faker needed in the page.
+  function buildScriptFor(list: WorkflowStep[]): string {
+    return buildWorkflowScript(list);
+  }
+  function buildFlow(): string {
     return buildScriptFor(steps);
   }
   async function runSteps(list: WorkflowStep[], done: string): Promise<void> {
@@ -228,7 +271,7 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
     }
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
-      payload: { code: await buildScriptFor(list) },
+      payload: { code: buildScriptFor(list) },
     });
     if (res.ok) setStatus(done);
     else setError(res.error);
@@ -243,25 +286,54 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   async function copyFlow(): Promise<void> {
     if (!steps.length) return;
     try {
-      await navigator.clipboard.writeText(await buildFlow());
+      await navigator.clipboard.writeText(buildFlow());
       setStatus('Flow script copied to clipboard.');
     } catch {
       setError('Could not access the clipboard.');
     }
   }
   async function saveFlow(): Promise<void> {
+    setError(null);
+    setStatus(null);
     if (!steps.length) return;
-    await saveScript(`Recorded flow (${steps.length} steps)`, await buildFlow());
+    const name = flowName.trim();
+    if (!name) {
+      setError('Give the flow a name before saving.');
+      return;
+    }
+    // Pull the live list so a duplicate name can be detected (case-insensitive).
+    const listRes = await sendRuntimeMessage<Result<SavedScript[]>>({
+      type: MESSAGE_TYPES.GET_SCRIPTS,
+    });
+    const existing = listRes.ok ? listRes.value : [];
+    const clash = existing.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
+    const code = buildFlow();
+    const now = nowMs();
+
+    if (clash) {
+      const overwrite = window.confirm(
+        `A script named “${clash.name}” already exists.\n\n` +
+          `OK = Overwrite it\nCancel = Save as a copy`
+      );
+      if (overwrite) {
+        await persistScript({ ...clash, name, code, updatedAt: now });
+        return;
+      }
+      const copy = uniqueName(name, new Set(existing.map((s) => s.name)));
+      setFlowName(copy);
+      await persistScript({ id: newId('scr_'), name: copy, code, createdAt: now, updatedAt: now });
+      return;
+    }
+    await persistScript({ id: newId('scr_'), name, code, createdAt: now, updatedAt: now });
   }
 
-  async function saveScript(name: string, code: string): Promise<void> {
-    const now = Date.now();
-    const script: SavedScript = { id: newId('scr_'), name, code, createdAt: now, updatedAt: now };
+  // Upsert (by id) into Scripts and report the result.
+  async function persistScript(script: SavedScript): Promise<void> {
     const res = await sendRuntimeMessage<Result<SavedScript[]>>({
       type: MESSAGE_TYPES.SAVE_SCRIPT,
       payload: { script },
     });
-    if (res.ok) setStatus(`Saved to Scripts as “${name}”.`);
+    if (res.ok) setStatus(`Saved “${script.name}” to Scripts.`);
     else setError(res.error);
   }
 
@@ -442,9 +514,15 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
         <p className="hint">Record a flow, add steps, or use Ad-hoc Insert — then Run or Save.</p>
       )}
 
-      <ol className="step-list">
+      <ol className="step-list" ref={stepListRef}>
         {steps.map((s, i) => (
-          <li key={s.id} className="step-card">
+          <li
+            key={s.id}
+            data-step-id={s.id}
+            className={
+              'step-card' + (s.disabled ? ' disabled' : '') + (s.id === flashId ? ' flash' : '')
+            }
+          >
             <div className="step-head">
               <span className="step-kind">{STEP_KIND_LABELS[s.kind]}</span>
               <span className="step-desc" title={s.selector ?? ''}>
@@ -453,8 +531,20 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
               <span className="step-actions">
                 <button
                   type="button"
+                  className={s.disabled ? 'toggle-step' : 'toggle-step on'}
+                  title={
+                    s.disabled ? 'Enable step (currently skipped)' : 'Disable step (skip on run)'
+                  }
+                  aria-label={s.disabled ? 'Enable step' : 'Disable step'}
+                  aria-pressed={!s.disabled}
+                  onClick={() => toggleStep(s.id)}
+                >
+                  ⏻
+                </button>
+                <button
+                  type="button"
                   className="primary"
-                  disabled={busy}
+                  disabled={busy || s.disabled}
                   title="Run the flow from this step to the end"
                   aria-label="Run from this step"
                   onClick={() => void runFrom(i)}
@@ -470,6 +560,14 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                   onClick={() => moveStep(s.id, 1)}
                 >
                   ▼
+                </button>
+                <button
+                  type="button"
+                  title="Duplicate step"
+                  aria-label="Duplicate step"
+                  onClick={() => duplicateStep(s.id)}
+                >
+                  ⧉
                 </button>
                 <button type="button" className="danger" onClick={() => removeStep(s.id)}>
                   ✕
@@ -579,7 +677,8 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                 {(s.generator ?? 'custom') === 'custom' ? (
                   <input
                     className="name-input"
-                    placeholder="Value to type, e.g. John Smith"
+                    placeholder="Value or token, e.g. John Smith · {today+1} · {random:email}"
+                    title="Tokens resolve at run time: {today}, {today+1}, {random:email}, {random:number:1-99}"
                     value={s.value ?? ''}
                     onChange={(e) => updateStep(s.id, { value: e.target.value })}
                   />
@@ -633,20 +732,40 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
       </ol>
 
       {steps.length > 0 && (
-        <div className="row">
-          <button type="button" className="primary" onClick={() => void runFlow()}>
-            Run flow
-          </button>
-          <button type="button" onClick={() => void copyFlow()}>
-            Copy as script
-          </button>
-          <button type="button" onClick={() => void saveFlow()}>
-            Save to Scripts
-          </button>
-          <button type="button" onClick={() => setSteps([])}>
-            Clear
-          </button>
-        </div>
+        <>
+          <input
+            className="name-input"
+            placeholder="Flow name (required to save)"
+            aria-label="Flow name"
+            value={flowName}
+            onChange={(e) => setFlowName(e.target.value)}
+          />
+          <div className="row">
+            <button type="button" className="primary" onClick={() => void runFlow()}>
+              Run flow
+            </button>
+            <button type="button" onClick={() => void copyFlow()}>
+              Copy as script
+            </button>
+            <button
+              type="button"
+              disabled={!flowName.trim()}
+              title={flowName.trim() ? 'Save this flow to Scripts' : 'Enter a flow name first'}
+              onClick={() => void saveFlow()}
+            >
+              Save to Scripts
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setSteps([]);
+                setFlowName('');
+              }}
+            >
+              Clear
+            </button>
+          </div>
+        </>
       )}
 
       {status && <p className="status">{status}</p>}

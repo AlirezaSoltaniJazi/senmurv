@@ -105,7 +105,18 @@ export function importConflicts(current: SavedScript[], imported: ImportedScript
   );
 }
 
-function uniqueName(base: string, taken: Set<string>): string {
+/** Return `scripts` with the item at `from` moved to index `to` (both clamped). */
+export function reorderScripts(scripts: SavedScript[], from: number, to: number): SavedScript[] {
+  if (from === to || from < 0 || from >= scripts.length) return scripts;
+  const next = [...scripts];
+  const [moved] = next.splice(from, 1);
+  if (!moved) return scripts;
+  next.splice(Math.max(0, Math.min(to, next.length)), 0, moved);
+  return next;
+}
+
+/** `base` if free, else the first `base (n)` (n ≥ 2) not already in `taken`. */
+export function uniqueName(base: string, taken: Set<string>): string {
   if (!taken.has(base)) return base;
   let n = 2;
   while (taken.has(`${base} (${n})`)) n += 1;

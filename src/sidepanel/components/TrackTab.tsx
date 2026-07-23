@@ -288,7 +288,7 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
         </>
       )}
 
-      <TrackExport entries={entries} now={now} />
+      <TrackExport entries={entries} />
 
       <div className="chips view-toggle">
         <button

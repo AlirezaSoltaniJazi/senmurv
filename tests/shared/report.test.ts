@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildTrackReport,
+  entriesDateSpan,
   entriesInRange,
   renderReport,
   reportFilename,
@@ -63,6 +64,24 @@ describe('entriesInRange', () => {
       'b',
       'c',
     ]);
+  });
+});
+
+describe('entriesDateSpan', () => {
+  it('spans the earliest and latest entry days', () => {
+    const entries = [
+      makeEntry({ intervals: [{ start: at(2026, 6, 21, 9, 0), end: at(2026, 6, 21, 10, 0) }] }),
+      makeEntry({ intervals: [{ start: at(2026, 6, 19, 9, 0), end: at(2026, 6, 19, 10, 0) }] }),
+      makeEntry({ intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }] }),
+    ];
+    expect(entriesDateSpan(entries, '2026-07-22')).toEqual({
+      from: '2026-07-19',
+      to: '2026-07-21',
+    });
+  });
+
+  it('falls back to the given day when there are no entries', () => {
+    expect(entriesDateSpan([], '2026-07-22')).toEqual({ from: '2026-07-22', to: '2026-07-22' });
   });
 });
 
@@ -165,6 +184,46 @@ describe('reportToTxt', () => {
     const report = buildTrackReport([], '2026-07-20', '2026-07-21', NOW, GEN_AT);
     expect(reportToTxt(report)).toContain('No tasks in this range.');
   });
+
+  it('renders the net suffix and run count when timers overlap and a task re-runs', () => {
+    // Task X: two runs (9–11 + 11–11:30) = 2h30m; Task Y: 9:30–10 overlaps X.
+    // Summed total 3h; wall-clock net 2h30m (union 9:00–11:30).
+    const xRoot = makeEntry({
+      id: 'x',
+      title: 'Build',
+      tag: 'Ops',
+      intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 11, 0) }],
+    });
+    const xRerun = makeEntry({
+      id: 'x2',
+      parentId: 'x',
+      title: 'Build',
+      tag: 'Ops',
+      intervals: [{ start: at(2026, 6, 20, 11, 0), end: at(2026, 6, 20, 11, 30) }],
+    });
+    const y = makeEntry({
+      id: 'y',
+      title: 'Review',
+      tag: 'Ops',
+      intervals: [{ start: at(2026, 6, 20, 9, 30), end: at(2026, 6, 20, 10, 0) }],
+    });
+    const txt = reportToTxt(
+      buildTrackReport([xRoot, xRerun, y], '2026-07-20', '2026-07-20', NOW, GEN_AT)
+    );
+    expect(txt).toContain('Total: 3h 0m (net 2h 30m)');
+    expect(txt).toContain(', 2 runs');
+  });
+
+  it('renders an open range ("…") for a still-running task', () => {
+    const running = makeEntry({
+      id: 'run',
+      intervals: [{ start: at(2026, 6, 22, 17, 0), end: null }],
+      stoppedAt: null,
+    });
+    expect(
+      reportToTxt(buildTrackReport([running], '2026-07-22', '2026-07-22', NOW, GEN_AT))
+    ).toContain('17:00–…');
+  });
 });
 
 describe('reportToCsv', () => {
@@ -187,6 +246,31 @@ describe('reportToCsv', () => {
     const row = reportToCsv(report).trimEnd().split('\r\n')[1]!;
     expect(row).toContain('"Fix, ""now"""');
     expect(row).toContain('"A,B"');
+  });
+
+  it('leaves the End cell empty for a still-running task', () => {
+    const running = makeEntry({
+      intervals: [{ start: at(2026, 6, 22, 17, 0), end: null }],
+      stoppedAt: null,
+    });
+    const row = reportToCsv(buildTrackReport([running], '2026-07-22', '2026-07-22', NOW, GEN_AT))
+      .trimEnd()
+      .split('\r\n')[1]!;
+    // …,Start,End,… → End (5th column) is blank while the task is running.
+    expect(row.split(',')[4]).toBe('');
+  });
+
+  it('neutralizes spreadsheet formula injection in title/tag', () => {
+    const report = buildTrackReport(
+      [makeEntry({ title: '=1+1', tag: '+cmd' })],
+      '2026-07-20',
+      '2026-07-20',
+      NOW,
+      GEN_AT
+    );
+    const row = reportToCsv(report).trimEnd().split('\r\n')[1]!;
+    expect(row).toContain("'=1+1");
+    expect(row).toContain("'+cmd");
   });
 });
 
