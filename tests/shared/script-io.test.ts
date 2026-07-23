@@ -112,6 +112,12 @@ describe('applyScriptImport', () => {
     expect(uniqueName('Flow', new Set(['Flow', 'Flow (2)', 'Flow (3)']))).toBe('Flow (4)');
   });
 
+  it('uniqueName matches case-insensitively but keeps the base casing', () => {
+    // A case-only clash still gets a suffix (so "login" next to "Login" is disambiguated).
+    expect(uniqueName('login', new Set(['Login']))).toBe('login (2)');
+    expect(uniqueName('FLOW', new Set(['flow', 'Flow (2)']))).toBe('FLOW (3)');
+  });
+
   it('reorderScripts moves an item and leaves the array otherwise intact', () => {
     const list: SavedScript[] = ['a', 'b', 'c', 'd'].map((n) => ({
       id: `scr_${n}`,

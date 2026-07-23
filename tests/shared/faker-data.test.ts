@@ -68,6 +68,26 @@ describe('generatePhone', () => {
     }
   });
 
+  it('generates valid German mobiles (015x are 12 digits, 016x/017x are 11)', () => {
+    for (let i = 0; i < 80; i += 1) {
+      const national = generatePhone('de', false);
+      // 015x carry an 8-digit subscriber part (12 national digits); 016x/017x carry 7 (11).
+      if (national.startsWith('015')) {
+        expect(national, national).toMatch(/^015[127]\d{8}$/);
+      } else {
+        expect(national, national).toMatch(/^01(60|70|71|72|75)\d{7}$/);
+      }
+    }
+  });
+
+  it('never generates a Spanish 70x personal-numbering number', () => {
+    for (let i = 0; i < 80; i += 1) {
+      const national = generatePhone('es', false);
+      expect(national, national).toMatch(/^(6\d{8}|7[1-9]\d{7})$/);
+      expect(national.startsWith('70'), national).toBe(false);
+    }
+  });
+
   it('produces digits-only mobile numbers for every locale (no landline text)', () => {
     for (const locale of SUPPORTED_LOCALES) {
       const national = generatePhone(locale, false);

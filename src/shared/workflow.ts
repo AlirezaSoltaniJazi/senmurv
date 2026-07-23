@@ -583,10 +583,19 @@ function toStep(item: unknown): WorkflowStep | null {
   if (typeof o.label === 'string') step.label = o.label;
   if (typeof o.selector === 'string') step.selector = o.selector;
   if (typeof o.value === 'string') {
-    // A `{random:KIND}` token round-trips back to a random generator (so the
-    // Recorder shows the dropdown, not a literal token); anything else is a value.
-    const rm = /^\{random:([a-zA-Z]+)(?::[^}]*)?\}$/.exec(o.value);
-    if (step.kind === 'fill' && rm && RANDOM_TOKEN_GENERATORS.has(rm[1] as GeneratorId)) {
+    // A BARE `{random:KIND}` token round-trips back to a random generator (so the
+    // Recorder shows the dropdown, not a literal token). A token WITH an argument
+    // (e.g. `{random:number:1-99}`) is kept as a literal value instead: the generator
+    // dropdown has nowhere to hold the arg, so collapsing it would silently drop the
+    // bound — `resolveValue` still re-randomizes the literal on every run. Anything
+    // else is a plain value.
+    const rm = /^\{random:([a-zA-Z]+)(?::([^}]*))?\}$/.exec(o.value);
+    if (
+      step.kind === 'fill' &&
+      rm &&
+      rm[2] === undefined &&
+      RANDOM_TOKEN_GENERATORS.has(rm[1] as GeneratorId)
+    ) {
       step.generator = rm[1] as GeneratorId;
     } else {
       step.value = o.value;
@@ -603,6 +612,15 @@ function toStep(item: unknown): WorkflowStep | null {
   if (typeof o.code === 'string') step.code = o.code;
   return step;
 }
+
+/** Single-char string escapes we decode; `\uXXXX` is handled separately. */
+const STEP_ESCAPES: Record<string, string> = {
+  n: '\n',
+  t: '\t',
+  r: '\r',
+  b: '\b',
+  f: '\f',
+};
 
 /**
  * Read one array of flat objects (primitive values only) from the start of
@@ -645,7 +663,13 @@ function parseObjectArray(src: string): Record<string, unknown>[] | null {
       if (c === '\\') {
         const e = src.charAt(i);
         i += 1;
-        out += e === 'n' ? '\n' : e === 't' ? '\t' : e === 'r' ? '\r' : e;
+        if (e === 'u' && /^[0-9a-fA-F]{4}$/.test(src.slice(i, i + 4))) {
+          // `\uXXXX` — JSON.stringify emits this for control chars; decode 4 hex digits.
+          out += String.fromCharCode(parseInt(src.slice(i, i + 4), 16));
+          i += 4;
+        } else {
+          out += STEP_ESCAPES[e] ?? e;
+        }
       } else if (c === quote) {
         return out;
       } else {

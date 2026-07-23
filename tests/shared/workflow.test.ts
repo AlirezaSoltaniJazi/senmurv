@@ -167,6 +167,39 @@ describe('parseWorkflowScript', () => {
     expect(code).not.toContain('"value": "{random:');
   });
 
+  it('keeps a ranged {random:number:1-99} token literal (does not drop the bound)', () => {
+    const step: WorkflowStep = {
+      id: 'r',
+      kind: 'fill',
+      selector: '#n',
+      value: '{random:number:1-99}',
+    };
+    const code = buildWorkflowScript([step]);
+    expect(code).toContain('"value": "{random:number:1-99}"');
+    const parsed = parseWorkflowScript(code);
+    // A token WITH an arg stays a literal value (the generator dropdown has nowhere
+    // to hold the arg), so it must NOT collapse to generator:'number'.
+    expect(parsed![0]!.generator).toBeUndefined();
+    expect(parsed![0]!.value).toBe('{random:number:1-99}');
+    // Re-saving keeps the 1-99 bound instead of re-emitting an unbounded token.
+    expect(buildWorkflowScript(parsed!)).toContain('"value": "{random:number:1-99}"');
+  });
+
+  it('still collapses a BARE {random:number} token to the generator dropdown', () => {
+    const code = buildWorkflowScript([
+      { id: 'b', kind: 'fill', selector: '#n', value: '{random:number}' },
+    ]);
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'number' });
+    expect(parsed![0]!.value).toBeUndefined();
+  });
+
+  it('round-trips control characters (\\uXXXX / \\b / \\f escapes) without corruption', () => {
+    const raw = 'a\u000bb\u0008c\u000cd\u0000e'; // vertical tab, backspace, form feed, NUL
+    const code = buildWorkflowScript([{ id: 'u', kind: 'fill', selector: '#c', value: raw }]);
+    expect(parseWorkflowScript(code)![0]!.value).toBe(raw);
+  });
+
   it('embeds the in-page random resolver so tokens work in a saved script', () => {
     const code = buildWorkflowScript([
       { id: '1', kind: 'fill', selector: '#e', generator: 'email' },

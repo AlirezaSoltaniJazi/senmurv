@@ -110,7 +110,9 @@ export function AutocompleteInput({
         aria-expanded={visible}
         aria-controls={listId}
         aria-autocomplete="list"
-        aria-activedescendant={activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined}
+        aria-activedescendant={
+          visible && activeIndex >= 0 ? `${listId}-opt-${activeIndex}` : undefined
+        }
         autoComplete="off"
         placeholder={placeholder}
         aria-label={ariaLabel}

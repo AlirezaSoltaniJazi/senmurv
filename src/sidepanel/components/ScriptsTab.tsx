@@ -210,8 +210,9 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
     const from = dragIndex;
     endDrag();
     if (from === null) return;
-    const next = reorderScripts(scripts, from, index);
-    if (next === scripts) return;
+    const prev = scripts;
+    const next = reorderScripts(prev, from, index);
+    if (next === prev) return;
     setScripts(next); // optimistic — reflect the new order immediately
     const res = await sendRuntimeMessage<Result<SavedScript[]>>({
       type: MESSAGE_TYPES.SET_SCRIPTS,
@@ -221,6 +222,7 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
       setScripts(res.value);
       setStatus('Reordered scripts.');
     } else {
+      setScripts(prev); // roll back the optimistic reorder — the write did not land
       setError(res.error);
     }
   }

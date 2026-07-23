@@ -10,6 +10,7 @@ import {
   reportToJson,
   reportToTxt,
 } from '@/shared/report';
+import type { TrackReport } from '@/shared/report';
 import type { TimeEntry } from '@/shared/types';
 
 /** Local epoch ms; `month` is 0-based (JS Date convention). */
@@ -308,5 +309,29 @@ describe('renderReport / reportFilename / reportMimeType', () => {
     expect(reportMimeType('txt')).toBe('text/plain');
     expect(reportMimeType('csv')).toBe('text/csv');
     expect(reportMimeType('json')).toBe('application/json');
+  });
+
+  describe('net-suffix rendering', () => {
+    const base: TrackReport = {
+      from: '2026-07-20',
+      to: '2026-07-20',
+      generatedAt: '2026-07-20T00:00:00.000Z',
+      days: [],
+      totalMs: 0,
+      netMs: 0,
+      taskCount: 0,
+    };
+
+    it('omits "(net …)" when total and net floor to the same minute', () => {
+      // 4_999_999 and 4_980_001 both floor to 83 min -> "1h 23m", so no redundant suffix.
+      const txt = reportToTxt({ ...base, totalMs: 4_999_999, netMs: 4_980_001 });
+      expect(txt).toContain('Total: 1h 23m\n');
+      expect(txt).not.toContain('(net');
+    });
+
+    it('shows "(net …)" when the rendered labels differ', () => {
+      const txt = reportToTxt({ ...base, totalMs: 7_200_000, netMs: 3_600_000 });
+      expect(txt).toContain('Total: 2h 0m (net 1h 0m)');
+    });
   });
 });

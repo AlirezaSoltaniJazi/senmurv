@@ -148,7 +148,10 @@ export function buildTrackReport(
 /** A day's "3h 15m (net 3h 00m)" summary; the net suffix appears only when it differs. */
 function totalSummary(totalMs: number, netMs: number): string {
   const total = formatDurationShort(totalMs);
-  return netMs < totalMs ? `${total} (net ${formatDurationShort(netMs)})` : total;
+  const net = formatDurationShort(netMs);
+  // Compare the RENDERED labels (both floored to whole minutes), not raw ms, so a
+  // sub-minute overlap trim doesn't print a redundant "(net …)" that reads the same.
+  return net !== total && netMs < totalMs ? `${total} (net ${net})` : total;
 }
 
 /** A task's "09:00–10:30" span; an open run ends in "…". */
