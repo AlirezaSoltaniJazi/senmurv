@@ -1,5 +1,6 @@
 import { BLOCKED_URL_PREFIXES, MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
+import type { RuntimeMessage } from '@/shared/messages';
 import {
   deleteChecklist,
   deleteNote,
@@ -125,22 +126,16 @@ async function injectPicker(tabId: number): Promise<void> {
   await chrome.scripting.executeScript({ target: { tabId }, files });
 }
 
-type TabStart =
-  | typeof MESSAGE_TYPES.START_PICK
-  | typeof MESSAGE_TYPES.START_PICK_FIELDS
-  | typeof MESSAGE_TYPES.START_RECORD;
-
-/** Send a start message, retrying briefly while a just-injected script loads. */
-async function sendTabMessageWithRetry(
+/** Send a message, retrying briefly while a just-injected content script loads. */
+async function sendTabMessageWithRetry<T>(
   tabId: number,
-  type: TabStart,
+  message: RuntimeMessage,
   attempts = 12
-): Promise<void> {
+): Promise<T> {
   let lastError: unknown;
   for (let i = 0; i < attempts; i += 1) {
     try {
-      await sendTabMessage(tabId, { type });
-      return;
+      return await sendTabMessage<T>(tabId, message);
     } catch (err) {
       lastError = err;
       await delay(50);
@@ -150,34 +145,39 @@ async function sendTabMessageWithRetry(
 }
 
 /**
- * Start an in-page mode (locator pick, field pick, or record). If the content
- * script isn't there yet (pre-existing tab), inject it and retry — the content
- * listener registers asynchronously after its loader resolves.
+ * Ask the content script something and return its answer. Injects and retries
+ * for a tab that predates the extension, where `document_idle` never ran.
+ *
+ * `startInTab` and `stopInTab` below are the fire-and-forget variants: they
+ * differ only in what they do with the reply and with failure.
  */
-async function startPicking(tabId: number, type: TabStart): Promise<Result<void>> {
+async function askTab<T>(tabId: number, message: RuntimeMessage): Promise<Result<T>> {
   try {
-    await sendTabMessage(tabId, { type });
-    return { ok: true, value: undefined };
+    return { ok: true, value: await sendTabMessage<T>(tabId, message) };
   } catch {
     try {
       await injectPicker(tabId);
-      await sendTabMessageWithRetry(tabId, type);
-      return { ok: true, value: undefined };
+      return { ok: true, value: await sendTabMessageWithRetry<T>(tabId, message) };
     } catch {
       return { ok: false, error: 'Could not reach the page. Try reloading the tab.' };
     }
   }
 }
 
-/** Stop an in-page mode (cancel pick / stop record); a no-op if no content script. */
-async function cancelPick(
-  tabId: number,
-  type:
-    | typeof MESSAGE_TYPES.CANCEL_PICK
-    | typeof MESSAGE_TYPES.STOP_RECORD = MESSAGE_TYPES.CANCEL_PICK
-): Promise<Result<void>> {
+/**
+ * Start an in-page mode (locator pick, field pick, record, or a Tools mode).
+ * The content listener registers asynchronously after its loader resolves,
+ * hence the retry.
+ */
+async function startInTab(tabId: number, message: RuntimeMessage): Promise<Result<void>> {
+  const res = await askTab<unknown>(tabId, message);
+  return res.ok ? { ok: true, value: undefined } : res;
+}
+
+/** Stop an in-page mode; a no-op (and never an error) if no content script is there. */
+async function stopInTab(tabId: number, message: RuntimeMessage): Promise<Result<void>> {
   try {
-    await sendTabMessage(tabId, { type });
+    await sendTabMessage(tabId, message);
   } catch {
     // Nothing to stop — the content script isn't running on this tab.
   }
@@ -339,31 +339,21 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       return true;
 
     case MESSAGE_TYPES.START_PICK:
-      withActiveRunnableTab((tabId) => startPicking(tabId, MESSAGE_TYPES.START_PICK)).then(
-        sendResponse
-      );
-      return true;
-
     case MESSAGE_TYPES.START_PICK_FIELDS:
-      withActiveRunnableTab((tabId) => startPicking(tabId, MESSAGE_TYPES.START_PICK_FIELDS)).then(
-        sendResponse
-      );
+    case MESSAGE_TYPES.START_RECORD:
+    case MESSAGE_TYPES.START_TOOL_MODE:
+      withActiveRunnableTab((tabId) => startInTab(tabId, message)).then(sendResponse);
       return true;
 
     case MESSAGE_TYPES.CANCEL_PICK:
-      withActiveRunnableTab((tabId) => cancelPick(tabId)).then(sendResponse);
-      return true;
-
-    case MESSAGE_TYPES.START_RECORD:
-      withActiveRunnableTab((tabId) => startPicking(tabId, MESSAGE_TYPES.START_RECORD)).then(
-        sendResponse
-      );
-      return true;
-
     case MESSAGE_TYPES.STOP_RECORD:
-      withActiveRunnableTab((tabId) => cancelPick(tabId, MESSAGE_TYPES.STOP_RECORD)).then(
-        sendResponse
-      );
+    case MESSAGE_TYPES.STOP_TOOL_MODE:
+      withActiveRunnableTab((tabId) => stopInTab(tabId, message)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.TOOL_PING:
+    case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
+      withActiveRunnableTab((tabId) => askTab(tabId, message)).then(sendResponse);
       return true;
 
     default:

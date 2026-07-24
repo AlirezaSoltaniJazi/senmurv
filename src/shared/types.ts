@@ -114,6 +114,30 @@ export interface LocatorSet {
 export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 // ---------------------------------------------------------------------------
+// In-page modes (picker, recorder, Tools tab)
+// ---------------------------------------------------------------------------
+
+/**
+ * The single exclusive in-page mode. The content script runs at most one of
+ * these at a time — `enterMode` in picker.ts stops the current one before
+ * starting the next, which is also what restores the page cursor exactly once.
+ *
+ * This is the only mode type; it is what crosses the wire in START/STOP_TOOL_MODE.
+ */
+export type PageMode =
+  | 'idle'
+  | 'pick-locator'
+  | 'pick-fields'
+  | 'record'
+  | 'measure'
+  | 'color'
+  | 'font'
+  | 'taborder';
+
+/** Modes the Tools tab starts. A subset of PageMode, excluding the pre-existing ones. */
+export type ToolMode = Extract<PageMode, 'measure' | 'color' | 'font' | 'taborder'>;
+
+// ---------------------------------------------------------------------------
 // My Tasks (checklists) + user preferences
 // ---------------------------------------------------------------------------
 

@@ -1,24 +1,11 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { FRAMEWORK_LABELS, FRAMEWORKS, MESSAGE_TYPES } from '@/shared/constants';
+import { MESSAGE_TYPES } from '@/shared/constants';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
-import type { Framework, LocatorKind, LocatorSet, Result } from '@/shared/types';
-import { CopyButton } from './CopyButton';
-
-type FrameworkFilter = Framework | 'all';
-
-const FILTERS: { key: FrameworkFilter; label: string }[] = [
-  { key: 'all', label: 'All' },
-  ...FRAMEWORKS.map((f) => ({ key: f, label: FRAMEWORK_LABELS[f] ?? f })),
-];
-
-function CountBadge({ count }: { count: number | undefined }): ReactElement | null {
-  if (count === undefined) return null;
-  if (count === 1) return <span className="count unique">unique</span>;
-  if (count === 0) return <span className="count none">no match</span>;
-  return <span className="count many">{count} matches</span>;
-}
+import type { LocatorKind, LocatorSet, Result } from '@/shared/types';
+import { FrameworkChips, LocatorSuggestions } from './LocatorSuggestions';
+import type { FrameworkFilter } from './LocatorSuggestions';
 
 export function LocatorTab(): ReactElement {
   const [picking, setPicking] = useState(false);
@@ -140,55 +127,8 @@ export function LocatorTab(): ReactElement {
             )}
           </div>
 
-          <div className="chips">
-            {FILTERS.map((f) => (
-              <button
-                key={f.key}
-                type="button"
-                className={filter === f.key ? 'chip active' : 'chip'}
-                onClick={() => setFilter(f.key)}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
-          <ul className="locator-list">
-            {result.suggestions.map((s) => {
-              const shown =
-                filter === 'all' ? s.snippets : s.snippets.filter((sn) => sn.framework === filter);
-              return (
-                <li key={`${s.strategy}-${s.value}`} className="locator-card">
-                  <div className="locator-head">
-                    <span className="locator-label">{s.label}</span>
-                    {s.recommended && <span className="badge">recommended</span>}
-                    <CountBadge count={s.matchCount} />
-                    <span className={`quality q-${s.quality}`}>{s.quality}</span>
-                  </div>
-                  <div className="locator-value">
-                    <code>{s.value}</code>
-                    <CopyButton text={s.value} />
-                  </div>
-                  {shown.length > 0 && (
-                    <ul className="snippet-list">
-                      {shown.map((sn) => (
-                        <li key={`${sn.framework}-${sn.label}`} className="snippet-row">
-                          <div className="snippet-head">
-                            <span className="snippet-fw">
-                              {FRAMEWORK_LABELS[sn.framework] ?? sn.framework}
-                            </span>
-                            <span className="snippet-label">{sn.label}</span>
-                            <CopyButton text={sn.code} />
-                          </div>
-                          <code className="snippet-code">{sn.code}</code>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </li>
-              );
-            })}
-          </ul>
+          <FrameworkChips filter={filter} onChange={setFilter} />
+          <LocatorSuggestions suggestions={result.suggestions} filter={filter} />
         </>
       )}
     </div>

@@ -31,7 +31,11 @@ src/
 ├── background/
 │   └── service-worker.ts   # sidePanel behavior, message hub, script execution, locator-match counting
 ├── content/
-│   └── picker.ts           # idle until START_PICK; Shadow-DOM hover overlay + click capture; computes locators
+│   ├── picker.ts           # message router + mode arbiter; picks elements; lazily imports ./tools
+│   ├── context.ts          # contextAlive + notify (terminal) / notifyQuiet (streams)
+│   ├── overlay.ts          # the one Shadow-DOM overlay: rect pool, tones, isOurHost
+│   ├── recorder.ts         # passive interaction recorder
+│   └── tools.ts            # DYNAMIC-import entry for the Tools-tab in-page modes
 ├── sidepanel/
 │   ├── index.html
 │   ├── main.tsx            # React root
@@ -103,6 +107,9 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 - **Typed discriminated unions for messages** — `RuntimeMessage` uses a `type` field; validate with type guards before handling.
 - **Business logic in `shared/`** — `locators.ts` and `faker-data.ts` are PURE and unit-testable; keep components thin.
 - **Content script bridges only** — `picker.ts` handles DOM highlight/capture and delegates locator computation to `shared/locators.ts`; no app state lives there.
+- **One in-page mode at a time** — every mode transition goes through `enterMode` in `picker.ts`, which stops the outgoing mode first. Never add a pairwise `if (otherModeActive) return` guard; they do not scale. The **arbiter** owns the page cursor, not the mode.
+- **Streams use `notifyQuiet`, terminal messages use `notify`** (`src/content/context.ts`). A panel-addressed message can fail to be answered when the panel is closed; `notify` treats that as "we are orphaned, tear down", which is right for a single pick but would kill a hover mode on its first frame.
+- **Keep the Tools chunk lazy** — `picker.ts` parses on every http/https page load, so the Tools modes sit behind `import('./tools')`. Nothing reachable from `src/shared/tools/*` may also be reachable from `picker.ts`'s _static_ graph. `tests/build/bundle-placement.test.ts` enforces this against `dist/`.
 - **Shadow DOM for injected UI** — the picker's highlight overlay must not pollute host-page styles.
 - **Side panel over popup** — the panel persists while the user interacts with the page (required for element picking).
 
@@ -111,7 +118,9 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 | File                               | Purpose                                                                        |
 | ---------------------------------- | ------------------------------------------------------------------------------ |
 | `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting |
-| `src/content/picker.ts`            | Hover-highlight + click-capture element picker                                 |
+| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader            |
+| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                     |
+| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                    |
 | `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting              |
 | `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                            |
 | `src/shared/messages.ts`           | `RuntimeMessage` union, `sendMessage` helper, type guards                      |
@@ -164,6 +173,16 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 
 1. Create `src/sidepanel/components/MyTab.tsx` (named export, explicit return type, thin — delegate to `shared/`).
 2. Register it in `src/sidepanel/App.tsx` tab routing.
+
+### Adding a Tools sub-tool
+
+1. Pure logic in `src/shared/tools/<tool>.ts` — chrome-free and `Document`-injectable so happy-dom can drive it. Never import it from `picker.ts`'s static graph.
+2. In-page bridge in `src/content/tools/<tool>.ts`, registered in the `HANDLERS` map in `src/content/tools.ts` (only if it needs an interactive mode).
+3. UI in `src/sidepanel/components/tools/<Tool>Tool.tsx`, rendered by `ToolsTab` inside `ToolShell` — which already owns the title, the standing limits and stop-on-unmount.
+4. Flip `isReady: true` on its entry in `src/shared/tools.ts`, and add any new `PageMode` member to `src/shared/types.ts`.
+5. Tests in `tests/shared/tools/<tool>.test.ts`. `src/content/*` is not unit-testable — happy-dom has no layout engine (`getBoundingClientRect()` returns zeros).
+
+Imports from these nested directories must use `@/` aliases (`@/content/overlay`), never `../`.
 
 ## Testing
 

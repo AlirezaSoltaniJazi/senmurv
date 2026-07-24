@@ -5,9 +5,11 @@ import type {
   LocatorKind,
   LocatorSet,
   Note,
+  PageMode,
   Prefs,
   SavedScript,
   TimeEntry,
+  ToolMode,
 } from '@/shared/types';
 import type { RecordedStep } from '@/shared/workflow';
 
@@ -42,7 +44,16 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.SAVE_NOTE; payload: { note: Note } }
   | { type: typeof MESSAGE_TYPES.DELETE_NOTE; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.GET_PREFS }
-  | { type: typeof MESSAGE_TYPES.SAVE_PREFS; payload: { prefs: Prefs } };
+  | { type: typeof MESSAGE_TYPES.SAVE_PREFS; payload: { prefs: Prefs } }
+  // Tools tab transport. TOOL_PING forces the lazy in-page tools chunk to load
+  // and answers once it has, so the panel can tell "page unreachable" apart
+  // from "chunk failed to load" before a tool ever runs.
+  | { type: typeof MESSAGE_TYPES.TOOL_PING }
+  | { type: typeof MESSAGE_TYPES.START_TOOL_MODE; payload: { mode: ToolMode } }
+  | { type: typeof MESSAGE_TYPES.STOP_TOOL_MODE; payload: { mode: PageMode | 'all' } }
+  // A null selector clears the highlight — without it a highlight can never be
+  // removed, which is the trap this signature exists to avoid.
+  | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

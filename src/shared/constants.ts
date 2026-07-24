@@ -35,6 +35,13 @@ export const MESSAGE_TYPES = {
   DELETE_NOTE: 'DELETE_NOTE',
   GET_PREFS: 'GET_PREFS',
   SAVE_PREFS: 'SAVE_PREFS',
+  // Tools tab — the generic in-page transport every sub-tool shares. Tool-
+  // specific messages (UNLOCK_PAGE, CLEAR_SITE_DATA, TOOL_STREAM, …) are added
+  // by the phase that implements the tool, so no type ships without a handler.
+  TOOL_PING: 'TOOL_PING',
+  START_TOOL_MODE: 'START_TOOL_MODE',
+  STOP_TOOL_MODE: 'STOP_TOOL_MODE',
+  HIGHLIGHT_ELEMENT: 'HIGHLIGHT_ELEMENT',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -132,6 +139,30 @@ export const BLOCKED_URL_PREFIXES = [
   'chrome-extension://',
   'edge://',
   'about:',
+  // The declared content script matches http/https only, so these never have a
+  // picker to talk to; naming them turns a confusing injection failure into a
+  // clear "this page does not allow extensions" message.
+  'file://',
+  'view-source:',
   'https://chrome.google.com/webstore',
   'https://chromewebstore.google.com',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Tools tab
+// ---------------------------------------------------------------------------
+
+/**
+ * Attribute stamped on elements God Mode reveals. The injected override sheet
+ * keys off it, so revert only has to drop the attribute and remove the sheet.
+ */
+export const GOD_MARKER_ATTR = 'data-senmurv-unlocked';
+
+/** Cap on tab-order stops, so a pathological page can't stall the scan. */
+export const TAB_ORDER_MAX_STOPS = 500;
+
+/** Snap-to-element-edge threshold for the Measure tool, in CSS px. */
+export const MEASURE_SNAP_PX = 6;
+
+/** Max in-page stream rate (Hz) for hover/drag tools; see notifyQuiet. */
+export const TOOL_STREAM_HZ = 10;

@@ -35,3 +35,32 @@ Save and run JS in the page.
 - **Run**: injected into the active tab's **MAIN world** via `chrome.scripting.executeScript`, so scripts can touch the page's own framework/state — exactly like a bookmarklet.
 - **No defaults**: the script list starts empty — nothing is seeded.
 - **CSP caveat**: execution follows the **page's** CSP. Sites that forbid `unsafe-eval` will reject it (same as a bookmarklet); the error is surfaced in the UI.
+
+## 4. Tools
+
+A launcher of seven page-inspection tools. Pick one and it takes the panel's
+full height; **← Tools** goes back.
+
+| Tool                  | What it does                                                                                                                                                                                                                                                                                       |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Unlock (God Mode)** | Strips client-side locks so you can drive a disabled or hidden form. Inspired by [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM), whose God Mode is Xrm-specific — Senmurv's works on any page, and additionally uses the Xrm API when `window.Xrm` is present. |
+| **Site data**         | Clears this origin's storage and offers a cache-bypassing reload.                                                                                                                                                                                                                                  |
+| **Measure**           | Drag a region, or hover an element for its box model.                                                                                                                                                                                                                                              |
+| **Colour**            | An element's colours in every format, plus its WCAG contrast verdict.                                                                                                                                                                                                                              |
+| **Tab order**         | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                         |
+| **Accessibility**     | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                |
+| **Fonts**             | Typography of the hovered element.                                                                                                                                                                                                                                                                 |
+
+Each tool states its own limits in the panel rather than in a footnote. Shared
+ones: **top frame only** (cross-origin iframes are unreachable), closed shadow
+roots cannot be inspected, and the tools are unavailable on `chrome://`,
+`file://`, `view-source:` and Web Store pages.
+
+> **Status:** the tab and its shared plumbing have shipped; the individual tools
+> are landing one release at a time, and an unbuilt tool says so when opened.
+
+### How it is wired
+
+The in-page half of these tools is a **separate chunk** loaded on first use, so
+it never parses on ordinary page loads. The content script runs at most one
+in-page mode at a time — see `docs/architecture.md` → _In-page modes_.

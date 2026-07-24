@@ -99,6 +99,50 @@ describe('picking + scripts CRUD', () => {
     expect((res?.value as SavedScript[]).map((s) => s.id)).toEqual(['scr_1', 'scr_2']);
   });
 
+  it('relays START_TOOL_MODE with its payload intact', async () => {
+    const res = await send({
+      type: MESSAGE_TYPES.START_TOOL_MODE,
+      payload: { mode: 'measure' },
+    });
+    expect(res).toEqual({ ok: true, value: undefined });
+    expect(chromeMock.tabs.sendMessage).toHaveBeenCalledWith(1, {
+      type: MESSAGE_TYPES.START_TOOL_MODE,
+      payload: { mode: 'measure' },
+    });
+  });
+
+  it('returns the content script’s answer for TOOL_PING instead of discarding it', async () => {
+    chromeMock.tabs.sendMessage.mockResolvedValueOnce({ ok: true, value: { ready: true } });
+    const res = await send({ type: MESSAGE_TYPES.TOOL_PING });
+    expect(res).toEqual({ ok: true, value: { ok: true, value: { ready: true } } });
+  });
+
+  it('reports an unreachable page for TOOL_PING once injection also fails', async () => {
+    chromeMock.tabs.sendMessage.mockRejectedValue(new Error('no receiver'));
+    chromeMock.scripting.executeScript.mockRejectedValueOnce(new Error('cannot inject'));
+    const res = await send({ type: MESSAGE_TYPES.TOOL_PING });
+    expect(res?.ok).toBe(false);
+    expect(res?.error).toMatch(/Could not reach the page/);
+  });
+
+  it('never fails STOP_TOOL_MODE, even with no content script present', async () => {
+    chromeMock.tabs.sendMessage.mockRejectedValueOnce(new Error('no receiver'));
+    const res = await send({ type: MESSAGE_TYPES.STOP_TOOL_MODE, payload: { mode: 'all' } });
+    expect(res).toEqual({ ok: true, value: undefined });
+  });
+
+  it.each([
+    ['chrome://extensions'],
+    ['file:///Users/me/page.html'],
+    ['view-source:https://example.com'],
+    ['https://chromewebstore.google.com/detail/x'],
+  ])('refuses to reach a blocked page: %s', async (url) => {
+    chromeMock.tabs.query.mockResolvedValueOnce([{ id: 2, url, active: true }]);
+    const res = await send({ type: MESSAGE_TYPES.TOOL_PING });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
   it('counts matches for TEST_LOCATOR', async () => {
     chromeMock.scripting.executeScript.mockResolvedValueOnce([{ result: { ok: true, count: 3 } }]);
     const res = await send({

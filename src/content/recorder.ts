@@ -1,8 +1,8 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildCssSelector } from '@/shared/locators';
-import { sendRuntimeMessage } from '@/shared/messages';
 import type { RecordedStep } from '@/shared/workflow';
+import { notify } from './context';
 
 // Passive interaction recorder: while active, it observes real clicks / inputs /
 // selects / key presses and streams one WorkflowStep-like action per event to the
@@ -22,22 +22,9 @@ export function isRecording(): boolean {
   return recording;
 }
 
-function contextAlive(): boolean {
-  try {
-    return Boolean(chrome.runtime?.id);
-  } catch {
-    return false;
-  }
-}
-
 function send(step: RecordedStep): void {
-  if (!contextAlive()) {
-    stopRecording();
-    return;
-  }
-  void sendRuntimeMessage({ type: MESSAGE_TYPES.ACTION_RECORDED, payload: { step } }).catch(() =>
-    stopRecording()
-  );
+  // A recorded step is terminal, so an orphaned context tears recording down.
+  notify({ type: MESSAGE_TYPES.ACTION_RECORDED, payload: { step } }, stopRecording);
 }
 
 function trimmedText(el: Element): string {

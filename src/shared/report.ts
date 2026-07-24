@@ -1,3 +1,4 @@
+import { csvField } from '@/shared/csv';
 import {
   absoluteDayLabel,
   entryDayKey,
@@ -188,19 +189,6 @@ export function reportToTxt(report: TrackReport): string {
 }
 
 const CSV_HEADER = ['Date', 'Title', 'Tag', 'Start', 'End', 'Runs', 'Duration', 'Hours'] as const;
-
-/**
- * Prepare a CSV field: neutralize spreadsheet formula injection, then quote when
- * the value holds a comma, quote, or newline (doubling any inner quotes).
- */
-function csvField(value: string | number): string {
-  let s = String(value);
-  // A cell starting with = + - @ (or a leading control char) is run as a formula
-  // by Excel/Sheets; a leading apostrophe forces it to render as literal text.
-  // Task titles/tags are the only free-text cells here.
-  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
 
 /** Spreadsheet-friendly CSV (opens directly in Excel/Sheets); one row per day-task. */
 export function reportToCsv(report: TrackReport): string {

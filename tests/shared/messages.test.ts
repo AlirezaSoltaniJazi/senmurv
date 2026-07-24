@@ -9,6 +9,19 @@ describe('isRuntimeMessage', () => {
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.ELEMENT_PICKED, payload: {} })).toBe(true);
   });
 
+  it('accepts the Tools transport types', () => {
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.TOOL_PING })).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.START_TOOL_MODE, payload: { mode: 'measure' } })
+    ).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.STOP_TOOL_MODE, payload: { mode: 'all' } })).toBe(
+      true
+    );
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.HIGHLIGHT_ELEMENT, payload: { selector: null } })
+    ).toBe(true);
+  });
+
   it('rejects unknown or malformed values', () => {
     expect(isRuntimeMessage(null)).toBe(false);
     expect(isRuntimeMessage(undefined)).toBe(false);
