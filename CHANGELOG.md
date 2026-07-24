@@ -6,6 +6,29 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Tools tab** — a new side-panel tab that will host seven page-inspection
+  tools: Unlock (God Mode), Site data, Measure, Colour, Tab order,
+  Accessibility and Fonts. This release lands the tab, its launcher and the
+  shared plumbing; each tool arrives in a later release.
+- **Highlight an element on the page** — a `HIGHLIGHT_ELEMENT` message scrolls
+  an element into view and outlines it, so a findings list in the panel can
+  point at the thing it is describing.
+
+### Changed
+
+- **One in-page mode at a time** — the content script now routes every mode
+  (pick element, pick fields, record, and the new Tools modes) through a single
+  arbiter that stops the outgoing mode before starting the next one. This
+  replaces the pairwise guards and fixes a case where switching mode while one
+  was already active left the previous overlay and cursor in place.
+- **The Tools modes load on demand** — they ship as a separate chunk fetched the
+  first time you open a tool, so ordinary page loads are unaffected.
+- `file://` and `view-source:` pages now report the same clear "this page does
+  not allow extensions" message as `chrome://` pages, instead of failing later
+  with a confusing injection error.
+
 ## [0.5.0] - 2026-07-23
 
 ### Added
