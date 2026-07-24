@@ -1,4 +1,5 @@
 import type { PageMode } from '@/shared/types';
+import { restorePage, unlockPage, unlockState } from './tools/god-mode';
 
 /**
  * Entry point for the Tools-tab in-page modes.
@@ -35,3 +36,8 @@ export function startMode(mode: PageMode): void {
 export function stopMode(mode: PageMode): void {
   HANDLERS[mode]?.stop();
 }
+
+// Unlock is request/response rather than a mode: it mutates the page and
+// leaves, and its state (the undo snapshot, the sticky observer) lives in the
+// content script so it survives the panel closing.
+export { restorePage, unlockPage, unlockState };

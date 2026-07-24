@@ -1,4 +1,4 @@
-import { BLOCKED_URL_PREFIXES, MESSAGE_TYPES } from '@/shared/constants';
+import { BLOCKED_URL_PREFIXES, GOD_MODE_CSS, MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 import {
@@ -18,7 +18,14 @@ import {
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
-import type { LocatorKind, Result } from '@/shared/types';
+import type {
+  GodModeReport,
+  GodModeState,
+  LocatorKind,
+  PageUnlockState,
+  Result,
+  XrmReport,
+} from '@/shared/types';
 
 // ---------------------------------------------------------------------------
 // Side panel behavior
@@ -144,34 +151,56 @@ async function sendTabMessageWithRetry<T>(
   throw lastError;
 }
 
+const UNREACHABLE = 'Could not reach the page. Try reloading the tab.';
+
 /**
- * Ask the content script something and return its answer. Injects and retries
- * for a tab that predates the extension, where `document_idle` never ran.
+ * Deliver a message to the content script, injecting it first for a tab that
+ * predates the extension (where `document_idle` never ran). Throws when the
+ * page cannot be reached at all.
+ */
+async function reachTab<T>(tabId: number, message: RuntimeMessage): Promise<T> {
+  try {
+    return await sendTabMessage<T>(tabId, message);
+  } catch {
+    await injectPicker(tabId);
+    return sendTabMessageWithRetry<T>(tabId, message);
+  }
+}
+
+function isResult<T>(value: unknown): value is Result<T> {
+  return (
+    typeof value === 'object' && value !== null && typeof (value as Result<T>).ok === 'boolean'
+  );
+}
+
+/**
+ * Ask the content script something and pass its answer straight through.
  *
- * `startInTab` and `stopInTab` below are the fire-and-forget variants: they
- * differ only in what they do with the reply and with failure.
+ * The content script already replies with a `Result`, so this must NOT wrap it
+ * again — a double-wrapped `{ok:true,value:{ok:false,error}}` would report a
+ * page-side failure to the panel as a success.
  */
 async function askTab<T>(tabId: number, message: RuntimeMessage): Promise<Result<T>> {
   try {
-    return { ok: true, value: await sendTabMessage<T>(tabId, message) };
+    const reply = await reachTab<unknown>(tabId, message);
+    if (isResult<T>(reply)) return reply;
+    return { ok: false, error: 'The page returned an unexpected response.' };
   } catch {
-    try {
-      await injectPicker(tabId);
-      return { ok: true, value: await sendTabMessageWithRetry<T>(tabId, message) };
-    } catch {
-      return { ok: false, error: 'Could not reach the page. Try reloading the tab.' };
-    }
+    return { ok: false, error: UNREACHABLE };
   }
 }
 
 /**
  * Start an in-page mode (locator pick, field pick, record, or a Tools mode).
- * The content listener registers asynchronously after its loader resolves,
- * hence the retry.
+ * These handlers answer nothing, so the reply is deliberately ignored.
  */
 async function startInTab(tabId: number, message: RuntimeMessage): Promise<Result<void>> {
-  const res = await askTab<unknown>(tabId, message);
-  return res.ok ? { ok: true, value: undefined } : res;
+  try {
+    await reachTab(tabId, message);
+    return { ok: true, value: undefined };
+  } catch {
+    return { ok: false, error: UNREACHABLE };
+  }
 }
 
 /** Stop an in-page mode; a no-op (and never an error) if no content script is there. */
@@ -226,6 +255,174 @@ async function testLocator(
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
+}
+
+// ---------------------------------------------------------------------------
+// Unlock (God Mode)
+// ---------------------------------------------------------------------------
+
+/**
+ * insertCSS and removeCSS must receive a BYTE-IDENTICAL descriptor or removal
+ * silently no-ops, so both calls spread this one object.
+ */
+const GOD_CSS = { css: GOD_MODE_CSS, origin: 'AUTHOR' } as const;
+
+async function unlockPage(tabId: number, message: RuntimeMessage): Promise<Result<GodModeReport>> {
+  // Inject the override sheet BEFORE the pass so revealed elements never flash.
+  // Extension-injected CSS is immune to the page's style-src CSP; an appended
+  // <style> element would not be.
+  try {
+    await chrome.scripting.insertCSS({ target: { tabId }, ...GOD_CSS });
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+  return askTab<GodModeReport>(tabId, message);
+}
+
+async function restorePage(tabId: number, message: RuntimeMessage): Promise<Result<GodModeReport>> {
+  const result = await askTab<GodModeReport>(tabId, message);
+  try {
+    await chrome.scripting.removeCSS({ target: { tabId }, ...GOD_CSS });
+  } catch {
+    // Nothing was injected, or the tab navigated away — the attributes that
+    // matter are already restored, so this is not worth failing the call for.
+  }
+  return result;
+}
+
+/** Injected into the page's MAIN world purely to detect a Dynamics form. */
+function detectXrm(): boolean {
+  const xrm = (window as unknown as { Xrm?: unknown }).Xrm;
+  return typeof xrm === 'object' && xrm !== null;
+}
+
+async function probeXrm(tabId: number): Promise<boolean> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: detectXrm,
+    });
+    return results[0]?.result === true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The Dynamics 365 / Power Apps unlock, ported from Level Up's `enableGodMode`.
+ *
+ * Runs in the page's MAIN world because the Xrm client API only exists in the
+ * page's own realm. NOTE: this passes a serialized FUNCTION, not a code string
+ * — it uses neither `eval` nor `new Function`, so it is NOT a second instance
+ * of the sanctioned runner exception. See agents.md → Security.
+ *
+ * Serialized, therefore self-contained: no closures, no imports, and the Xrm
+ * shapes are declared inline (types erase; only runtime code is transferred).
+ */
+function xrmGodMode(): {
+  ok: boolean;
+  value?: { attributes: number; controls: number; tabs: number; sections: number };
+  error?: string;
+} {
+  interface XrmAttribute {
+    getRequiredLevel(): string;
+    setRequiredLevel(level: string): void;
+  }
+  interface XrmControl {
+    getVisible?(): boolean;
+    setVisible?(visible: boolean): void;
+    getDisabled?(): boolean;
+    setDisabled?(disabled: boolean): void;
+  }
+  interface XrmSection {
+    getVisible(): boolean;
+    setVisible(visible: boolean): void;
+  }
+  interface XrmTab {
+    getVisible(): boolean;
+    setVisible(visible: boolean): void;
+    sections: { forEach(cb: (section: XrmSection) => void): void };
+  }
+  interface XrmPage {
+    data: { entity: { attributes: { get(): XrmAttribute[] } } };
+    ui: {
+      controls: { forEach(cb: (control: XrmControl) => void): void };
+      tabs: { forEach(cb: (tab: XrmTab) => void): void };
+    };
+  }
+
+  try {
+    const page = (window as unknown as { Xrm?: { Page?: XrmPage } }).Xrm?.Page;
+    if (!page) {
+      return {
+        ok: false,
+        error: 'No Dynamics form here — window.Xrm is not present on this page.',
+      };
+    }
+
+    let attributes = 0;
+    let controls = 0;
+    let tabs = 0;
+    let sections = 0;
+
+    for (const attr of page.data.entity.attributes.get()) {
+      if (attr.getRequiredLevel() === 'required') {
+        attr.setRequiredLevel('none');
+        attributes += 1;
+      }
+    }
+
+    page.ui.controls.forEach((control) => {
+      const wasHidden = typeof control.getVisible === 'function' && !control.getVisible();
+      const wasDisabled = typeof control.getDisabled === 'function' && control.getDisabled();
+      if (typeof control.setVisible === 'function') control.setVisible(true);
+      if (typeof control.setDisabled === 'function') control.setDisabled(false);
+      if (wasHidden || wasDisabled) controls += 1;
+    });
+
+    page.ui.tabs.forEach((tab) => {
+      if (!tab.getVisible()) tabs += 1;
+      tab.setVisible(true);
+      tab.sections.forEach((section) => {
+        if (!section.getVisible()) sections += 1;
+        section.setVisible(true);
+      });
+    });
+
+    return { ok: true, value: { attributes, controls, tabs, sections } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function unlockXrm(tabId: number): Promise<Result<XrmReport>> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: xrmGodMode,
+    });
+    const outcome = results[0]?.result as
+      | { ok: boolean; value?: XrmReport; error?: string }
+      | undefined;
+    if (!outcome?.ok || !outcome.value) {
+      return { ok: false, error: outcome?.error ?? 'The Dynamics unlock returned nothing.' };
+    }
+    return { ok: true, value: outcome.value };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** Content-script state plus the MAIN-world Xrm probe the panel needs. */
+async function unlockStateFor(
+  tabId: number,
+  message: RuntimeMessage
+): Promise<Result<GodModeState>> {
+  const pageState = await askTab<PageUnlockState>(tabId, message);
+  if (!pageState.ok) return pageState;
+  return { ok: true, value: { ...pageState.value, hasXrm: await probeXrm(tabId) } };
 }
 
 // ---------------------------------------------------------------------------
@@ -354,6 +551,22 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     case MESSAGE_TYPES.TOOL_PING:
     case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
       withActiveRunnableTab((tabId) => askTab(tabId, message)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.UNLOCK_PAGE:
+      withActiveRunnableTab((tabId) => unlockPage(tabId, message)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.RESTORE_PAGE:
+      withActiveRunnableTab((tabId) => restorePage(tabId, message)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.GET_UNLOCK_STATE:
+      withActiveRunnableTab((tabId) => unlockStateFor(tabId, message)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.UNLOCK_XRM:
+      withActiveRunnableTab((tabId) => unlockXrm(tabId)).then(sendResponse);
       return true;
 
     default:

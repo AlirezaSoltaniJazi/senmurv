@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { ToolKey } from '@/shared/tools';
-import type { FontSize, Prefs, Result } from '@/shared/types';
+import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
 
 // Lazy-load each tab so the panel shell renders instantly; heavy deps (faker
@@ -67,6 +67,7 @@ export function App(): ReactElement {
   const [recorderSteps, setRecorderSteps] = useState<WorkflowStep[]>([]);
   // Same reason: lazy tabs unmount on switch, so the open tool lives up here.
   const [tool, setTool] = useState<ToolKey | null>(null);
+  const [scriptSeed, setScriptSeed] = useState<ScriptSeed | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
   const [fontScale, setFontScale] = useState<number | undefined>(undefined);
@@ -76,6 +77,14 @@ export function App(): ReactElement {
     setTab('recorder');
   }, []);
   const clearSeed = useCallback(() => setRecorderSeed(null), []);
+
+  // Tools → Scripts handoff: a tool generates a standalone script and hands it
+  // to the Scripts editor, mirroring the Scripts → Recorder "Customize" flow.
+  const saveToScripts = useCallback((name: string, code: string) => {
+    setScriptSeed({ name, code });
+    setTab('scripts');
+  }, []);
+  const clearScriptSeed = useCallback(() => setScriptSeed(null), []);
 
   // Load persisted preferences (font size) on mount.
   useEffect(() => {
@@ -178,9 +187,16 @@ export function App(): ReactElement {
             />
           )}
           {tab === 'scripts' && (
-            <ScriptsTab onCustomize={customizeInRecorder} reloadNonce={reloadNonce} />
+            <ScriptsTab
+              onCustomize={customizeInRecorder}
+              reloadNonce={reloadNonce}
+              seed={scriptSeed}
+              onSeedConsumed={clearScriptSeed}
+            />
           )}
-          {tab === 'tools' && <ToolsTab tool={tool} setTool={setTool} />}
+          {tab === 'tools' && (
+            <ToolsTab tool={tool} setTool={setTool} onSaveScript={saveToScripts} />
+          )}
           {tab === 'track' && <TrackTab reloadNonce={reloadNonce} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}
           {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} />}

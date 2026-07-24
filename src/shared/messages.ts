@@ -2,6 +2,8 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import type {
   Checklist,
   DetectedField,
+  GodModeOptions,
+  GodModeReport,
   LocatorKind,
   LocatorSet,
   Note,
@@ -53,7 +55,17 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.STOP_TOOL_MODE; payload: { mode: PageMode | 'all' } }
   // A null selector clears the highlight — without it a highlight can never be
   // removed, which is the trap this signature exists to avoid.
-  | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } };
+  | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } }
+  // Unlock (God Mode). UNLOCK_XRM is worker-local — the Xrm client API only
+  // exists in the page's own realm, so it needs a MAIN-world injection.
+  | {
+      type: typeof MESSAGE_TYPES.UNLOCK_PAGE;
+      payload: { options: GodModeOptions; shouldWatch: boolean };
+    }
+  | { type: typeof MESSAGE_TYPES.RESTORE_PAGE }
+  | { type: typeof MESSAGE_TYPES.GET_UNLOCK_STATE }
+  | { type: typeof MESSAGE_TYPES.UNLOCK_XRM }
+  | { type: typeof MESSAGE_TYPES.UNLOCK_STATE_CHANGED; payload: { report: GodModeReport } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

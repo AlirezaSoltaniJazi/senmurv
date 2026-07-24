@@ -59,11 +59,9 @@ const chromeMock = {
     setOptions: vi.fn(async () => undefined),
   },
   scripting: {
-    executeScript: vi.fn(
-      async (): Promise<{ result?: { ok: boolean; count?: number; error?: string } }[]> => [
-        { result: { ok: true } },
-      ]
-    ),
+    executeScript: vi.fn(async (): Promise<{ result?: unknown }[]> => [{ result: { ok: true } }]),
+    insertCSS: vi.fn(async () => undefined),
+    removeCSS: vi.fn(async () => undefined),
   },
 };
 

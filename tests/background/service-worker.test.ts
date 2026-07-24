@@ -75,6 +75,115 @@ describe('RUN_SCRIPT', () => {
   });
 });
 
+describe('Unlock (God Mode)', () => {
+  const OPTIONS = {
+    shouldEnableInputs: true,
+    shouldDropValidation: true,
+    shouldUnlockOptions: true,
+    shouldRevealHidden: false,
+    shouldRevealPasswords: false,
+    shouldCloseDialogs: false,
+    shouldPierceShadowDom: false,
+  };
+
+  it('injects the override sheet before asking the page to unlock', async () => {
+    chromeMock.tabs.sendMessage.mockResolvedValueOnce({ ok: true, value: { total: 3 } });
+    const res = await send({
+      type: MESSAGE_TYPES.UNLOCK_PAGE,
+      payload: { options: OPTIONS, shouldWatch: false },
+    });
+    expect(res).toEqual({ ok: true, value: { total: 3 } });
+    expect(chromeMock.scripting.insertCSS).toHaveBeenCalledTimes(1);
+  });
+
+  it('removes the SAME css string it inserted — a mismatch silently no-ops', async () => {
+    chromeMock.tabs.sendMessage.mockResolvedValue({ ok: true, value: { total: 0 } });
+    await send({
+      type: MESSAGE_TYPES.UNLOCK_PAGE,
+      payload: { options: OPTIONS, shouldWatch: false },
+    });
+    await send({ type: MESSAGE_TYPES.RESTORE_PAGE });
+
+    const [inserted] = chromeMock.scripting.insertCSS.mock.calls[0] as unknown as [
+      { css: string; origin: string; target: { tabId: number } },
+    ];
+    const [removed] = chromeMock.scripting.removeCSS.mock.calls[0] as unknown as [
+      { css: string; origin: string; target: { tabId: number } },
+    ];
+    expect(removed.css).toBe(inserted.css);
+    expect(removed.origin).toBe(inserted.origin);
+    expect(removed.target).toEqual(inserted.target);
+  });
+
+  it('still reports success when removeCSS fails after a restore', async () => {
+    chromeMock.tabs.sendMessage.mockResolvedValueOnce({ ok: true, value: { total: 4 } });
+    chromeMock.scripting.removeCSS.mockRejectedValueOnce(new Error('tab navigated'));
+    const res = await send({ type: MESSAGE_TYPES.RESTORE_PAGE });
+    expect(res).toEqual({ ok: true, value: { total: 4 } });
+  });
+
+  it('runs the Dynamics unlock in the MAIN world as a function, never a code string', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { ok: true, value: { attributes: 2, controls: 5, tabs: 1, sections: 3 } } },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.UNLOCK_XRM });
+    expect(res).toEqual({ ok: true, value: { attributes: 2, controls: 5, tabs: 1, sections: 3 } });
+
+    const [injection] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
+      { world: string; func: unknown; args?: unknown[] },
+    ];
+    expect(injection.world).toBe('MAIN');
+    // A function, not a string — this is why it does not widen the sanctioned
+    // `new Function` exception in runUserScript.
+    expect(typeof injection.func).toBe('function');
+    expect(injection.args).toBeUndefined();
+  });
+
+  it('surfaces the page’s message when there is no Dynamics form', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { ok: false, error: 'No Dynamics form here — window.Xrm is not present.' } },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.UNLOCK_XRM });
+    expect(res?.ok).toBe(false);
+    expect(res?.error).toMatch(/window\.Xrm/);
+  });
+
+  it('merges the MAIN-world Xrm probe into the unlock state', async () => {
+    chromeMock.tabs.sendMessage.mockResolvedValueOnce({
+      ok: true,
+      value: { isUnlocked: true, isWatching: false, report: null },
+    });
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([{ result: true }]);
+    const res = await send({ type: MESSAGE_TYPES.GET_UNLOCK_STATE });
+    expect(res).toEqual({
+      ok: true,
+      value: { isUnlocked: true, isWatching: false, report: null, hasXrm: true },
+    });
+  });
+
+  it('reports hasXrm false when the probe cannot run', async () => {
+    chromeMock.tabs.sendMessage.mockResolvedValueOnce({
+      ok: true,
+      value: { isUnlocked: false, isWatching: false, report: null },
+    });
+    chromeMock.scripting.executeScript.mockRejectedValueOnce(new Error('blocked'));
+    const res = await send({ type: MESSAGE_TYPES.GET_UNLOCK_STATE });
+    expect((res?.value as { hasXrm: boolean }).hasXrm).toBe(false);
+  });
+
+  it('refuses to unlock a blocked page', async () => {
+    chromeMock.tabs.query.mockResolvedValueOnce([
+      { id: 2, url: 'chrome://extensions', active: true },
+    ]);
+    const res = await send({
+      type: MESSAGE_TYPES.UNLOCK_PAGE,
+      payload: { options: OPTIONS, shouldWatch: false },
+    });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.insertCSS).not.toHaveBeenCalled();
+  });
+});
+
 describe('picking + scripts CRUD', () => {
   it('relays START_PICK to the active tab content script', async () => {
     const res = await send({ type: MESSAGE_TYPES.START_PICK });
@@ -114,7 +223,7 @@ describe('picking + scripts CRUD', () => {
   it('returns the content script’s answer for TOOL_PING instead of discarding it', async () => {
     chromeMock.tabs.sendMessage.mockResolvedValueOnce({ ok: true, value: { ready: true } });
     const res = await send({ type: MESSAGE_TYPES.TOOL_PING });
-    expect(res).toEqual({ ok: true, value: { ok: true, value: { ready: true } } });
+    expect(res).toEqual({ ok: true, value: { ready: true } });
   });
 
   it('reports an unreachable page for TOOL_PING once injection also fails', async () => {
@@ -141,6 +250,13 @@ describe('picking + scripts CRUD', () => {
     const res = await send({ type: MESSAGE_TYPES.TOOL_PING });
     expect(res?.ok).toBe(false);
     expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('passes the content script’s Result straight through, never double-wrapped', async () => {
+    // A double wrap would report a page-side failure to the panel as a success.
+    chromeMock.tabs.sendMessage.mockResolvedValueOnce({ ok: false, error: 'page said no' });
+    const res = await send({ type: MESSAGE_TYPES.HIGHLIGHT_ELEMENT, payload: { selector: 'a' } });
+    expect(res).toEqual({ ok: false, error: 'page said no' });
   });
 
   it('counts matches for TEST_LOCATOR', async () => {

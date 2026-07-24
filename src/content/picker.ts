@@ -40,6 +40,19 @@ function errorText(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * Run `fn` against the lazily-loaded Tools module and wrap it in a `Result`, so
+ * a chunk-load failure or a throw inside a tool reaches the panel as a message
+ * rather than an unanswered request.
+ */
+async function withTools<T>(fn: (tools: typeof import('./tools')) => T): Promise<Result<T>> {
+  try {
+    return { ok: true, value: fn(await loadTools()) };
+  } catch (err) {
+    return { ok: false, error: errorText(err) };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Mode arbiter
 // ---------------------------------------------------------------------------
@@ -296,6 +309,20 @@ function register(): void {
 
       case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
         sendResponse(highlightSelector(message.payload.selector));
+        return true;
+
+      case MESSAGE_TYPES.UNLOCK_PAGE: {
+        const { options, shouldWatch } = message.payload;
+        void withTools((tools) => tools.unlockPage(options, shouldWatch)).then(sendResponse);
+        return true;
+      }
+
+      case MESSAGE_TYPES.RESTORE_PAGE:
+        void withTools((tools) => tools.restorePage()).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.GET_UNLOCK_STATE:
+        void withTools((tools) => tools.unlockState()).then(sendResponse);
         return true;
 
       default:

@@ -42,6 +42,12 @@ export const MESSAGE_TYPES = {
   START_TOOL_MODE: 'START_TOOL_MODE',
   STOP_TOOL_MODE: 'STOP_TOOL_MODE',
   HIGHLIGHT_ELEMENT: 'HIGHLIGHT_ELEMENT',
+  // Unlock (God Mode)
+  UNLOCK_PAGE: 'UNLOCK_PAGE',
+  RESTORE_PAGE: 'RESTORE_PAGE',
+  GET_UNLOCK_STATE: 'GET_UNLOCK_STATE',
+  UNLOCK_XRM: 'UNLOCK_XRM',
+  UNLOCK_STATE_CHANGED: 'UNLOCK_STATE_CHANGED',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -152,11 +158,71 @@ export const BLOCKED_URL_PREFIXES = [
 // Tools tab
 // ---------------------------------------------------------------------------
 
+/** Custom-element tags Senmurv injects. Anything walking the page must skip these. */
+export const SENMURV_HOST_TAGS = ['senmurv-picker-overlay', 'senmurv-recorder-indicator'] as const;
+
 /**
  * Attribute stamped on elements God Mode reveals. The injected override sheet
  * keys off it, so revert only has to drop the attribute and remove the sheet.
+ * Its value is a space-separated token list (`show`, `interact`, `text`).
  */
 export const GOD_MARKER_ATTR = 'data-senmurv-unlocked';
+
+/**
+ * Attributes God Mode rewrites. Doubles as the MutationObserver's
+ * `attributeFilter` in sticky mode.
+ *
+ * `class` and `style` are DELIBERATELY absent: they are the highest-churn
+ * attributes on React/Angular and would produce an observer storm no debounce
+ * could contain. The cost is that a framework re-applying `style="display:none"`
+ * is invisible to sticky mode — which the UI says out loud.
+ */
+export const GOD_LOCK_ATTRS = [
+  'disabled',
+  'readonly',
+  'required',
+  'hidden',
+  'inert',
+  'contenteditable',
+  'aria-disabled',
+  'aria-readonly',
+  'aria-required',
+  'aria-hidden',
+  'pattern',
+  'min',
+  'max',
+  'minlength',
+  'maxlength',
+  'step',
+  'novalidate',
+  'type',
+] as const;
+
+/**
+ * The God Mode override sheet, injected with `chrome.scripting.insertCSS` and
+ * removed with `removeCSS`.
+ *
+ * Injected CSS is immune to the page's `style-src` CSP, which an appended
+ * `<style>` element is not — and `removeCSS` is a first-class revert primitive.
+ * BOTH calls must receive this exact string, or removal silently no-ops.
+ */
+export const GOD_MODE_CSS = `
+[${GOD_MARKER_ATTR}~="show"] {
+  display: revert !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  clip: auto !important;
+  clip-path: none !important;
+}
+[${GOD_MARKER_ATTR}~="interact"] {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+[${GOD_MARKER_ATTR}~="text"] {
+  -webkit-text-security: none !important;
+}
+`;
 
 /** Cap on tab-order stops, so a pathological page can't stall the scan. */
 export const TAB_ORDER_MAX_STOPS = 500;

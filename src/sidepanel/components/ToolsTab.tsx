@@ -2,11 +2,14 @@ import type { ReactElement } from 'react';
 import { findTool, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
+import { UnlockTool } from './tools/UnlockTool';
 
 interface Props {
   /** The open tool, or null for the launcher. Lifted into App so it survives tab switches. */
   tool: ToolKey | null;
   setTool: (tool: ToolKey | null) => void;
+  /** Hand a generated script to the Scripts tab. */
+  onSaveScript: (name: string, code: string) => void;
 }
 
 /**
@@ -14,7 +17,7 @@ interface Props {
  * long findings lists (tab order, accessibility) need — a persistent chip row
  * would eat two lines of it at side-panel widths.
  */
-export function ToolsTab({ tool, setTool }: Props): ReactElement {
+export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
   if (tool === null) {
     return (
       <div className="tab">
@@ -37,7 +40,9 @@ export function ToolsTab({ tool, setTool }: Props): ReactElement {
     <div className="tab">
       {/* Keyed on the tool so switching remounts the shell: fresh probe state, and
           the outgoing tool's stop-on-unmount effect actually fires. */}
-      <ToolShell key={tool} tool={findTool(tool)} onBack={() => setTool(null)} />
+      <ToolShell key={tool} tool={findTool(tool)} onBack={() => setTool(null)}>
+        {tool === 'unlock' && <UnlockTool onSaveScript={onSaveScript} />}
+      </ToolShell>
     </div>
   );
 }

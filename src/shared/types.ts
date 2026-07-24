@@ -17,6 +17,12 @@ export interface GeneratedData {
   dateOfBirth: string;
 }
 
+/** A script handed to the Scripts tab from another tool, to load into its editor once. */
+export interface ScriptSeed {
+  name: string;
+  code: string;
+}
+
 /** A user-saved JS script (Execute JS Script tool). */
 export interface SavedScript {
   id: string;
@@ -136,6 +142,67 @@ export type PageMode =
 
 /** Modes the Tools tab starts. A subset of PageMode, excluding the pre-existing ones. */
 export type ToolMode = Extract<PageMode, 'measure' | 'color' | 'font' | 'taborder'>;
+
+// ---------------------------------------------------------------------------
+// Unlock / God Mode
+// ---------------------------------------------------------------------------
+
+/** Which locks God Mode strips. The three destructive ones default to OFF. */
+export interface GodModeOptions {
+  readonly shouldEnableInputs: boolean;
+  readonly shouldDropValidation: boolean;
+  readonly shouldUnlockOptions: boolean;
+  readonly shouldRevealHidden: boolean;
+  readonly shouldRevealPasswords: boolean;
+  readonly shouldCloseDialogs: boolean;
+  readonly shouldPierceShadowDom: boolean;
+}
+
+/** What kind of lock a change removed — one counter per category in the report. */
+export type GodCategory =
+  | 'enabled'
+  | 'validation'
+  | 'options'
+  | 'revealed'
+  | 'passwords'
+  | 'dialogs';
+
+/**
+ * The ONLY thing that crosses the wire. Counts and strings only — it is
+ * structurally incapable of leaking a DOM node into a message.
+ */
+export interface GodModeReport {
+  readonly total: number;
+  readonly counts: Record<GodCategory, number>;
+  /** How many open shadow roots the walk descended into. */
+  readonly shadowRoots: number;
+  /** Honest caveats for this specific run (closed roots, cross-origin frames…). */
+  readonly warnings: string[];
+}
+
+/** What the content script knows about the current unlock. */
+export interface PageUnlockState {
+  readonly isUnlocked: boolean;
+  readonly isWatching: boolean;
+  readonly report: GodModeReport | null;
+}
+
+/**
+ * The page state plus whether this is a Dynamics form. `hasXrm` cannot come
+ * from the content script — `window.Xrm` lives in the page's own realm — so the
+ * service worker probes for it and merges it in.
+ */
+export interface GodModeState extends PageUnlockState {
+  readonly hasXrm: boolean;
+}
+
+/** Result of the Dynamics 365 / Power Apps unlock, which runs through the Xrm API. */
+export interface XrmReport {
+  readonly attributes: number;
+  readonly controls: number;
+  readonly tabs: number;
+  readonly sections: number;
+}
 
 // ---------------------------------------------------------------------------
 // My Tasks (checklists) + user preferences

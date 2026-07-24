@@ -56,8 +56,40 @@ ones: **top frame only** (cross-origin iframes are unreachable), closed shadow
 roots cannot be inspected, and the tools are unavailable on `chrome://`,
 `file://`, `view-source:` and Web Store pages.
 
-> **Status:** the tab and its shared plumbing have shipped; the individual tools
-> are landing one release at a time, and an unbuilt tool says so when opened.
+> **Status:** the tab, its shared plumbing and **Unlock** have shipped; the
+> remaining tools are landing one release at a time, and an unbuilt tool says so
+> when opened.
+
+### Unlock (God Mode) — detail
+
+Every lock it strips is recorded before it is changed, so **Restore** puts the
+page back exactly — including telling an absent attribute apart from a present
+empty one. Three rules are worth knowing:
+
+- **`step` is set to `any`, not removed.** An absent `step` on a number input
+  means `step=1`, so removing it would leave `1.5` invalid.
+- **`novalidate` is inverted.** The fix is to _add_ it, so Restore _removes_ it.
+- **First write wins.** When sticky mode re-applies over a lock the app has put
+  back, the originally-recorded value is kept — otherwise Restore would put back
+  the app's re-locked state and appear to do nothing.
+
+**Sticky mode** watches lock attributes only. `class` and `style` are
+deliberately excluded: they are the highest-churn attributes on React/Angular
+and watching them would storm on every render. A framework that re-hides a field
+via `style` is therefore not tracked.
+
+**Limits.** Client-side only — the server can still reject the submit, and on a
+model-driven form (Angular Reactive Forms, Dynamics) it unlocks the _view_, not
+the _model_, so a field may become typable while its value is still excluded
+from `form.value`. Closed shadow roots are unreachable from any extension. A
+full page reload discards the undo record, and the Restore button reflects that
+rather than pretending.
+
+**On Dynamics 365 / Power Apps**, an extra **Unlock Dynamics form** button uses
+the `Xrm` client API — `setRequiredLevel('none')`, `setVisible`/`setDisabled` on
+controls, and `setVisible` on tabs and sections. This is what Level Up for
+Dynamics CRM does, and no DOM-level pass can reach it, because the model lives
+in the page's JavaScript rather than in its markup.
 
 ### How it is wired
 

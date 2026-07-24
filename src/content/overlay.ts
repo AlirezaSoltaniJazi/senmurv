@@ -16,8 +16,7 @@
  * module-level overlay is sufficient and keeps teardown in a single place.
  */
 
-/** Custom-element tags Senmurv injects. Anything walking the page must skip these. */
-export const SENMURV_HOST_TAGS = ['senmurv-picker-overlay', 'senmurv-recorder-indicator'] as const;
+import { SENMURV_HOST_TAGS } from '@/shared/constants';
 
 const HOST_TAG = 'senmurv-picker-overlay';
 

@@ -12,6 +12,21 @@ All notable changes to Senmurv are documented here. The format is based on
   tools: Unlock (God Mode), Site data, Measure, Colour, Tab order,
   Accessibility and Fonts. This release lands the tab, its launcher and the
   shared plumbing; each tool arrives in a later release.
+- **Tools → Unlock (God Mode)** — strips the client-side locks an app puts on
+  its own form so you can drive it in a test: `disabled`, `readonly`, their ARIA
+  equivalents, `required`, `pattern`, length limits, and disabled dropdown
+  options. Optionally reveals hidden elements, reveals password fields, closes
+  modal dialogs, and descends into open shadow roots — all off by default.
+  - **Restore** puts every changed attribute back exactly as it was, telling an
+    absent attribute apart from a present empty one.
+  - **Sticky mode** re-applies the unlock when the page re-renders, for apps
+    that put their own locks back.
+  - **Unlock Dynamics form** appears on Dynamics 365 / Power Apps pages and
+    additionally uses the Xrm client API to make required fields optional and
+    reveal hidden controls, tabs and sections — the behaviour Level Up for
+    Dynamics CRM provides, which no DOM-level pass can reach.
+  - **Save as a script** hands the current settings to the Scripts tab as a
+    standalone script, so the unlock can be re-run after every page load.
 - **Highlight an element on the page** — a `HIGHLIGHT_ELEMENT` message scrolls
   an element into view and outlines it, so a findings list in the panel can
   point at the thing it is describing.

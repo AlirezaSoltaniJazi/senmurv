@@ -33,7 +33,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Strips client-side locks so you can drive a disabled or hidden form. The server can still reject the submit, and on a model-driven form it unlocks the view, not the model.',
     mode: null,
     requiresPage: true,
-    isReady: false,
+    isReady: true,
   },
   {
     key: 'sitedata',

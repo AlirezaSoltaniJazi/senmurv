@@ -15,7 +15,7 @@ import {
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
 import { fieldToStep, isWorkflowScript, parseWorkflowScript } from '@/shared/workflow';
 import type { RecorderSeed } from '@/shared/workflow';
-import type { Result, SavedScript } from '@/shared/types';
+import type { Result, SavedScript, ScriptSeed } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 interface Props {
@@ -23,13 +23,21 @@ interface Props {
   onCustomize: (seed: RecorderSeed) => void;
   /** Bumped by the header refresh button to re-pull data from storage. */
   reloadNonce: number;
+  /** A script handed over from another tool (e.g. Tools → Unlock), loaded once. */
+  seed: ScriptSeed | null;
+  onSeedConsumed: () => void;
 }
 
 function customizable(code: string): boolean {
   return isFillScript(code) || isWorkflowScript(code);
 }
 
-export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
+export function ScriptsTab({
+  onCustomize,
+  reloadNonce,
+  seed,
+  onSeedConsumed,
+}: Props): ReactElement {
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -56,6 +64,18 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
       cancelled = true;
     };
   }, [reloadNonce]);
+
+  // One-shot seed from Tools → Unlock (loads into the editor, then clears).
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!seed) return;
+    setEditingId(null);
+    setName(seed.name);
+    setCode(seed.code);
+    setStatus('Loaded from Tools — review, then Save or Run.');
+    onSeedConsumed();
+  }, [seed, onSeedConsumed]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function resetEditor(): void {
     setEditingId(null);
