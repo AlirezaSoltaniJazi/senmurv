@@ -44,6 +44,16 @@ All notable changes to Senmurv are documented here. The format is based on
   not allow extensions" message as `chrome://` pages, instead of failing later
   with a confusing injection error.
 
+### Fixed
+
+- **No more 404s in the page's console.** Module preloading is now disabled for
+  the build: Vite injected `<link rel="modulepreload">` tags into the host
+  page's `<head>`, where their relative URLs resolved against the site's own
+  origin and 404'd — three console errors on any page where a Tools chunk
+  loaded. The chunks themselves always loaded correctly; the preload hints were
+  pure noise in someone else's console, which is the last thing a QA tool
+  should add.
+
 ## [0.5.0] - 2026-07-23
 
 ### Added
