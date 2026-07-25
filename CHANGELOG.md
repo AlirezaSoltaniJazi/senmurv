@@ -27,6 +27,18 @@ All notable changes to Senmurv are documented here. The format is based on
     Dynamics CRM provides, which no DOM-level pass can reach.
   - **Save as a script** hands the current settings to the Scripts tab as a
     standalone script, so the bypass can be re-run after every page load.
+- **Tools → Accessibility** — a hand-rolled WCAG **A / AA / AAA** scanner (no
+  axe-core dependency) that groups findings into **failures** and **needs
+  review**, each tagged with its success-criterion number, a fix, a help link
+  and copy-ready locators. Export as TXT / CSV / JSON.
+  - ~25 checks across images/alt, form labels, structure, links, keyboard
+    reachability, ARIA (roles, references, required attributes, duplicate ids),
+    language, and **text contrast** (reusing the same oracle-verified maths as
+    the Colour tool, so it agrees with axe/Lighthouse).
+  - Every heuristic is labelled **needs-review**, never a hard fail, and the tool
+    states plainly that automated checks catch only ~30–40% of WCAG issues — it
+    never claims conformance. The rule catalogue and its false-positive guards
+    were adversarially reviewed before implementation.
 - **Tools → Tab order** — visualise the page's keyboard tab sequence as numbered
   badges drawn on each stop, plus an ordered side-panel list (tag, accessible
   name, tabindex, shadow marker). Click a stop for copy-ready locators;

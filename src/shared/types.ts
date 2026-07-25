@@ -305,6 +305,40 @@ export interface TabOrderScan {
 }
 
 // ---------------------------------------------------------------------------
+// Accessibility (WCAG)
+// ---------------------------------------------------------------------------
+
+export type WcagLevel = 'A' | 'AA' | 'AAA';
+export type FindingImpact = 'critical' | 'serious' | 'moderate' | 'minor';
+/** `violation` = a definite automated fail; `needs-review` = a heuristic to confirm. */
+export type FindingConfidence = 'violation' | 'needs-review';
+
+/** One accessibility finding against one element. Carries no DOM node. */
+export interface A11yFinding {
+  readonly ruleId: string;
+  /** WCAG success-criterion number, e.g. '1.1.1'. */
+  readonly sc: string;
+  readonly level: WcagLevel;
+  readonly impact: FindingImpact;
+  readonly confidence: FindingConfidence;
+  readonly message: string;
+  readonly howToFix: string;
+  readonly helpUrl: string;
+  /** A short description of the element (tag + name), for the list. */
+  readonly target: string;
+  /** Index into the content script's retained element array, for lazy locators. */
+  readonly index: number;
+}
+
+/** The result of an accessibility scan. */
+export interface A11yReport {
+  readonly findings: A11yFinding[];
+  /** Rule ids that ran and found nothing (rule-level pass, no per-element data). */
+  readonly passedRules: string[];
+  readonly warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
 // Bypass
 // ---------------------------------------------------------------------------
 

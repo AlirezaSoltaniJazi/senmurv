@@ -116,7 +116,7 @@ export function TabOrderTool(): ReactElement {
     if (locators[index] === undefined) {
       const res = await sendRuntimeMessage<Result<LocatorSet>>({
         type: MESSAGE_TYPES.GET_STOP_LOCATORS,
-        payload: { index },
+        payload: { source: 'taborder', index },
       });
       if (res.ok) setLocators((prev) => ({ ...prev, [index]: res.value }));
     }

@@ -334,9 +334,17 @@ function register(): void {
         void withTools((tools) => tools.scanTabOrder()).then(sendResponse);
         return true;
 
+      case MESSAGE_TYPES.RUN_A11Y_SCAN: {
+        const { levels } = message.payload;
+        void withTools((tools) => tools.runA11yScan(levels)).then(sendResponse);
+        return true;
+      }
+
       case MESSAGE_TYPES.GET_STOP_LOCATORS: {
-        const { index } = message.payload;
-        void withTools((tools) => tools.stopLocators(index)).then(sendResponse);
+        const { source, index } = message.payload;
+        void withTools((tools) =>
+          source === 'a11y' ? tools.a11yLocators(index) : tools.stopLocators(index)
+        ).then(sendResponse);
         return true;
       }
 

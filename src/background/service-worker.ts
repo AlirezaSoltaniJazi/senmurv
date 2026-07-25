@@ -832,6 +832,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
     case MESSAGE_TYPES.SCAN_TAB_ORDER:
     case MESSAGE_TYPES.GET_STOP_LOCATORS:
+    case MESSAGE_TYPES.RUN_A11Y_SCAN:
       withActiveRunnableTab((tabId) => askTab(tabId, message)).then(sendResponse);
       return true;
 

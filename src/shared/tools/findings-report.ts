@@ -1,5 +1,5 @@
 import { csvField } from '@/shared/csv';
-import type { TabOrderScan, TabStop } from '@/shared/types';
+import type { A11yReport, TabOrderScan, TabStop } from '@/shared/types';
 
 /**
  * Export a tab-order scan. Mirrors `report.ts`'s render/filename/mime API rather
@@ -66,4 +66,61 @@ export function reportMimeType(format: ReportFormat): string {
   if (format === 'csv') return 'text/csv';
   if (format === 'json') return 'application/json';
   return 'text/plain';
+}
+
+// ---------------------------------------------------------------------------
+// Accessibility report
+// ---------------------------------------------------------------------------
+
+function a11yToTxt(report: A11yReport): string {
+  const lines = ['Senmurv — Accessibility', `Findings: ${report.findings.length}`, ''];
+  for (const f of report.findings) {
+    const flag = f.confidence === 'needs-review' ? ' (needs review)' : '';
+    lines.push(`[${f.level} · ${f.sc}] ${f.ruleId}${flag} — ${f.target}`);
+    lines.push(`    ${f.message}`);
+    lines.push(`    Fix: ${f.howToFix}`);
+    lines.push(`    ${f.helpUrl}`);
+    lines.push('');
+  }
+  if (report.warnings.length > 0) {
+    lines.push('Notes:');
+    for (const w of report.warnings) lines.push(`  - ${w}`);
+  }
+  return `${lines.join('\n').trimEnd()}\n`;
+}
+
+const A11Y_CSV_HEADER = [
+  'Rule',
+  'SC',
+  'Level',
+  'Impact',
+  'Confidence',
+  'Target',
+  'Message',
+  'Help',
+] as const;
+
+function a11yToCsv(report: A11yReport): string {
+  const rows = [A11Y_CSV_HEADER.join(',')];
+  for (const f of report.findings) {
+    rows.push(
+      [f.ruleId, f.sc, f.level, f.impact, f.confidence, f.target, f.message, f.helpUrl]
+        .map(csvField)
+        .join(',')
+    );
+  }
+  return `${rows.join('\r\n')}\r\n`;
+}
+
+/** Render an accessibility report in the requested format. */
+export function renderA11yReport(report: A11yReport, format: ReportFormat): string {
+  if (format === 'csv') return a11yToCsv(report);
+  if (format === 'json') {
+    return JSON.stringify({ app: 'senmurv', type: 'accessibility', ...report }, null, 2);
+  }
+  return a11yToTxt(report);
+}
+
+export function a11yFilename(format: ReportFormat): string {
+  return `senmurv-accessibility.${format}`;
 }

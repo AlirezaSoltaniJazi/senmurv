@@ -1,4 +1,5 @@
 import type { MeasureMode, PageMode } from '@/shared/types';
+import { a11yLocators, runA11yScan } from './tools/a11y';
 import { restorePage, bypassPage, bypassState } from './tools/bypass';
 import { startColor, stopColor } from './tools/color';
 import { startMeasure, stopMeasure } from './tools/measure';
@@ -58,3 +59,6 @@ export { restorePage, bypassPage, bypassState };
 
 // Tab order: SCAN computes + draws; the panel fetches a stop's locators lazily.
 export { scanTabOrder, stopLocators };
+
+// Accessibility: RUN scans + retains elements; the panel fetches locators lazily.
+export { runA11yScan, a11yLocators };

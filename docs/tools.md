@@ -57,8 +57,33 @@ roots cannot be inspected, and the tools are unavailable on `chrome://`,
 `file://`, `view-source:` and Web Store pages.
 
 > **Status:** the tab, its shared plumbing, **Bypass**, **Site data**,
-> **Measure**, **Colour** and **Tab order** have shipped; the remaining tools are
-> landing one release at a time, and an unbuilt tool says so when opened.
+> **Measure**, **Colour**, **Tab order** and **Accessibility** have shipped; the
+> last tool (Fonts) is landing in a later release.
+
+### Accessibility — detail
+
+A hand-rolled WCAG scanner (no axe-core) with **A / AA / AAA** level chips. It
+groups findings into **Failures** (definite, machine-detectable fails) and
+**Needs review** (heuristics a human must confirm), each tagged with its success
+criterion, an impact, a fix, a help link and — on expand — copy-ready locators.
+Export as TXT / CSV / JSON.
+
+- **Coverage** spans images/alt (1.1.1), form labels & autocomplete (4.1.2 /
+  1.3.5 / 3.3.2), structure (tables, headings, title, bypass — 1.3.1 / 2.4.x),
+  links & keyboard reachability (2.4.4 / 2.1.1), ARIA (roles, references,
+  required attributes, duplicate ids — 4.1.2), language (3.1.1) and **text
+  contrast** (1.4.3 / 1.4.6, reusing the oracle-verified `contrast.ts`).
+- **Honesty is the design.** Every heuristic is `needs-review`, never a hard
+  fail; a clean scan is not conformance. Automated tooling catches only a
+  minority of WCAG issues — roughly **30–40%** in the field (Deque's axe reaches
+  ~57% under ideal conditions) — so the tool always says so. The rule catalogue
+  and its **false-positive guards** were adversarially reviewed before
+  implementation (a multi-token `aria-labelledby` fix, `≥3×3` table narrowing,
+  skipping native state owners, contrast down-graded to needs-review over
+  background images or positioned elements, etc.).
+- **Not machine-detectable** (documented gaps, kept honest rather than faked):
+  focus-visible correctness, live-region status messages, language-of-parts, and
+  non-text/UI contrast — these need a manual audit.
 
 ### Tab order — detail
 

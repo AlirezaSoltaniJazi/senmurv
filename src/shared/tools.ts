@@ -78,7 +78,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'WCAG A / AA / AAA checks. Automated testing catches roughly 30–40% of accessibility issues, and AAA coverage is thin by nature — this never replaces a manual audit.',
     mode: null,
     requiresPage: true,
-    isReady: false,
+    isReady: true,
   },
   {
     key: 'font',

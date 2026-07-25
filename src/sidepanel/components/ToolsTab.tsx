@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { findTool, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
+import { A11yTool } from './tools/A11yTool';
 import { ColorTool } from './tools/ColorTool';
 import { MeasureTool } from './tools/MeasureTool';
 import { TabOrderTool } from './tools/TabOrderTool';
@@ -50,6 +51,7 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
         {tool === 'measure' && <MeasureTool />}
         {tool === 'color' && <ColorTool />}
         {tool === 'taborder' && <TabOrderTool />}
+        {tool === 'a11y' && <A11yTool />}
       </ToolShell>
     </div>
   );

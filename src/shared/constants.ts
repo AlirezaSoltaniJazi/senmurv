@@ -45,9 +45,10 @@ export const MESSAGE_TYPES = {
   // tab → panel pushes from an in-page tool mode (no service-worker handler)
   TOOL_STREAM: 'TOOL_STREAM',
   TOOL_PICKED: 'TOOL_PICKED',
-  // Tab order
+  // Tab order + Accessibility (both retain elements for lazy locators)
   SCAN_TAB_ORDER: 'SCAN_TAB_ORDER',
   GET_STOP_LOCATORS: 'GET_STOP_LOCATORS',
+  RUN_A11Y_SCAN: 'RUN_A11Y_SCAN',
   // Bypass
   BYPASS_PAGE: 'BYPASS_PAGE',
   RESTORE_PAGE: 'RESTORE_PAGE',
