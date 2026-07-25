@@ -4,6 +4,7 @@ import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
 import { ColorTool } from './tools/ColorTool';
 import { MeasureTool } from './tools/MeasureTool';
+import { TabOrderTool } from './tools/TabOrderTool';
 import { SiteDataTool } from './tools/SiteDataTool';
 import { BypassTool } from './tools/BypassTool';
 
@@ -48,6 +49,7 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
         {tool === 'sitedata' && <SiteDataTool />}
         {tool === 'measure' && <MeasureTool />}
         {tool === 'color' && <ColorTool />}
+        {tool === 'taborder' && <TabOrderTool />}
       </ToolShell>
     </div>
   );

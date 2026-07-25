@@ -330,6 +330,16 @@ function register(): void {
         void withTools((tools) => tools.bypassState()).then(sendResponse);
         return true;
 
+      case MESSAGE_TYPES.SCAN_TAB_ORDER:
+        void withTools((tools) => tools.scanTabOrder()).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.GET_STOP_LOCATORS: {
+        const { index } = message.payload;
+        void withTools((tools) => tools.stopLocators(index)).then(sendResponse);
+        return true;
+      }
+
       default:
         // Everything else is addressed to the side panel or the worker.
         return false;

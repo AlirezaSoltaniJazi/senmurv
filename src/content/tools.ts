@@ -2,6 +2,7 @@ import type { MeasureMode, PageMode } from '@/shared/types';
 import { restorePage, bypassPage, bypassState } from './tools/bypass';
 import { startColor, stopColor } from './tools/color';
 import { startMeasure, stopMeasure } from './tools/measure';
+import { scanTabOrder, startTabOrder, stopLocators, stopTabOrder } from './tools/tab-index';
 
 /**
  * Entry point for the Tools-tab in-page modes.
@@ -28,7 +29,7 @@ interface ModeHandlers {
  */
 const HANDLERS: Partial<Record<PageMode, ModeHandlers>> = {
   color: { start: startColor, stop: stopColor },
-  // 'taborder' → Phase 5
+  taborder: { start: startTabOrder, stop: stopTabOrder },
   // 'font'     → Phase 7
 };
 
@@ -54,3 +55,6 @@ export function stopMode(mode: PageMode): void {
 // leaves, and its state (the undo snapshot, the sticky observer) lives in the
 // content script so it survives the panel closing.
 export { restorePage, bypassPage, bypassState };
+
+// Tab order: SCAN computes + draws; the panel fetches a stop's locators lazily.
+export { scanTabOrder, stopLocators };

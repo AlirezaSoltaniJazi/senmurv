@@ -65,6 +65,10 @@ export type RuntimeMessage =
   // reading on click. Both fall through the SW to the panel, like ELEMENT_PICKED.
   | { type: typeof MESSAGE_TYPES.TOOL_STREAM; payload: ToolStreamData }
   | { type: typeof MESSAGE_TYPES.TOOL_PICKED; payload: ToolPickData }
+  // Tab order (both askTab). SCAN computes + draws the numbered badges; the
+  // panel fetches a stop's locators lazily (and highlights it) on row expand.
+  | { type: typeof MESSAGE_TYPES.SCAN_TAB_ORDER }
+  | { type: typeof MESSAGE_TYPES.GET_STOP_LOCATORS; payload: { index: number } }
   // A null selector clears the highlight — without it a highlight can never be
   // removed, which is the trap this signature exists to avoid.
   | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } }

@@ -69,7 +69,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Computed from the DOM — top frame only. Closed shadow roots, cross-origin frames, roving tabindex and JS focus managers are not visible.',
     mode: 'taborder',
     requiresPage: true,
-    isReady: false,
+    isReady: true,
   },
   {
     key: 'a11y',

@@ -207,7 +207,9 @@ export type MeasureData =
  */
 export type ToolStreamData =
   | { readonly tool: 'measure'; readonly data: MeasureData }
-  | { readonly tool: 'color'; readonly data: ColorReport };
+  | { readonly tool: 'color'; readonly data: ColorReport }
+  // The DOM changed since the last tab-order scan — the panel offers a rescan.
+  | { readonly tool: 'taborder'; readonly data: { readonly stale: true } };
 
 /** A committed reading pushed on click (TOOL_PICKED), with copy-ready locators. */
 export type ToolPickData =
@@ -270,6 +272,35 @@ export interface ColorReport {
   /** Text-vs-effective-background contrast, when both are known sRGB colours. */
   readonly contrast: ContrastVerdict | null;
   /** Honest caveats: background images, ::before overlays, non-sRGB colours, etc. */
+  readonly warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Tab order
+// ---------------------------------------------------------------------------
+
+/** An accessibility problem flagged against one tab stop. */
+export type TabIssue = 'positive-tabindex' | 'no-accessible-name' | 'offscreen' | 'order-mismatch';
+
+/** One stop in the page's keyboard tab sequence. Carries no DOM node (counts + strings only). */
+export interface TabStop {
+  /** 1-based position in the tab sequence. */
+  readonly index: number;
+  readonly tag: string;
+  /** Accessible name, or '' when it has none. */
+  readonly name: string;
+  /** The element's effective tabindex (0 for natively-focusable, >0 for explicit). */
+  readonly tabindex: number;
+  readonly role: string;
+  /** True when the stop is inside an (open) shadow root. */
+  readonly inShadow: boolean;
+  readonly issues: TabIssue[];
+}
+
+/** The result of scanning the page's tab order. */
+export interface TabOrderScan {
+  readonly stops: TabStop[];
+  /** Honest caveats (closed shadow roots, cross-origin frames, roving tabindex…). */
   readonly warnings: string[];
 }
 

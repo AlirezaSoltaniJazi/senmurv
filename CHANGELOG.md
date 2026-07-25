@@ -27,6 +27,17 @@ All notable changes to Senmurv are documented here. The format is based on
     Dynamics CRM provides, which no DOM-level pass can reach.
   - **Save as a script** hands the current settings to the Scripts tab as a
     standalone script, so the bypass can be re-run after every page load.
+- **Tools → Tab order** — visualise the page's keyboard tab sequence as numbered
+  badges drawn on each stop, plus an ordered side-panel list (tag, accessible
+  name, tabindex, shadow marker). Click a stop for copy-ready locators;
+  export the sequence as TXT / CSV / JSON.
+  - Flags **positive tabindex**, **missing accessible name**, **offscreen** stops
+    and **tab order ≠ visual order**.
+  - Correctly handles the flattened shadow tree (`<slot>`), per-scope positive
+    tabindex, `delegatesFocus`, radio groups and disabled/inert exclusions — the
+    computed order was verified to match Chrome's actual Tab-key order exactly.
+  - Badges stay aligned while you scroll, and a **Rescan** prompt appears when
+    the page changes.
 - **Tools → Colour** — hover an element for its colours in every format (HEX,
   HEX8, RGB, HSL, HWB) and its **WCAG contrast** verdict (AA / AAA at normal and
   large text), click to pin it with copy-ready locators. Also a **screen

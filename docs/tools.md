@@ -57,8 +57,31 @@ roots cannot be inspected, and the tools are unavailable on `chrome://`,
 `file://`, `view-source:` and Web Store pages.
 
 > **Status:** the tab, its shared plumbing, **Bypass**, **Site data**,
-> **Measure** and **Colour** have shipped; the remaining tools are landing one
-> release at a time, and an unbuilt tool says so when opened.
+> **Measure**, **Colour** and **Tab order** have shipped; the remaining tools are
+> landing one release at a time, and an unbuilt tool says so when opened.
+
+### Tab order — detail
+
+Scan the page to draw a numbered badge on every keyboard tab stop, in the order
+Tab reaches them, alongside an ordered side-panel list (tag · accessible name ·
+tabindex · shadow marker). Click a stop to scroll it into view and get copy-ready
+locators; export the whole sequence as TXT / CSV / JSON.
+
+- **Findings**: positive `tabindex` (an anti-pattern, drawn amber), a focusable
+  element with **no accessible name**, an **offscreen** stop, and **tab order ≠
+  visual order** (a stop that sits before its predecessor in reading order).
+- **Correctness**: the order is computed from the DOM, never from `el.tabIndex`
+  (which browsers and happy-dom disagree on). It walks the **flattened** tree
+  (`<slot>` expanded), scopes positive `tabindex` per shadow root, collapses a
+  `delegatesFocus` host to one stop, and applies radio-group and
+  disabled/`inert` exclusions. The computed sequence was checked to **match
+  Chrome's actual Tab-key order exactly**.
+- **Live**: badges stay aligned as you scroll; a **Rescan** prompt appears when
+  the DOM changes (it never auto-rescans, which would thrash on an SPA).
+
+**Limits**: top frame only; closed shadow roots, cross-origin frames, roving
+tabindex and JS focus managers are invisible; mutations inside shadow roots do
+not trigger the stale prompt.
 
 ### Colour — detail
 
