@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import type { ReactElement } from 'react';
 import { findTool, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
@@ -30,6 +31,12 @@ interface Props {
  * would eat two lines of it at side-panel widths.
  */
 export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
+  // Opening a tool, switching tools, or going back to the launcher should start
+  // at the top — the panel otherwise keeps the previous scroll position.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [tool]);
+
   if (tool === null) {
     return (
       <div className="tab">

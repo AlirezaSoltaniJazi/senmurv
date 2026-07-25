@@ -86,6 +86,12 @@ export function App(): ReactElement {
   }, []);
   const clearScriptSeed = useCallback(() => setScriptSeed(null), []);
 
+  // Switching tabs should start at the top — the panel otherwise keeps the
+  // previous tab's scroll position.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [tab]);
+
   // Load persisted preferences (font size) on mount.
   useEffect(() => {
     let cancelled = false;
