@@ -1,5 +1,6 @@
-import type { PageMode } from '@/shared/types';
-import { restorePage, unlockPage, unlockState } from './tools/god-mode';
+import type { MeasureMode, PageMode } from '@/shared/types';
+import { restorePage, bypassPage, bypassState } from './tools/bypass';
+import { startMeasure, stopMeasure } from './tools/measure';
 
 /**
  * Entry point for the Tools-tab in-page modes.
@@ -19,25 +20,36 @@ interface ModeHandlers {
   stop(): void;
 }
 
-/** One entry per interactive Tools mode; each phase registers its own. */
+/**
+ * One entry per interactive Tools mode; each phase registers its own. `measure`
+ * is special-cased below because it carries a sub-mode. Every start() must be
+ * safe to call while already active (the panel re-sends START to re-configure).
+ */
 const HANDLERS: Partial<Record<PageMode, ModeHandlers>> = {
-  // 'measure'  → Phase 3
   // 'color'    → Phase 4
   // 'taborder' → Phase 5
   // 'font'     → Phase 7
 };
 
 /** Start an in-page Tools mode. Unknown/unimplemented modes are a no-op. */
-export function startMode(mode: PageMode): void {
+export function startMode(mode: PageMode, measureMode?: MeasureMode): void {
+  if (mode === 'measure') {
+    startMeasure(measureMode);
+    return;
+  }
   HANDLERS[mode]?.start();
 }
 
 /** Stop an in-page Tools mode. Safe to call for a mode that never started. */
 export function stopMode(mode: PageMode): void {
+  if (mode === 'measure') {
+    stopMeasure();
+    return;
+  }
   HANDLERS[mode]?.stop();
 }
 
-// Unlock is request/response rather than a mode: it mutates the page and
+// Bypass is request/response rather than a mode: it mutates the page and
 // leaves, and its state (the undo snapshot, the sticky observer) lives in the
 // content script so it survives the panel closing.
-export { restorePage, unlockPage, unlockState };
+export { restorePage, bypassPage, bypassState };

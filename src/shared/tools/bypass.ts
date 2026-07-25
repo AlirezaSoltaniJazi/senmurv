@@ -1,8 +1,8 @@
-import { GOD_MARKER_ATTR, SENMURV_HOST_TAGS } from '@/shared/constants';
-import type { GodCategory, GodModeOptions, GodModeReport } from '@/shared/types';
+import { BYPASS_MARKER_ATTR, SENMURV_HOST_TAGS } from '@/shared/constants';
+import type { BypassCategory, BypassOptions, BypassReport } from '@/shared/types';
 
 /**
- * God Mode — strip the client-side locks an app puts on its own form.
+ * Bypass — strip the client-side locks an app puts on its own form.
  *
  * NOTE ON PURITY: unlike `locators.ts` and `faker-data.ts`, this module MUTATES
  * the DOM. It is still chrome-free and takes its root and its environment as
@@ -10,7 +10,7 @@ import type { GodCategory, GodModeOptions, GodModeReport } from '@/shared/types'
  * it is not a pure module and `src/shared/`'s purity rule is relaxed here
  * deliberately. See agents.md → Architecture Rules.
  *
- * Inspired by God Mode in Level Up for Dynamics CRM, which is four Xrm calls and
+ * Inspired by the form-unlock feature in Level Up for Dynamics CRM, which is four Xrm calls and
  * only works on Dynamics. This is the DOM equivalent that works anywhere; the
  * Xrm path lives separately in the service worker.
  */
@@ -27,9 +27,9 @@ interface ElementRecord {
  * The undo record. A plain Map (not a WeakMap) because revert has to iterate it;
  * `pruneDetached` keeps it from pinning nodes an SPA has already thrown away.
  */
-export type GodModeSnapshot = Map<Element, ElementRecord>;
+export type BypassSnapshot = Map<Element, ElementRecord>;
 
-export function createSnapshot(): GodModeSnapshot {
+export function createSnapshot(): BypassSnapshot {
   return new Map();
 }
 
@@ -37,7 +37,7 @@ export function createSnapshot(): GodModeSnapshot {
  * The bits of the DOM that need a layout engine, injected so the engine stays
  * testable — happy-dom has no layout and does not support `:modal`.
  */
-export interface GodModeEnv {
+export interface BypassEnv {
   /** Computed `display` of an element. */
   readonly displayOf: (el: Element) => string;
   /** Is this a dialog currently shown with showModal()? */
@@ -45,7 +45,7 @@ export interface GodModeEnv {
 }
 
 /** Env for a real browser. Every read is guarded — these throw on detached nodes. */
-export const BROWSER_ENV: GodModeEnv = {
+export const BROWSER_ENV: BypassEnv = {
   displayOf: (el) => {
     try {
       return getComputedStyle(el).display;
@@ -65,7 +65,7 @@ export const BROWSER_ENV: GodModeEnv = {
 };
 
 /** A conservative default: strip locks, change nothing that alters what you see. */
-export const DEFAULT_GOD_MODE_OPTIONS: GodModeOptions = {
+export const DEFAULT_BYPASS_OPTIONS: BypassOptions = {
   shouldEnableInputs: true,
   shouldDropValidation: true,
   shouldUnlockOptions: true,
@@ -97,11 +97,11 @@ const VALIDATION_ATTRS = [
   'maxlength',
 ] as const;
 
-function emptyCounts(): Record<GodCategory, number> {
+function emptyCounts(): Record<BypassCategory, number> {
   return { enabled: 0, validation: 0, options: 0, revealed: 0, passwords: 0, dialogs: 0 };
 }
 
-function recordFor(snapshot: GodModeSnapshot, el: Element): ElementRecord {
+function recordFor(snapshot: BypassSnapshot, el: Element): ElementRecord {
   let record = snapshot.get(el);
   if (!record) {
     record = { attrs: new Map(), wasModal: false };
@@ -120,7 +120,7 @@ function recordFor(snapshot: GodModeSnapshot, el: Element): ElementRecord {
  * silent no-op.
  */
 export function setAttr(
-  snapshot: GodModeSnapshot,
+  snapshot: BypassSnapshot,
   el: Element,
   name: string,
   next: string | null
@@ -137,12 +137,12 @@ export function setAttr(
 }
 
 /** Add a token to the marker attribute's space-separated list. */
-function mark(snapshot: GodModeSnapshot, el: Element, token: string): boolean {
-  const current = el.getAttribute(GOD_MARKER_ATTR);
+function mark(snapshot: BypassSnapshot, el: Element, token: string): boolean {
+  const current = el.getAttribute(BYPASS_MARKER_ATTR);
   const tokens = current === null ? [] : current.split(/\s+/).filter(Boolean);
   if (tokens.includes(token)) return false;
   tokens.push(token);
-  return setAttr(snapshot, el, GOD_MARKER_ATTR, tokens.join(' '));
+  return setAttr(snapshot, el, BYPASS_MARKER_ATTR, tokens.join(' '));
 }
 
 /**
@@ -194,7 +194,7 @@ function isLikelyShadowHost(el: Element): boolean {
  * Every count in this module is a count of ELEMENTS affected, never of
  * attributes — "42 fields enabled" is the number a tester can check.
  */
-export function enableControls(snapshot: GodModeSnapshot, elements: Element[]): number {
+export function enableControls(snapshot: BypassSnapshot, elements: Element[]): number {
   let changed = 0;
   for (const el of elements) {
     const tag = el.tagName.toLowerCase();
@@ -231,7 +231,7 @@ export function enableControls(snapshot: GodModeSnapshot, elements: Element[]): 
  *    the recorded original is null and Restore REMOVES it. Getting this
  *    backwards silently breaks undo.
  */
-export function dropValidation(snapshot: GodModeSnapshot, elements: Element[]): number {
+export function dropValidation(snapshot: BypassSnapshot, elements: Element[]): number {
   let changed = 0;
   for (const el of elements) {
     let touched = false;
@@ -253,7 +253,7 @@ export function dropValidation(snapshot: GodModeSnapshot, elements: Element[]): 
 }
 
 /** Re-enable every `<option>` / `<optgroup>` — the web analogue of "show all optionset values". */
-export function unlockOptions(snapshot: GodModeSnapshot, elements: Element[]): number {
+export function unlockOptions(snapshot: BypassSnapshot, elements: Element[]): number {
   let changed = 0;
   for (const el of elements) {
     const tag = el.tagName.toLowerCase();
@@ -275,9 +275,9 @@ export function unlockOptions(snapshot: GodModeSnapshot, elements: Element[]): n
  * author `display:flex`.
  */
 export function revealHidden(
-  snapshot: GodModeSnapshot,
+  snapshot: BypassSnapshot,
   elements: Element[],
-  env: GodModeEnv
+  env: BypassEnv
 ): number {
   let changed = 0;
   for (const el of elements) {
@@ -297,7 +297,7 @@ export function revealHidden(
 }
 
 /** Turn password fields into readable text fields. */
-export function revealPasswords(snapshot: GodModeSnapshot, elements: Element[]): number {
+export function revealPasswords(snapshot: BypassSnapshot, elements: Element[]): number {
   let changed = 0;
   for (const el of elements) {
     if (el.tagName.toLowerCase() !== 'input') continue;
@@ -313,9 +313,9 @@ export function revealPasswords(snapshot: GodModeSnapshot, elements: Element[]):
  * rest of the document inert — no CSS can reach that, only `close()` can.
  */
 export function closeDialogs(
-  snapshot: GodModeSnapshot,
+  snapshot: BypassSnapshot,
   elements: Element[],
-  env: GodModeEnv
+  env: BypassEnv
 ): number {
   let changed = 0;
   for (const el of elements) {
@@ -336,12 +336,12 @@ export function closeDialogs(
 // ---------------------------------------------------------------------------
 
 /** Run every enabled pass against `root`, accumulating into `snapshot`. */
-export function applyGodMode(
+export function applyBypass(
   root: Document | ShadowRoot | Element,
-  options: GodModeOptions,
-  snapshot: GodModeSnapshot,
-  env: GodModeEnv = BROWSER_ENV
-): GodModeReport {
+  options: BypassOptions,
+  snapshot: BypassSnapshot,
+  env: BypassEnv = BROWSER_ENV
+): BypassReport {
   const { elements, shadowRoots, closedHosts } = collectTargets(
     root,
     options.shouldPierceShadowDom
@@ -380,7 +380,7 @@ export function applyGodMode(
  * Put everything back. Attributes restore to exactly what they were, telling
  * "was absent" (null) apart from "was present and empty" ("").
  */
-export function revertGodMode(snapshot: GodModeSnapshot): number {
+export function revertBypass(snapshot: BypassSnapshot): number {
   let restored = 0;
   for (const [el, record] of snapshot) {
     for (const [name, original] of record.attrs) {
@@ -409,7 +409,7 @@ export function revertGodMode(snapshot: GodModeSnapshot): number {
  * re-apply passes so a continuously re-rendering SPA cannot grow the snapshot
  * without bound. A detached element cannot be restored anyway.
  */
-export function pruneDetached(snapshot: GodModeSnapshot): number {
+export function pruneDetached(snapshot: BypassSnapshot): number {
   let dropped = 0;
   for (const el of Array.from(snapshot.keys())) {
     if (!el.isConnected) {
@@ -429,7 +429,7 @@ export function pruneDetached(snapshot: GodModeSnapshot): number {
  * the Scripts tab and re-run on every page load. Intentionally a trimmed
  * version of the engine above — it has no undo and no sticky mode.
  */
-export function buildUnlockScript(options: GodModeOptions): string {
+export function buildBypassScript(options: BypassOptions): string {
   const strip: string[] = [];
   if (options.shouldEnableInputs)
     strip.push('disabled', 'readonly', 'aria-disabled', 'aria-readonly');
@@ -437,7 +437,7 @@ export function buildUnlockScript(options: GodModeOptions): string {
   if (options.shouldRevealHidden) strip.push('hidden', 'inert', 'aria-hidden');
 
   const lines = [
-    '// Senmurv — Unlock (God Mode). Client-side only: the server can still refuse.',
+    '// Senmurv — Bypass. Client-side only: the server can still refuse.',
     `const LOCKS = ${JSON.stringify(strip)};`,
     'let n = 0;',
     "for (const el of document.querySelectorAll('*')) {",

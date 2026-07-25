@@ -75,7 +75,7 @@ describe('RUN_SCRIPT', () => {
   });
 });
 
-describe('Unlock (God Mode)', () => {
+describe('Bypass', () => {
   const OPTIONS = {
     shouldEnableInputs: true,
     shouldDropValidation: true,
@@ -89,7 +89,7 @@ describe('Unlock (God Mode)', () => {
   it('injects the override sheet before asking the page to unlock', async () => {
     chromeMock.tabs.sendMessage.mockResolvedValueOnce({ ok: true, value: { total: 3 } });
     const res = await send({
-      type: MESSAGE_TYPES.UNLOCK_PAGE,
+      type: MESSAGE_TYPES.BYPASS_PAGE,
       payload: { options: OPTIONS, shouldWatch: false },
     });
     expect(res).toEqual({ ok: true, value: { total: 3 } });
@@ -99,7 +99,7 @@ describe('Unlock (God Mode)', () => {
   it('removes the SAME css string it inserted — a mismatch silently no-ops', async () => {
     chromeMock.tabs.sendMessage.mockResolvedValue({ ok: true, value: { total: 0 } });
     await send({
-      type: MESSAGE_TYPES.UNLOCK_PAGE,
+      type: MESSAGE_TYPES.BYPASS_PAGE,
       payload: { options: OPTIONS, shouldWatch: false },
     });
     await send({ type: MESSAGE_TYPES.RESTORE_PAGE });
@@ -126,7 +126,7 @@ describe('Unlock (God Mode)', () => {
     chromeMock.scripting.executeScript.mockResolvedValueOnce([
       { result: { ok: true, value: { attributes: 2, controls: 5, tabs: 1, sections: 3 } } },
     ]);
-    const res = await send({ type: MESSAGE_TYPES.UNLOCK_XRM });
+    const res = await send({ type: MESSAGE_TYPES.BYPASS_XRM });
     expect(res).toEqual({ ok: true, value: { attributes: 2, controls: 5, tabs: 1, sections: 3 } });
 
     const [injection] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
@@ -143,7 +143,7 @@ describe('Unlock (God Mode)', () => {
     chromeMock.scripting.executeScript.mockResolvedValueOnce([
       { result: { ok: false, error: 'No Dynamics form here — window.Xrm is not present.' } },
     ]);
-    const res = await send({ type: MESSAGE_TYPES.UNLOCK_XRM });
+    const res = await send({ type: MESSAGE_TYPES.BYPASS_XRM });
     expect(res?.ok).toBe(false);
     expect(res?.error).toMatch(/window\.Xrm/);
   });
@@ -151,23 +151,23 @@ describe('Unlock (God Mode)', () => {
   it('merges the MAIN-world Xrm probe into the unlock state', async () => {
     chromeMock.tabs.sendMessage.mockResolvedValueOnce({
       ok: true,
-      value: { isUnlocked: true, isWatching: false, report: null },
+      value: { isActive: true, isWatching: false, report: null },
     });
     chromeMock.scripting.executeScript.mockResolvedValueOnce([{ result: true }]);
-    const res = await send({ type: MESSAGE_TYPES.GET_UNLOCK_STATE });
+    const res = await send({ type: MESSAGE_TYPES.GET_BYPASS_STATE });
     expect(res).toEqual({
       ok: true,
-      value: { isUnlocked: true, isWatching: false, report: null, hasXrm: true },
+      value: { isActive: true, isWatching: false, report: null, hasXrm: true },
     });
   });
 
   it('reports hasXrm false when the probe cannot run', async () => {
     chromeMock.tabs.sendMessage.mockResolvedValueOnce({
       ok: true,
-      value: { isUnlocked: false, isWatching: false, report: null },
+      value: { isActive: false, isWatching: false, report: null },
     });
     chromeMock.scripting.executeScript.mockRejectedValueOnce(new Error('blocked'));
-    const res = await send({ type: MESSAGE_TYPES.GET_UNLOCK_STATE });
+    const res = await send({ type: MESSAGE_TYPES.GET_BYPASS_STATE });
     expect((res?.value as { hasXrm: boolean }).hasXrm).toBe(false);
   });
 
@@ -176,11 +176,132 @@ describe('Unlock (God Mode)', () => {
       { id: 2, url: 'chrome://extensions', active: true },
     ]);
     const res = await send({
-      type: MESSAGE_TYPES.UNLOCK_PAGE,
+      type: MESSAGE_TYPES.BYPASS_PAGE,
       payload: { options: OPTIONS, shouldWatch: false },
     });
     expect(res?.ok).toBe(false);
     expect(chromeMock.scripting.insertCSS).not.toHaveBeenCalled();
+  });
+});
+
+describe('Site data', () => {
+  const PROBE = {
+    origin: 'https://example.com',
+    isSecureContext: true,
+    usage: 5000,
+    quota: 100000,
+    details: [],
+    localStorageBytes: 100,
+    sessionStorageBytes: 0,
+    cookieCount: 2,
+    cacheCount: 1,
+    serviceWorkerCount: 1,
+    indexedDbCount: 0,
+    warnings: [],
+  };
+
+  it('probes storage in the ISOLATED world — no `world` key', async () => {
+    // The probe MUST stay ISOLATED: a content script's localStorage/caches are
+    // the page origin's, which is what we mean to measure. MAIN would also work
+    // but needlessly enters the page's own realm.
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([{ result: PROBE }]);
+    const res = await send({ type: MESSAGE_TYPES.PROBE_SITE_STORAGE });
+    expect(res).toEqual({ ok: true, value: PROBE });
+
+    const [injection] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+    ];
+    expect('world' in injection).toBe(false);
+    expect(typeof injection.func).toBe('function');
+  });
+
+  it('clears only validated types, passed as args to an ISOLATED injection', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { cleared: ['localStorage'], skipped: [] } },
+    ]);
+
+    const res = await send({
+      type: MESSAGE_TYPES.CLEAR_SITE_DATA,
+      payload: { types: ['localStorage'], shouldReload: false },
+    });
+    expect(res?.ok).toBe(true);
+    expect((res?.value as { cleared: string[] }).cleared).toEqual(['localStorage']);
+
+    // The clear is the ONLY injection — no before/after storage probe, because
+    // navigator.storage.estimate cannot support an honest "bytes freed" number.
+    expect(chromeMock.scripting.executeScript).toHaveBeenCalledTimes(1);
+    const [clearCall] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
+      Record<string, unknown>,
+    ];
+    expect('world' in clearCall).toBe(false);
+    expect(clearCall.args).toEqual([['localStorage']]);
+  });
+
+  it('refuses an unknown type before it can reach the page', async () => {
+    const res = await send({
+      type: MESSAGE_TYPES.CLEAR_SITE_DATA,
+      payload: { types: ['passwords'], shouldReload: false },
+    });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('refuses an empty selection', async () => {
+    const res = await send({
+      type: MESSAGE_TYPES.CLEAR_SITE_DATA,
+      payload: { types: [], shouldReload: false },
+    });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('hard-reloads with bypassCache only when asked', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValue([
+      { result: { cleared: ['cacheStorage'], skipped: [] } },
+    ]);
+    await send({
+      type: MESSAGE_TYPES.CLEAR_SITE_DATA,
+      payload: { types: ['cacheStorage'], shouldReload: true },
+    });
+    expect(chromeMock.tabs.reload).toHaveBeenCalledWith(1, { bypassCache: true });
+
+    chromeMock.tabs.reload.mockClear();
+    await send({
+      type: MESSAGE_TYPES.CLEAR_SITE_DATA,
+      payload: { types: ['cacheStorage'], shouldReload: false },
+    });
+    expect(chromeMock.tabs.reload).not.toHaveBeenCalled();
+  });
+
+  it('reports the types the page could not clear', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      {
+        result: {
+          cleared: ['localStorage'],
+          skipped: [{ type: 'indexedDB', reason: 'This browser cannot list databases.' }],
+        },
+      },
+    ]);
+    const res = await send({
+      type: MESSAGE_TYPES.CLEAR_SITE_DATA,
+      payload: { types: ['localStorage', 'indexedDB'], shouldReload: false },
+    });
+    expect(res?.ok).toBe(true);
+    expect((res?.value as { skipped: { type: string }[] }).skipped).toEqual([
+      { type: 'indexedDB', reason: 'This browser cannot list databases.' },
+    ]);
+  });
+
+  it('refuses to clear on a blocked page', async () => {
+    chromeMock.tabs.query.mockResolvedValueOnce([
+      { id: 2, url: 'chrome://extensions', active: true },
+    ]);
+    const res = await send({
+      type: MESSAGE_TYPES.CLEAR_SITE_DATA,
+      payload: { types: ['localStorage'], shouldReload: false },
+    });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
   });
 });
 

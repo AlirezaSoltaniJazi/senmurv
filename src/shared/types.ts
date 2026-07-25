@@ -144,11 +144,87 @@ export type PageMode =
 export type ToolMode = Extract<PageMode, 'measure' | 'color' | 'font' | 'taborder'>;
 
 // ---------------------------------------------------------------------------
-// Unlock / God Mode
+// Measure
 // ---------------------------------------------------------------------------
 
-/** Which locks God Mode strips. The three destructive ones default to OFF. */
-export interface GodModeOptions {
+/** The three ways to measure: drag a box, inspect an element, or span two elements. */
+export type MeasureMode = 'region' | 'element' | 'distance';
+
+/** The four edges of a box, e.g. padding or margin. */
+export interface BoxSides {
+  readonly top: number;
+  readonly right: number;
+  readonly bottom: number;
+  readonly left: number;
+}
+
+/** DevTools-style box model of one element. All numbers are CSS px. */
+export interface BoxModel {
+  readonly content: { readonly width: number; readonly height: number };
+  readonly padding: BoxSides;
+  readonly border: BoxSides;
+  readonly margin: BoxSides;
+  /** The border box — exactly what getBoundingClientRect reports. */
+  readonly borderBox: { readonly width: number; readonly height: number };
+  /** Border box plus margins. */
+  readonly marginBox: { readonly width: number; readonly height: number };
+  /** Human description of an ancestor/self transform, or null when there is none. */
+  readonly transform: string | null;
+}
+
+/** A dragged rectangle, in both viewport and page-absolute coordinates. */
+export interface MeasureRegion {
+  readonly width: number;
+  readonly height: number;
+  /** Top-left in viewport (fixed) coordinates — where the overlay box sits. */
+  readonly viewport: { readonly left: number; readonly top: number };
+  /** Top-left in page-absolute coordinates (viewport + scroll offset). */
+  readonly page: { readonly left: number; readonly top: number };
+}
+
+/** The gap and centre-to-centre distance between two elements. */
+export interface DistanceReading {
+  /** Nearest-edge horizontal gap (0 when the boxes overlap on the x-axis). */
+  readonly horizontal: number;
+  /** Nearest-edge vertical gap (0 when they overlap on the y-axis). */
+  readonly vertical: number;
+  /** Centre-delta components. */
+  readonly dx: number;
+  readonly dy: number;
+  /** Straight-line centre-to-centre distance. */
+  readonly centerToCenter: number;
+}
+
+/** One measurement result, discriminated by the mode that produced it. */
+export type MeasureData =
+  | { readonly mode: 'region'; readonly region: MeasureRegion }
+  | { readonly mode: 'element'; readonly box: BoxModel; readonly tag: string }
+  | { readonly mode: 'distance'; readonly distance: DistanceReading };
+
+/** Live, high-frequency reading pushed while the user drags or hovers (TOOL_STREAM). */
+export type ToolStreamData = { readonly tool: 'measure'; readonly data: MeasureData };
+
+/** A committed reading pushed on click/mouse-up (TOOL_PICKED). */
+export type ToolPickData = {
+  readonly tool: 'measure';
+  readonly data: MeasureData;
+  /** Present for element/distance picks so the panel can offer copy-ready locators. */
+  readonly locators?: LocatorSet;
+};
+
+/** One framework's copy-ready size assertion for a measured element. */
+export interface SizeAssertion {
+  readonly framework: Framework;
+  readonly label: string;
+  readonly code: string;
+}
+
+// ---------------------------------------------------------------------------
+// Bypass
+// ---------------------------------------------------------------------------
+
+/** Which locks Bypass strips. The three destructive ones default to OFF. */
+export interface BypassOptions {
   readonly shouldEnableInputs: boolean;
   readonly shouldDropValidation: boolean;
   readonly shouldUnlockOptions: boolean;
@@ -159,7 +235,7 @@ export interface GodModeOptions {
 }
 
 /** What kind of lock a change removed — one counter per category in the report. */
-export type GodCategory =
+export type BypassCategory =
   | 'enabled'
   | 'validation'
   | 'options'
@@ -171,20 +247,20 @@ export type GodCategory =
  * The ONLY thing that crosses the wire. Counts and strings only — it is
  * structurally incapable of leaking a DOM node into a message.
  */
-export interface GodModeReport {
+export interface BypassReport {
   readonly total: number;
-  readonly counts: Record<GodCategory, number>;
+  readonly counts: Record<BypassCategory, number>;
   /** How many open shadow roots the walk descended into. */
   readonly shadowRoots: number;
   /** Honest caveats for this specific run (closed roots, cross-origin frames…). */
   readonly warnings: string[];
 }
 
-/** What the content script knows about the current unlock. */
-export interface PageUnlockState {
-  readonly isUnlocked: boolean;
+/** What the content script knows about the current bypass. */
+export interface PageBypassState {
+  readonly isActive: boolean;
   readonly isWatching: boolean;
-  readonly report: GodModeReport | null;
+  readonly report: BypassReport | null;
 }
 
 /**
@@ -192,11 +268,66 @@ export interface PageUnlockState {
  * from the content script — `window.Xrm` lives in the page's own realm — so the
  * service worker probes for it and merges it in.
  */
-export interface GodModeState extends PageUnlockState {
+export interface BypassState extends PageBypassState {
   readonly hasXrm: boolean;
 }
 
-/** Result of the Dynamics 365 / Power Apps unlock, which runs through the Xrm API. */
+// ---------------------------------------------------------------------------
+// Site data
+// ---------------------------------------------------------------------------
+
+/** Kinds of site data clearable from the page itself, for the current origin. */
+export type ClearTypeId =
+  | 'cacheStorage'
+  | 'serviceWorkers'
+  | 'localStorage'
+  | 'sessionStorage'
+  | 'indexedDB'
+  | 'cookies';
+
+/** One row of the per-origin storage breakdown. */
+export interface StorageDetail {
+  readonly key: string;
+  readonly bytes: number;
+}
+
+/**
+ * What the page reports about its own storage. Every field is nullable because
+ * each read is separately guarded — `navigator.storage`, `caches` and
+ * `navigator.serviceWorker` are all `[SecureContext]`, and `localStorage` /
+ * `document.cookie` throw outright when site data is blocked.
+ */
+export interface StorageProbe {
+  readonly origin: string;
+  readonly isSecureContext: boolean;
+  /** Quota-managed bytes for this origin. NOT the HTTP cache — that is unreadable. */
+  readonly usage: number | null;
+  readonly quota: number | null;
+  readonly details: StorageDetail[];
+  readonly localStorageBytes: number | null;
+  readonly sessionStorageBytes: number | null;
+  readonly cookieCount: number | null;
+  readonly cacheCount: number | null;
+  readonly serviceWorkerCount: number | null;
+  readonly indexedDbCount: number | null;
+  readonly warnings: string[];
+}
+
+/**
+ * What a clear actually managed to do.
+ *
+ * There is deliberately no "bytes freed": Chrome's `navigator.storage.estimate`
+ * is padded, lazy, and does not count localStorage or cookies, so a before/after
+ * delta is not a trustworthy number. The UI re-probes instead, showing the real
+ * new state — see the note in the Site data tool.
+ */
+export interface ClearOutcome {
+  readonly cleared: ClearTypeId[];
+  readonly skipped: { type: ClearTypeId; reason: string }[];
+  readonly didReload: boolean;
+}
+
+/** Result of the Dynamics 365 / Power Apps bypass, which runs through the Xrm API. */
 export interface XrmReport {
   readonly attributes: number;
   readonly controls: number;

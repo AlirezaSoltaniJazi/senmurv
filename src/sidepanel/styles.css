@@ -265,6 +265,11 @@ select,
 
 .data-key {
   color: var(--muted);
+  /* The key sits in a fixed 92px grid column. Let a long unbreakable label
+     (e.g. a raw storage key) wrap within the column instead of overflowing
+     into the value cell and overlapping it. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .data-value {

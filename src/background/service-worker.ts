@@ -1,4 +1,4 @@
-import { BLOCKED_URL_PREFIXES, GOD_MODE_CSS, MESSAGE_TYPES } from '@/shared/constants';
+import { BLOCKED_URL_PREFIXES, BYPASS_CSS, MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 import {
@@ -18,12 +18,16 @@ import {
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
+import { buildClearPlan } from '@/shared/tools/site-data';
 import type {
-  GodModeReport,
-  GodModeState,
+  ClearOutcome,
+  ClearTypeId,
+  BypassReport,
+  BypassState,
   LocatorKind,
-  PageUnlockState,
+  PageBypassState,
   Result,
+  StorageProbe,
   XrmReport,
 } from '@/shared/types';
 
@@ -62,9 +66,12 @@ async function getActiveTab(): Promise<chrome.tabs.Tab | undefined> {
   return tab;
 }
 
-/** Resolve the active tab, reject blocked pages, then run `fn` against its id. */
-async function withActiveRunnableTab<T>(
-  fn: (tabId: number) => Promise<Result<T>>
+/**
+ * Resolve the active tab and reject blocked pages, then run `fn` against it.
+ * Use this when the handler needs the tab's URL as well as its id.
+ */
+async function withActiveTab<T>(
+  fn: (tab: { id: number; url: string | undefined }) => Promise<Result<T>>
 ): Promise<Result<T>> {
   const tab = await getActiveTab();
   if (!tab?.id) return { ok: false, error: 'No active tab found.' };
@@ -74,7 +81,14 @@ async function withActiveRunnableTab<T>(
       error: 'This page does not allow extensions (chrome://, Web Store, or similar).',
     };
   }
-  return fn(tab.id);
+  return fn({ id: tab.id, url: tab.url });
+}
+
+/** Resolve the active tab, reject blocked pages, then run `fn` against its id. */
+async function withActiveRunnableTab<T>(
+  fn: (tabId: number) => Promise<Result<T>>
+): Promise<Result<T>> {
+  return withActiveTab((tab) => fn(tab.id));
 }
 
 // ---------------------------------------------------------------------------
@@ -258,31 +272,31 @@ async function testLocator(
 }
 
 // ---------------------------------------------------------------------------
-// Unlock (God Mode)
+// Bypass — strip the page's client-side locks
 // ---------------------------------------------------------------------------
 
 /**
  * insertCSS and removeCSS must receive a BYTE-IDENTICAL descriptor or removal
  * silently no-ops, so both calls spread this one object.
  */
-const GOD_CSS = { css: GOD_MODE_CSS, origin: 'AUTHOR' } as const;
+const BYPASS_SHEET = { css: BYPASS_CSS, origin: 'AUTHOR' } as const;
 
-async function unlockPage(tabId: number, message: RuntimeMessage): Promise<Result<GodModeReport>> {
+async function bypassPage(tabId: number, message: RuntimeMessage): Promise<Result<BypassReport>> {
   // Inject the override sheet BEFORE the pass so revealed elements never flash.
   // Extension-injected CSS is immune to the page's style-src CSP; an appended
   // <style> element would not be.
   try {
-    await chrome.scripting.insertCSS({ target: { tabId }, ...GOD_CSS });
+    await chrome.scripting.insertCSS({ target: { tabId }, ...BYPASS_SHEET });
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
-  return askTab<GodModeReport>(tabId, message);
+  return askTab<BypassReport>(tabId, message);
 }
 
-async function restorePage(tabId: number, message: RuntimeMessage): Promise<Result<GodModeReport>> {
-  const result = await askTab<GodModeReport>(tabId, message);
+async function restorePage(tabId: number, message: RuntimeMessage): Promise<Result<BypassReport>> {
+  const result = await askTab<BypassReport>(tabId, message);
   try {
-    await chrome.scripting.removeCSS({ target: { tabId }, ...GOD_CSS });
+    await chrome.scripting.removeCSS({ target: { tabId }, ...BYPASS_SHEET });
   } catch {
     // Nothing was injected, or the tab navigated away — the attributes that
     // matter are already restored, so this is not worth failing the call for.
@@ -310,7 +324,7 @@ async function probeXrm(tabId: number): Promise<boolean> {
 }
 
 /**
- * The Dynamics 365 / Power Apps unlock, ported from Level Up's `enableGodMode`.
+ * The Dynamics 365 / Power Apps bypass, ported from Level Up for Dynamics CRM.
  *
  * Runs in the page's MAIN world because the Xrm client API only exists in the
  * page's own realm. NOTE: this passes a serialized FUNCTION, not a code string
@@ -320,7 +334,7 @@ async function probeXrm(tabId: number): Promise<boolean> {
  * Serialized, therefore self-contained: no closures, no imports, and the Xrm
  * shapes are declared inline (types erase; only runtime code is transferred).
  */
-function xrmGodMode(): {
+function xrmBypass(): {
   ok: boolean;
   value?: { attributes: number; controls: number; tabs: number; sections: number };
   error?: string;
@@ -396,18 +410,18 @@ function xrmGodMode(): {
   }
 }
 
-async function unlockXrm(tabId: number): Promise<Result<XrmReport>> {
+async function bypassXrm(tabId: number): Promise<Result<XrmReport>> {
   try {
     const results = await chrome.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
-      func: xrmGodMode,
+      func: xrmBypass,
     });
     const outcome = results[0]?.result as
       | { ok: boolean; value?: XrmReport; error?: string }
       | undefined;
     if (!outcome?.ok || !outcome.value) {
-      return { ok: false, error: outcome?.error ?? 'The Dynamics unlock returned nothing.' };
+      return { ok: false, error: outcome?.error ?? 'The Dynamics bypass returned nothing.' };
     }
     return { ok: true, value: outcome.value };
   } catch (err) {
@@ -416,13 +430,279 @@ async function unlockXrm(tabId: number): Promise<Result<XrmReport>> {
 }
 
 /** Content-script state plus the MAIN-world Xrm probe the panel needs. */
-async function unlockStateFor(
+async function bypassStateFor(
   tabId: number,
   message: RuntimeMessage
-): Promise<Result<GodModeState>> {
-  const pageState = await askTab<PageUnlockState>(tabId, message);
+): Promise<Result<BypassState>> {
+  const pageState = await askTab<PageBypassState>(tabId, message);
   if (!pageState.ok) return pageState;
   return { ok: true, value: { ...pageState.value, hasXrm: await probeXrm(tabId) } };
+}
+
+// ---------------------------------------------------------------------------
+// Site data — clear the CURRENT ORIGIN from the page itself, no new permission
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected into the page (ISOLATED world — NO `world` key, and a test asserts
+ * its absence). A content script's `localStorage` / `caches` / `indexedDB` are
+ * the PAGE origin's, which is exactly what we want to measure.
+ *
+ * Serialized, so self-contained. EVERY read is separately guarded: `navigator
+ * .storage`, `caches` and `navigator.serviceWorker` are `[SecureContext]` and
+ * undefined on plain http, and `localStorage` / `document.cookie` throw
+ * `SecurityError` outright when site data is blocked. One uncaught throw would
+ * reject the entire injection and lose the whole probe.
+ */
+async function probeStorageInPage(): Promise<{
+  origin: string;
+  isSecureContext: boolean;
+  usage: number | null;
+  quota: number | null;
+  details: { key: string; bytes: number }[];
+  localStorageBytes: number | null;
+  sessionStorageBytes: number | null;
+  cookieCount: number | null;
+  cacheCount: number | null;
+  serviceWorkerCount: number | null;
+  indexedDbCount: number | null;
+  warnings: string[];
+}> {
+  // TS's lib.dom StorageEstimate declares only {quota, usage}, so usageDetails
+  // needs a local structural type. Types erase; nothing is transferred.
+  interface EstimateWithDetails {
+    usage?: number;
+    quota?: number;
+    usageDetails?: Record<string, number>;
+  }
+
+  const warnings: string[] = [];
+  const secure = self.isSecureContext;
+
+  let usage: number | null = null;
+  let quota: number | null = null;
+  const details: { key: string; bytes: number }[] = [];
+  try {
+    const estimate = (await navigator.storage.estimate()) as EstimateWithDetails;
+    usage = typeof estimate.usage === 'number' ? estimate.usage : null;
+    quota = typeof estimate.quota === 'number' ? estimate.quota : null;
+    let accounted = 0;
+    for (const [key, bytes] of Object.entries(estimate.usageDetails ?? {})) {
+      if (typeof bytes === 'number') {
+        details.push({ key, bytes });
+        accounted += bytes;
+      }
+    }
+    // Blink omits zero-valued keys, so usage can exceed the sum of details.
+    if (usage !== null && usage > accounted) {
+      details.push({ key: 'other', bytes: usage - accounted });
+    }
+  } catch {
+    warnings.push(
+      secure
+        ? 'Storage estimate is unavailable on this page.'
+        : 'This page is not a secure context, so quota storage cannot be measured.'
+    );
+  }
+
+  const byteSize = (store: Storage): number => {
+    let total = 0;
+    for (let i = 0; i < store.length; i += 1) {
+      const key = store.key(i);
+      if (key === null) continue;
+      // UTF-16: two bytes per code unit, key and value both counted.
+      total += (key.length + (store.getItem(key) ?? '').length) * 2;
+    }
+    return total;
+  };
+
+  let localStorageBytes: number | null = null;
+  try {
+    localStorageBytes = byteSize(localStorage);
+  } catch {
+    warnings.push('Local storage is blocked on this page.');
+  }
+
+  let sessionStorageBytes: number | null = null;
+  try {
+    sessionStorageBytes = byteSize(sessionStorage);
+  } catch {
+    /* same cause as localStorage; one warning is enough */
+  }
+
+  let cookieCount: number | null = null;
+  try {
+    const raw = document.cookie;
+    cookieCount = raw === '' ? 0 : raw.split(';').length;
+  } catch {
+    warnings.push('Cookies are blocked on this page.');
+  }
+
+  let cacheCount: number | null = null;
+  try {
+    cacheCount = (await caches.keys()).length;
+  } catch {
+    /* not a secure context, already reported */
+  }
+
+  let serviceWorkerCount: number | null = null;
+  try {
+    serviceWorkerCount = (await navigator.serviceWorker.getRegistrations()).length;
+  } catch {
+    /* not a secure context, already reported */
+  }
+
+  let indexedDbCount: number | null = null;
+  try {
+    const databases = indexedDB.databases as undefined | (() => Promise<unknown[]>);
+    if (typeof databases === 'function') indexedDbCount = (await databases.call(indexedDB)).length;
+  } catch {
+    /* Firefox-style engines lack databases(); leave it unknown */
+  }
+
+  return {
+    origin: location.origin,
+    isSecureContext: secure,
+    usage,
+    quota,
+    details,
+    localStorageBytes,
+    sessionStorageBytes,
+    cookieCount,
+    cacheCount,
+    serviceWorkerCount,
+    indexedDbCount,
+    warnings,
+  };
+}
+
+/**
+ * Injected into the page (ISOLATED world) to clear the listed data for THIS
+ * origin. Self-contained; `types` arrives via `args` and has already been
+ * validated by `buildClearPlan`, so nothing unexpected can reach it.
+ */
+async function clearStorageInPage(
+  types: string[]
+): Promise<{ cleared: string[]; skipped: { type: string; reason: string }[] }> {
+  const cleared: string[] = [];
+  const skipped: { type: string; reason: string }[] = [];
+
+  const run = async (type: string, fn: () => Promise<void> | void): Promise<void> => {
+    try {
+      await fn();
+      cleared.push(type);
+    } catch (err) {
+      skipped.push({ type, reason: err instanceof Error ? err.message : String(err) });
+    }
+  };
+
+  for (const type of types) {
+    if (type === 'localStorage') await run(type, () => localStorage.clear());
+    else if (type === 'sessionStorage') await run(type, () => sessionStorage.clear());
+    else if (type === 'cacheStorage') {
+      await run(type, async () => {
+        for (const key of await caches.keys()) await caches.delete(key);
+      });
+    } else if (type === 'serviceWorkers') {
+      await run(type, async () => {
+        for (const reg of await navigator.serviceWorker.getRegistrations()) await reg.unregister();
+      });
+    } else if (type === 'indexedDB') {
+      await run(type, async () => {
+        const databases = indexedDB.databases as undefined | (() => Promise<{ name?: string }[]>);
+        if (typeof databases !== 'function') throw new Error('This browser cannot list databases.');
+        for (const db of await databases.call(indexedDB)) {
+          if (db.name !== undefined) indexedDB.deleteDatabase(db.name);
+        }
+      });
+    } else if (type === 'cookies') {
+      await run(type, () => {
+        // document.cookie reaches only non-HttpOnly cookies. Expire each one at
+        // every path/domain scope it might have been set on.
+        const host = location.hostname;
+        const domains = [undefined, host, `.${host}`];
+        const paths = ['/', location.pathname];
+        for (const pair of document.cookie.split(';')) {
+          const name = pair.split('=')[0]?.trim();
+          if (name === undefined || name === '') continue;
+          for (const path of paths) {
+            for (const domain of domains) {
+              document.cookie =
+                `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=${path}` +
+                (domain === undefined ? '' : `; domain=${domain}`);
+            }
+          }
+        }
+      });
+    }
+  }
+  return { cleared, skipped };
+}
+
+async function probeSiteStorage(tabId: number): Promise<Result<StorageProbe>> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: probeStorageInPage,
+    });
+    const probe = results[0]?.result as StorageProbe | undefined;
+    if (!probe) return { ok: false, error: 'Could not read this page’s storage.' };
+    return { ok: true, value: probe };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+async function clearSiteData(
+  tabId: number,
+  url: string | undefined,
+  types: ClearTypeId[],
+  shouldReload: boolean
+): Promise<Result<ClearOutcome>> {
+  const plan = buildClearPlan(url ?? '', types);
+  if (!plan.ok) return plan;
+
+  let outcome: { cleared: string[]; skipped: { type: string; reason: string }[] };
+  try {
+    // ISOLATED world (no `world` key): a content script's storage is the page
+    // origin's, which is what we clear. `types` is already validated.
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: clearStorageInPage,
+      args: [[...plan.value.types]],
+    });
+    const raw = results[0]?.result as typeof outcome | undefined;
+    if (!raw) return { ok: false, error: 'The page did not report what was cleared.' };
+    outcome = raw;
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+
+  // Deliberately NO before/after "bytes freed": navigator.storage.estimate is
+  // padded and lazy (verified — Cache Storage deletion is not reflected for
+  // seconds) and ignores localStorage and cookies entirely, so a delta is
+  // fiction. The panel re-probes after a clear and shows the real new state.
+
+  let didReload = false;
+  if (shouldReload) {
+    try {
+      // The one way past the HTTP cache, which no extension API can clear for a
+      // single origin.
+      await chrome.tabs.reload(tabId, { bypassCache: true });
+      didReload = true;
+    } catch {
+      // The tab may have gone; the data is still cleared.
+    }
+  }
+
+  return {
+    ok: true,
+    value: {
+      cleared: outcome.cleared as ClearTypeId[],
+      skipped: outcome.skipped as { type: ClearTypeId; reason: string }[],
+      didReload,
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -553,20 +833,30 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       withActiveRunnableTab((tabId) => askTab(tabId, message)).then(sendResponse);
       return true;
 
-    case MESSAGE_TYPES.UNLOCK_PAGE:
-      withActiveRunnableTab((tabId) => unlockPage(tabId, message)).then(sendResponse);
+    case MESSAGE_TYPES.BYPASS_PAGE:
+      withActiveRunnableTab((tabId) => bypassPage(tabId, message)).then(sendResponse);
       return true;
 
     case MESSAGE_TYPES.RESTORE_PAGE:
       withActiveRunnableTab((tabId) => restorePage(tabId, message)).then(sendResponse);
       return true;
 
-    case MESSAGE_TYPES.GET_UNLOCK_STATE:
-      withActiveRunnableTab((tabId) => unlockStateFor(tabId, message)).then(sendResponse);
+    case MESSAGE_TYPES.GET_BYPASS_STATE:
+      withActiveRunnableTab((tabId) => bypassStateFor(tabId, message)).then(sendResponse);
       return true;
 
-    case MESSAGE_TYPES.UNLOCK_XRM:
-      withActiveRunnableTab((tabId) => unlockXrm(tabId)).then(sendResponse);
+    case MESSAGE_TYPES.BYPASS_XRM:
+      withActiveRunnableTab((tabId) => bypassXrm(tabId)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.PROBE_SITE_STORAGE:
+      withActiveRunnableTab((tabId) => probeSiteStorage(tabId)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.CLEAR_SITE_DATA:
+      withActiveTab((tab) =>
+        clearSiteData(tab.id, tab.url, message.payload.types, message.payload.shouldReload)
+      ).then(sendResponse);
       return true;
 
     default:

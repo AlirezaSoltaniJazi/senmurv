@@ -41,26 +41,80 @@ Save and run JS in the page.
 A launcher of seven page-inspection tools. Pick one and it takes the panel's
 full height; **← Tools** goes back.
 
-| Tool                  | What it does                                                                                                                                                                                                                                                                                       |
-| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Unlock (God Mode)** | Strips client-side locks so you can drive a disabled or hidden form. Inspired by [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM), whose God Mode is Xrm-specific — Senmurv's works on any page, and additionally uses the Xrm API when `window.Xrm` is present. |
-| **Site data**         | Clears this origin's storage and offers a cache-bypassing reload.                                                                                                                                                                                                                                  |
-| **Measure**           | Drag a region, or hover an element for its box model.                                                                                                                                                                                                                                              |
-| **Colour**            | An element's colours in every format, plus its WCAG contrast verdict.                                                                                                                                                                                                                              |
-| **Tab order**         | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                         |
-| **Accessibility**     | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                |
-| **Fonts**             | Typography of the hovered element.                                                                                                                                                                                                                                                                 |
+| Tool              | What it does                                                                                                                                                                                                                                                                                         |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bypass**        | Strips client-side locks so you can drive a disabled or hidden form. Inspired by [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM), whose equivalent is Xrm-specific — Senmurv's works on any page, and additionally uses the Xrm API when `window.Xrm` is present. |
+| **Site data**     | Clears this origin's storage and offers a cache-bypassing reload.                                                                                                                                                                                                                                    |
+| **Measure**       | Drag a region, or hover an element for its box model.                                                                                                                                                                                                                                                |
+| **Colour**        | An element's colours in every format, plus its WCAG contrast verdict.                                                                                                                                                                                                                                |
+| **Tab order**     | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                           |
+| **Accessibility** | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                  |
+| **Fonts**         | Typography of the hovered element.                                                                                                                                                                                                                                                                   |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
 ones: **top frame only** (cross-origin iframes are unreachable), closed shadow
 roots cannot be inspected, and the tools are unavailable on `chrome://`,
 `file://`, `view-source:` and Web Store pages.
 
-> **Status:** the tab, its shared plumbing and **Unlock** have shipped; the
-> remaining tools are landing one release at a time, and an unbuilt tool says so
-> when opened.
+> **Status:** the tab, its shared plumbing, **Bypass**, **Site data** and
+> **Measure** have shipped; the remaining tools are landing one release at a
+> time, and an unbuilt tool says so when opened.
 
-### Unlock (God Mode) — detail
+### Measure — detail
+
+Three sub-modes, chosen with the chips:
+
+- **Element** — hover for the DevTools-style box model (content / border / margin
+  boxes, and the four padding/border/margin sides). Click to pin it; the pinned
+  element also gets copy-ready **locators** and **size assertions**.
+- **Region** — drag a rectangle; the live W×H shows in-page, and the reading
+  includes both viewport and page-absolute coordinates.
+- **Distance** — click one element then another for the horizontal/vertical gap
+  and the centre-to-centre distance.
+
+**The assertion trap it gets right:** a CSS-property assertion
+(`toHaveCSS('width')`, `have.css`, `getCSSProperty`) reads the **content** box,
+while a bounding-box assertion (`boundingBox()`, `getSize`, `outerWidth`,
+`getRect`) reads the **border** box — they differ by exactly (padding + border).
+Each emitted snippet is fed from the correct box, so pasting a Measure result
+into a test does not silently assert the wrong number.
+
+**Limits:** numbers are CSS px in the **top frame**. Browser page-zoom changes
+what `getBoundingClientRect` reports, and a `transform` on the element (or an
+ancestor) makes the reported box the axis-aligned bounding box of the
+transformed element — the transform is named in the readout when present.
+
+### Site data — detail
+
+Clears the **current origin only**, from the page itself, needing no new
+permission. The breakdown and the clearing both run in the page, so the numbers
+and the deletions are for the site you are on — never the extension.
+
+- **Presets.** _Bust cache_ (Cache Storage + service workers) re-fetches the
+  app's assets without ending your session. _Fresh visitor_ clears everything,
+  for testing a first-run flow. A session-destroying selection arms a two-step
+  confirm.
+- **Clear + hard reload** reloads with `bypassCache`, which is the only way to
+  reach the HTTP disk cache.
+
+**Two things it deliberately does not do**, because Chrome does not let an
+extension do them honestly:
+
+- **It never reports "bytes freed".** `navigator.storage.estimate()` is padded
+  and lazy — verified in a real browser, Cache Storage deletion is not reflected
+  for seconds — and it ignores localStorage and cookies entirely, so a
+  before/after delta would be a made-up number. The tool re-reads storage after
+  a clear and shows the real new state instead.
+- **It cannot clear or size the HTTP disk cache per-origin.** No extension API
+  exposes that. The numbers shown are quota storage; the hard reload is the
+  practical substitute.
+
+**Other limits:** only **non-HttpOnly** cookies can be removed from the page —
+HttpOnly cookies are invisible to any script and survive. Cache Storage, service
+workers and the storage estimate need a **secure context** (`https`, or
+`http://localhost`), and the tool says so on a plain-http page.
+
+### Bypass — detail
 
 Every lock it strips is recorded before it is changed, so **Restore** puts the
 page back exactly — including telling an absent attribute apart from a present
@@ -79,13 +133,13 @@ and watching them would storm on every render. A framework that re-hides a field
 via `style` is therefore not tracked.
 
 **Limits.** Client-side only — the server can still reject the submit, and on a
-model-driven form (Angular Reactive Forms, Dynamics) it unlocks the _view_, not
+model-driven form (Angular Reactive Forms, Dynamics) it affects the _view_, not
 the _model_, so a field may become typable while its value is still excluded
 from `form.value`. Closed shadow roots are unreachable from any extension. A
 full page reload discards the undo record, and the Restore button reflects that
 rather than pretending.
 
-**On Dynamics 365 / Power Apps**, an extra **Unlock Dynamics form** button uses
+**On Dynamics 365 / Power Apps**, an extra **Bypass Dynamics form** button uses
 the `Xrm` client API — `setRequiredLevel('none')`, `setVisible`/`setDisabled` on
 controls, and `setVisible` on tabs and sections. This is what Level Up for
 Dynamics CRM does, and no DOM-level pass can reach it, because the model lives

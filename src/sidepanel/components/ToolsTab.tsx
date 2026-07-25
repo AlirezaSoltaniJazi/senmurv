@@ -2,7 +2,9 @@ import type { ReactElement } from 'react';
 import { findTool, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
-import { UnlockTool } from './tools/UnlockTool';
+import { MeasureTool } from './tools/MeasureTool';
+import { SiteDataTool } from './tools/SiteDataTool';
+import { BypassTool } from './tools/BypassTool';
 
 interface Props {
   /** The open tool, or null for the launcher. Lifted into App so it survives tab switches. */
@@ -41,7 +43,9 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
       {/* Keyed on the tool so switching remounts the shell: fresh probe state, and
           the outgoing tool's stop-on-unmount effect actually fires. */}
       <ToolShell key={tool} tool={findTool(tool)} onBack={() => setTool(null)}>
-        {tool === 'unlock' && <UnlockTool onSaveScript={onSaveScript} />}
+        {tool === 'bypass' && <BypassTool onSaveScript={onSaveScript} />}
+        {tool === 'sitedata' && <SiteDataTool />}
+        {tool === 'measure' && <MeasureTool />}
       </ToolShell>
     </div>
   );

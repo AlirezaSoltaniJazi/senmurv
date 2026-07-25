@@ -1,23 +1,23 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { GOD_MARKER_ATTR } from '@/shared/constants';
+import { BYPASS_MARKER_ATTR } from '@/shared/constants';
 import {
-  applyGodMode,
-  buildUnlockScript,
+  applyBypass,
+  buildBypassScript,
   createSnapshot,
-  DEFAULT_GOD_MODE_OPTIONS,
+  DEFAULT_BYPASS_OPTIONS,
   pruneDetached,
-  revertGodMode,
+  revertBypass,
   setAttr,
-} from '@/shared/tools/god-mode';
-import type { GodModeEnv } from '@/shared/tools/god-mode';
-import type { GodModeOptions } from '@/shared/types';
+} from '@/shared/tools/bypass';
+import type { BypassEnv } from '@/shared/tools/bypass';
+import type { BypassOptions } from '@/shared/types';
 
 // happy-dom has no layout engine and does not support `:modal`, so the two DOM
 // reads that need one are injected. Everything else below is real DOM work.
-const VISIBLE_ENV: GodModeEnv = { displayOf: () => 'block', isModal: () => false };
-const HIDDEN_ENV: GodModeEnv = { displayOf: () => 'none', isModal: () => true };
+const VISIBLE_ENV: BypassEnv = { displayOf: () => 'block', isModal: () => false };
+const HIDDEN_ENV: BypassEnv = { displayOf: () => 'none', isModal: () => true };
 
-const ALL_ON: GodModeOptions = {
+const ALL_ON: BypassOptions = {
   shouldEnableInputs: true,
   shouldDropValidation: true,
   shouldUnlockOptions: true,
@@ -61,7 +61,7 @@ describe('setAttr — first write wins', () => {
     el.setAttribute('step', '2');
     setAttr(snap, el, 'step', 'any');
 
-    revertGodMode(snap);
+    revertBypass(snap);
     expect(el.getAttribute('step')).toBe('0.5');
   });
 
@@ -74,7 +74,7 @@ describe('setAttr — first write wins', () => {
     expect(setAttr(snap, el, 'disabled', null)).toBe(true);
     expect(setAttr(snap, el, 'readonly', null)).toBe(false); // nothing to do
 
-    revertGodMode(snap);
+    revertBypass(snap);
     expect(el.hasAttribute('disabled')).toBe(true);
     expect(el.getAttribute('disabled')).toBe('');
     expect(el.hasAttribute('readonly')).toBe(false);
@@ -88,7 +88,7 @@ describe('setAttr — first write wins', () => {
   });
 });
 
-describe('applyGodMode → revertGodMode round trip', () => {
+describe('applyBypass → revertBypass round trip', () => {
   it('restores the original attributes exactly, even after a sticky re-apply', () => {
     mount(`
       <form id="f">
@@ -103,7 +103,7 @@ describe('applyGodMode → revertGodMode round trip', () => {
     };
 
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
 
     // The app re-renders and re-applies its locks — crucially with DIFFERENT
     // serialized values than the markup had. If a re-apply overwrote the
@@ -116,9 +116,9 @@ describe('applyGodMode → revertGodMode round trip', () => {
     $('#fs').setAttribute('disabled', 'disabled');
 
     // Sticky mode strips them again into the SAME snapshot.
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
 
-    revertGodMode(snap);
+    revertBypass(snap);
 
     expect(attrsOf($('#f'))).toEqual(before.form);
     expect(attrsOf($('#fs'))).toEqual(before.fieldset);
@@ -128,21 +128,21 @@ describe('applyGodMode → revertGodMode round trip', () => {
   it('leaves no marker attribute behind after revert', () => {
     mount('<input id="a" disabled>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, HIDDEN_ENV);
-    expect($('#a').hasAttribute(GOD_MARKER_ATTR)).toBe(true);
+    applyBypass(document, ALL_ON, snap, HIDDEN_ENV);
+    expect($('#a').hasAttribute(BYPASS_MARKER_ATTR)).toBe(true);
 
-    revertGodMode(snap);
-    expect($('#a').hasAttribute(GOD_MARKER_ATTR)).toBe(false);
-    expect(document.querySelectorAll(`[${GOD_MARKER_ATTR}]`)).toHaveLength(0);
+    revertBypass(snap);
+    expect($('#a').hasAttribute(BYPASS_MARKER_ATTR)).toBe(false);
+    expect(document.querySelectorAll(`[${BYPASS_MARKER_ATTR}]`)).toHaveLength(0);
   });
 
   it('empties the snapshot so a second revert is a no-op', () => {
     mount('<input id="a" disabled>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
-    revertGodMode(snap);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
+    revertBypass(snap);
     expect(snap.size).toBe(0);
-    expect(revertGodMode(snap)).toBe(0);
+    expect(revertBypass(snap)).toBe(0);
   });
 });
 
@@ -153,7 +153,7 @@ describe('enableControls', () => {
     // the input would pass while testing nothing.
     mount('<fieldset id="fs" disabled><legend>L</legend><input id="a"></fieldset>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#fs').hasAttribute('disabled')).toBe(false);
   });
 
@@ -162,20 +162,20 @@ describe('enableControls', () => {
       '<div id="locked" contenteditable="false"></div><div id="open" contenteditable="true"></div>'
     );
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#locked').getAttribute('contenteditable')).toBe('true');
     expect($('#open').getAttribute('contenteditable')).toBe('true');
-    revertGodMode(snap);
+    revertBypass(snap);
     expect($('#locked').getAttribute('contenteditable')).toBe('false');
   });
 
   it('marks only the elements it actually unlocked', () => {
     mount('<input id="a" disabled><input id="b"><div id="c"></div>');
     const snap = createSnapshot();
-    applyGodMode(document, { ...DEFAULT_GOD_MODE_OPTIONS }, snap, VISIBLE_ENV);
-    expect($('#a').hasAttribute(GOD_MARKER_ATTR)).toBe(true);
-    expect($('#b').hasAttribute(GOD_MARKER_ATTR)).toBe(false);
-    expect($('#c').hasAttribute(GOD_MARKER_ATTR)).toBe(false);
+    applyBypass(document, { ...DEFAULT_BYPASS_OPTIONS }, snap, VISIBLE_ENV);
+    expect($('#a').hasAttribute(BYPASS_MARKER_ATTR)).toBe(true);
+    expect($('#b').hasAttribute(BYPASS_MARKER_ATTR)).toBe(false);
+    expect($('#c').hasAttribute(BYPASS_MARKER_ATTR)).toBe(false);
     // …so the undo snapshot holds the unlocked element only, not the document.
     expect(snap.size).toBe(1);
   });
@@ -187,9 +187,9 @@ describe('dropValidation', () => {
     // 1.5 invalid — the opposite of what the tool promises.
     mount('<input id="a" type="number" step="5">');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#a').getAttribute('step')).toBe('any');
-    revertGodMode(snap);
+    revertBypass(snap);
     expect($('#a').getAttribute('step')).toBe('5');
   });
 
@@ -197,24 +197,24 @@ describe('dropValidation', () => {
     // novalidate is the one inverted lock: the fix is to add the attribute.
     mount('<form id="f"></form>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#f').hasAttribute('novalidate')).toBe(true);
-    revertGodMode(snap);
+    revertBypass(snap);
     expect($('#f').hasAttribute('novalidate')).toBe(false);
   });
 
   it('keeps a form that was already novalidate that way after revert', () => {
     mount('<form id="f" novalidate></form>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
-    revertGodMode(snap);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
+    revertBypass(snap);
     expect($('#f').hasAttribute('novalidate')).toBe(true);
   });
 
   it('does not strip min/max off a non-input like <meter>', () => {
     mount('<meter id="m" min="0" max="10" value="5"></meter>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#m').getAttribute('min')).toBe('0');
     expect($('#m').getAttribute('max')).toBe('10');
   });
@@ -226,10 +226,10 @@ describe('unlockOptions', () => {
       '<select id="s"><option id="o1" disabled>A</option><option id="o2" hidden>B</option></select>'
     );
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#o1').hasAttribute('disabled')).toBe(false);
     expect($('#o2').hasAttribute('hidden')).toBe(false);
-    revertGodMode(snap);
+    revertBypass(snap);
     expect($('#o1').hasAttribute('disabled')).toBe(true);
     expect($('#o2').hasAttribute('hidden')).toBe(true);
   });
@@ -239,37 +239,37 @@ describe('revealHidden', () => {
   it('strips hidden/inert/aria-hidden and marks what is still display:none', () => {
     mount('<div id="a" hidden inert aria-hidden="true"></div>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, HIDDEN_ENV);
+    applyBypass(document, ALL_ON, snap, HIDDEN_ENV);
     const el = $('#a');
     expect(el.hasAttribute('hidden')).toBe(false);
     expect(el.hasAttribute('inert')).toBe(false);
     expect(el.hasAttribute('aria-hidden')).toBe(false);
-    expect(el.getAttribute(GOD_MARKER_ATTR)).toContain('show');
+    expect(el.getAttribute(BYPASS_MARKER_ATTR)).toContain('show');
   });
 
   it('does not mark an element that is already visible', () => {
     // `display: revert !important` would discard a legitimate author display:flex.
     mount('<div id="a" hidden></div>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
-    expect($('#a').getAttribute(GOD_MARKER_ATTR) ?? '').not.toContain('show');
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
+    expect($('#a').getAttribute(BYPASS_MARKER_ATTR) ?? '').not.toContain('show');
   });
 
   it('round-trips inert exactly', () => {
     mount('<div id="a" inert></div>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#a').hasAttribute('inert')).toBe(false);
-    revertGodMode(snap);
+    revertBypass(snap);
     expect($('#a').hasAttribute('inert')).toBe(true);
   });
 
   it('turns a hidden input into a visible text input', () => {
     mount('<input id="a" type="hidden" value="secret">');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#a').getAttribute('type')).toBe('text');
-    revertGodMode(snap);
+    revertBypass(snap);
     expect($('#a').getAttribute('type')).toBe('hidden');
   });
 });
@@ -278,26 +278,26 @@ describe('revealPasswords', () => {
   it('is off by default', () => {
     mount('<input id="a" type="password">');
     const snap = createSnapshot();
-    applyGodMode(document, DEFAULT_GOD_MODE_OPTIONS, snap, VISIBLE_ENV);
+    applyBypass(document, DEFAULT_BYPASS_OPTIONS, snap, VISIBLE_ENV);
     expect($('#a').getAttribute('type')).toBe('password');
   });
 
   it('reveals and restores when enabled', () => {
     mount('<input id="a" type="password">');
     const snap = createSnapshot();
-    const report = applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    const report = applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect($('#a').getAttribute('type')).toBe('text');
     expect(report.counts.passwords).toBe(1);
-    revertGodMode(snap);
+    revertBypass(snap);
     expect($('#a').getAttribute('type')).toBe('password');
   });
 });
 
-describe('GodModeReport', () => {
+describe('BypassReport', () => {
   it('carries counts and strings only — never a DOM node', () => {
     mount('<input id="a" disabled required>');
     const snap = createSnapshot();
-    const report = applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    const report = applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
 
     // Structured-clone-ability is what actually matters when this crosses the wire.
     const roundTripped = JSON.parse(JSON.stringify(report)) as unknown;
@@ -308,7 +308,7 @@ describe('GodModeReport', () => {
   it('totals the per-category counts', () => {
     mount('<input id="a" disabled><input id="b" required>');
     const snap = createSnapshot();
-    const report = applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    const report = applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     const sum = Object.values(report.counts).reduce((a, b) => a + b, 0);
     expect(report.total).toBe(sum);
     expect(report.counts.enabled).toBe(1);
@@ -318,7 +318,7 @@ describe('GodModeReport', () => {
   it('warns when shadow DOM was not pierced', () => {
     mount('<input id="a" disabled>');
     const snap = createSnapshot();
-    const report = applyGodMode(
+    const report = applyBypass(
       document,
       { ...ALL_ON, shouldPierceShadowDom: false },
       snap,
@@ -335,7 +335,7 @@ describe('shadow DOM', () => {
     shadow.innerHTML = '<input id="inner" disabled>';
 
     const snap = createSnapshot();
-    const report = applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    const report = applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
 
     expect(shadow.querySelector('#inner')?.hasAttribute('disabled')).toBe(false);
     expect(report.shadowRoots).toBe(1);
@@ -347,7 +347,7 @@ describe('shadow DOM', () => {
     shadow.innerHTML = '<input id="inner" disabled>';
 
     const snap = createSnapshot();
-    applyGodMode(document, { ...ALL_ON, shouldPierceShadowDom: false }, snap, VISIBLE_ENV);
+    applyBypass(document, { ...ALL_ON, shouldPierceShadowDom: false }, snap, VISIBLE_ENV);
     expect(shadow.querySelector('#inner')?.hasAttribute('disabled')).toBe(true);
   });
 });
@@ -356,7 +356,7 @@ describe('pruneDetached', () => {
   it('drops entries for elements the page has thrown away', () => {
     mount('<input id="a" disabled><input id="b" disabled>');
     const snap = createSnapshot();
-    applyGodMode(document, ALL_ON, snap, VISIBLE_ENV);
+    applyBypass(document, ALL_ON, snap, VISIBLE_ENV);
     expect(snap.size).toBe(2);
 
     $('#a').remove();
@@ -365,10 +365,10 @@ describe('pruneDetached', () => {
   });
 });
 
-describe('buildUnlockScript', () => {
+describe('buildBypassScript', () => {
   it('emits only the locks the options asked for', () => {
-    const script = buildUnlockScript({
-      ...DEFAULT_GOD_MODE_OPTIONS,
+    const script = buildBypassScript({
+      ...DEFAULT_BYPASS_OPTIONS,
       shouldDropValidation: false,
       shouldRevealHidden: false,
     });
@@ -380,7 +380,7 @@ describe('buildUnlockScript', () => {
 
   it('produces syntactically valid JavaScript', () => {
     // Parsed, never executed — the repo forbids eval outside the sanctioned runner.
-    const script = buildUnlockScript(ALL_ON);
+    const script = buildBypassScript(ALL_ON);
     expect(() => new TextEncoder().encode(script)).not.toThrow();
     expect(script.split('{').length).toBe(script.split('}').length);
     expect(script).toContain("console.log('[Senmurv] unlocked '");

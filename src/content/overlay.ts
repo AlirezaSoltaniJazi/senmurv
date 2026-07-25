@@ -190,3 +190,52 @@ export function targetAt(x: number, y: number): Element | null {
   if (!el || isOurHost(el)) return null;
   return el;
 }
+
+// ---------------------------------------------------------------------------
+// Pointer capture layer (for the Measure drag)
+// ---------------------------------------------------------------------------
+
+/** Pointer handlers for a captured drag. Coordinates are viewport (clientX/Y). */
+export interface CaptureHandlers {
+  onDown(x: number, y: number): void;
+  onMove(x: number, y: number): void;
+  onUp(x: number, y: number): void;
+}
+
+let captureEl: HTMLDivElement | null = null;
+
+/**
+ * Mount a full-viewport `pointer-events: auto` layer that swallows the page's
+ * own interactions and reports a drag. Used only by modes that draw a marquee
+ * — hover modes keep the host `pointer-events: none` so `elementFromPoint` works.
+ *
+ * `setPointerCapture` keeps the drag alive even when the pointer leaves the
+ * window; `touch-action: none` stops the page scrolling under a touch drag.
+ */
+export function enableCapture(handlers: CaptureHandlers): void {
+  if (captureEl) return;
+  const shadow = ensureOverlay();
+  const layer = document.createElement('div');
+  layer.style.cssText =
+    'position: fixed; inset: 0; pointer-events: auto; cursor: crosshair; touch-action: none; background: transparent;';
+
+  layer.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    layer.setPointerCapture(e.pointerId);
+    handlers.onDown(e.clientX, e.clientY);
+  });
+  layer.addEventListener('pointermove', (e) => handlers.onMove(e.clientX, e.clientY));
+  layer.addEventListener('pointerup', (e) => {
+    handlers.onUp(e.clientX, e.clientY);
+    if (layer.hasPointerCapture(e.pointerId)) layer.releasePointerCapture(e.pointerId);
+  });
+
+  shadow.append(layer);
+  captureEl = layer;
+}
+
+/** Remove the capture layer, restoring normal page interaction. */
+export function disableCapture(): void {
+  captureEl?.remove();
+  captureEl = null;
+}

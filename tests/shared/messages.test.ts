@@ -20,6 +20,14 @@ describe('isRuntimeMessage', () => {
     expect(
       isRuntimeMessage({ type: MESSAGE_TYPES.HIGHLIGHT_ELEMENT, payload: { selector: null } })
     ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.START_TOOL_MODE,
+        payload: { mode: 'measure', measureMode: 'region' },
+      })
+    ).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.TOOL_STREAM, payload: {} })).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.TOOL_PICKED, payload: {} })).toBe(true);
   });
 
   it('rejects unknown or malformed values', () => {

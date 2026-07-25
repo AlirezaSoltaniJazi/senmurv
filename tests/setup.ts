@@ -53,6 +53,7 @@ const chromeMock = {
     // Typed as unknown, not undefined, so a test can mockResolvedValueOnce the
     // reply a content script would send back through askTab.
     sendMessage: vi.fn(async (): Promise<unknown> => undefined),
+    reload: vi.fn(async () => undefined),
   },
   sidePanel: {
     setPanelBehavior: vi.fn(async () => undefined),

@@ -2,7 +2,7 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
 import { isRuntimeMessage } from '@/shared/messages';
-import type { PageMode, Result } from '@/shared/types';
+import type { MeasureMode, PageMode, Result } from '@/shared/types';
 import { contextAlive, notify } from './context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
 import { isRecording, startRecording, stopRecording } from './recorder';
@@ -126,15 +126,20 @@ function enterMode(next: PageMode): void {
   }
 }
 
-/** Switch to a Tools mode, which needs the lazy chunk first. */
-async function enterToolMode(next: PageMode): Promise<Result<void>> {
-  if (pageMode === next) return { ok: true, value: undefined };
+/**
+ * Switch to a Tools mode, which needs the lazy chunk first. Re-callable while
+ * already in the mode so the panel can re-configure it (e.g. change the Measure
+ * sub-mode) — the mode's own start() is idempotent.
+ */
+async function enterToolMode(next: PageMode, measureMode?: MeasureMode): Promise<Result<void>> {
   try {
     const tools = await loadTools();
-    stopCurrentMode();
-    pageMode = next;
-    applyCursor(next);
-    tools.startMode(next);
+    if (pageMode !== next) {
+      stopCurrentMode();
+      pageMode = next;
+      applyCursor(next);
+    }
+    tools.startMode(next, measureMode);
     return { ok: true, value: undefined };
   } catch (err) {
     pageMode = 'idle';
@@ -297,7 +302,7 @@ function register(): void {
         return true;
 
       case MESSAGE_TYPES.START_TOOL_MODE:
-        void enterToolMode(message.payload.mode).then(sendResponse);
+        void enterToolMode(message.payload.mode, message.payload.measureMode).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.STOP_TOOL_MODE: {
@@ -311,9 +316,9 @@ function register(): void {
         sendResponse(highlightSelector(message.payload.selector));
         return true;
 
-      case MESSAGE_TYPES.UNLOCK_PAGE: {
+      case MESSAGE_TYPES.BYPASS_PAGE: {
         const { options, shouldWatch } = message.payload;
-        void withTools((tools) => tools.unlockPage(options, shouldWatch)).then(sendResponse);
+        void withTools((tools) => tools.bypassPage(options, shouldWatch)).then(sendResponse);
         return true;
       }
 
@@ -321,8 +326,8 @@ function register(): void {
         void withTools((tools) => tools.restorePage()).then(sendResponse);
         return true;
 
-      case MESSAGE_TYPES.GET_UNLOCK_STATE:
-        void withTools((tools) => tools.unlockState()).then(sendResponse);
+      case MESSAGE_TYPES.GET_BYPASS_STATE:
+        void withTools((tools) => tools.bypassState()).then(sendResponse);
         return true;
 
       default:

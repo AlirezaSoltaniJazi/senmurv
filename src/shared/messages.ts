@@ -1,17 +1,21 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
 import type {
   Checklist,
+  ClearTypeId,
   DetectedField,
-  GodModeOptions,
-  GodModeReport,
+  BypassOptions,
+  BypassReport,
   LocatorKind,
   LocatorSet,
+  MeasureMode,
   Note,
   PageMode,
   Prefs,
   SavedScript,
   TimeEntry,
   ToolMode,
+  ToolPickData,
+  ToolStreamData,
 } from '@/shared/types';
 import type { RecordedStep } from '@/shared/workflow';
 
@@ -51,21 +55,36 @@ export type RuntimeMessage =
   // and answers once it has, so the panel can tell "page unreachable" apart
   // from "chunk failed to load" before a tool ever runs.
   | { type: typeof MESSAGE_TYPES.TOOL_PING }
-  | { type: typeof MESSAGE_TYPES.START_TOOL_MODE; payload: { mode: ToolMode } }
+  | {
+      type: typeof MESSAGE_TYPES.START_TOOL_MODE;
+      // measureMode carries the Measure sub-mode; other tool modes ignore it.
+      payload: { mode: ToolMode; measureMode?: MeasureMode };
+    }
   | { type: typeof MESSAGE_TYPES.STOP_TOOL_MODE; payload: { mode: PageMode | 'all' } }
+  // tab → panel pushes: a live reading while dragging/hovering, and a committed
+  // reading on click. Both fall through the SW to the panel, like ELEMENT_PICKED.
+  | { type: typeof MESSAGE_TYPES.TOOL_STREAM; payload: ToolStreamData }
+  | { type: typeof MESSAGE_TYPES.TOOL_PICKED; payload: ToolPickData }
   // A null selector clears the highlight — without it a highlight can never be
   // removed, which is the trap this signature exists to avoid.
   | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } }
-  // Unlock (God Mode). UNLOCK_XRM is worker-local — the Xrm client API only
+  // Bypass. BYPASS_XRM is worker-local — the Xrm client API only
   // exists in the page's own realm, so it needs a MAIN-world injection.
   | {
-      type: typeof MESSAGE_TYPES.UNLOCK_PAGE;
-      payload: { options: GodModeOptions; shouldWatch: boolean };
+      type: typeof MESSAGE_TYPES.BYPASS_PAGE;
+      payload: { options: BypassOptions; shouldWatch: boolean };
     }
   | { type: typeof MESSAGE_TYPES.RESTORE_PAGE }
-  | { type: typeof MESSAGE_TYPES.GET_UNLOCK_STATE }
-  | { type: typeof MESSAGE_TYPES.UNLOCK_XRM }
-  | { type: typeof MESSAGE_TYPES.UNLOCK_STATE_CHANGED; payload: { report: GodModeReport } };
+  | { type: typeof MESSAGE_TYPES.GET_BYPASS_STATE }
+  | { type: typeof MESSAGE_TYPES.BYPASS_XRM }
+  | { type: typeof MESSAGE_TYPES.BYPASS_STATE_CHANGED; payload: { report: BypassReport } }
+  // Site data. Both are worker-local: the worker injects into the page rather
+  // than routing through the content script, so no new permission is needed.
+  | { type: typeof MESSAGE_TYPES.PROBE_SITE_STORAGE }
+  | {
+      type: typeof MESSAGE_TYPES.CLEAR_SITE_DATA;
+      payload: { types: ClearTypeId[]; shouldReload: boolean };
+    };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

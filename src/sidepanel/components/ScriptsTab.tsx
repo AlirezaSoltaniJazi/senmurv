@@ -23,7 +23,7 @@ interface Props {
   onCustomize: (seed: RecorderSeed) => void;
   /** Bumped by the header refresh button to re-pull data from storage. */
   reloadNonce: number;
-  /** A script handed over from another tool (e.g. Tools → Unlock), loaded once. */
+  /** A script handed over from another tool (e.g. Tools → Bypass), loaded once. */
   seed: ScriptSeed | null;
   onSeedConsumed: () => void;
 }
@@ -65,7 +65,7 @@ export function ScriptsTab({
     };
   }, [reloadNonce]);
 
-  // One-shot seed from Tools → Unlock (loads into the editor, then clears).
+  // One-shot seed from Tools → Bypass (loads into the editor, then clears).
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!seed) return;

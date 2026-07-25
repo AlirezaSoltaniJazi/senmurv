@@ -1,11 +1,11 @@
 import type { PageMode } from '@/shared/types';
 
 /** The sub-tools of the Tools tab. */
-export type ToolKey = 'unlock' | 'sitedata' | 'measure' | 'color' | 'taborder' | 'a11y' | 'font';
+export type ToolKey = 'bypass' | 'sitedata' | 'measure' | 'color' | 'taborder' | 'a11y' | 'font';
 
 /**
  * One entry in the Tools launcher. `mode` is the in-page mode the shell tears
- * down when the tool unmounts — null for tools that never enter one (Unlock
+ * down when the tool unmounts — null for tools that never enter one (Bypass
  * mutates and leaves; Site data runs entirely in the service worker).
  */
 export interface ToolDescriptor {
@@ -27,10 +27,10 @@ export interface ToolDescriptor {
  */
 export const TOOLS: readonly ToolDescriptor[] = [
   {
-    key: 'unlock',
-    label: 'Unlock (God Mode)',
+    key: 'bypass',
+    label: 'Bypass',
     blurb:
-      'Strips client-side locks so you can drive a disabled or hidden form. The server can still reject the submit, and on a model-driven form it unlocks the view, not the model.',
+      'Strips client-side locks so you can drive a disabled or hidden form. The server can still reject the submit, and on a model-driven form it affects the view, not the model.',
     mode: null,
     requiresPage: true,
     isReady: true,
@@ -42,7 +42,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
       "Clears this origin's storage. Chrome does not expose HTTP cache size or let extensions clear it per-origin — use Clear + hard reload for that.",
     mode: null,
     requiresPage: true,
-    isReady: false,
+    isReady: true,
   },
   {
     key: 'measure',
@@ -51,7 +51,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Drag a region, or hover an element for its box model. Numbers are CSS px in the top frame; page zoom changes them.',
     mode: 'measure',
     requiresPage: true,
-    isReady: false,
+    isReady: true,
   },
   {
     key: 'color',

@@ -7,7 +7,7 @@ describe('TOOLS registry', () => {
     const keys = TOOLS.map((t) => t.key);
     expect(new Set(keys).size).toBe(keys.length);
     expect(keys).toEqual([
-      'unlock',
+      'bypass',
       'sitedata',
       'measure',
       'color',

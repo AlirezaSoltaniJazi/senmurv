@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Senmurv QA fixture</title>
+    <style>
+      body { font: 14px system-ui; padding: 20px; }
+      .css-hidden { display: none; }
+      fieldset { margin: 10px 0; }
+    </style>
+  </head>
+  <body>
+    <h1>Senmurv QA fixture</h1>
+
+    <form id="signup">
+      <label>Email <input id="email" type="email" required disabled></label>
+      <label>Age <input id="age" type="number" step="5" min="18" max="99" required></label>
+      <label>Code <input id="code" type="text" pattern="\d+" minlength="3" maxlength="6" readonly></label>
+      <label>Secret <input id="secret" type="password" value="hunter2"></label>
+      <input id="csrf" type="hidden" value="tok_123">
+
+      <fieldset id="billing" disabled>
+        <legend>Billing</legend>
+        <label>Card <input id="card" type="text"></label>
+      </fieldset>
+
+      <label>Plan
+        <select id="plan">
+          <option value="free">Free</option>
+          <option id="pro" value="pro" disabled>Pro (disabled)</option>
+          <option id="ent" value="ent" hidden>Enterprise (hidden)</option>
+        </select>
+      </label>
+
+      <div id="secret-panel" hidden>Hidden by [hidden]</div>
+      <div id="css-panel" class="css-hidden">Hidden by display:none</div>
+      <div id="aria-panel" aria-hidden="true" inert>Inert + aria-hidden</div>
+
+      <div id="note" contenteditable="false">Not editable</div>
+
+      <button id="submit" type="submit">Submit</button>
+    </form>
+
+    <button id="picktarget" data-testid="pick-me">Pick me</button>
+  </body>
+</html>

@@ -9,24 +9,44 @@ All notable changes to Senmurv are documented here. The format is based on
 ### Added
 
 - **Tools tab** — a new side-panel tab that will host seven page-inspection
-  tools: Unlock (God Mode), Site data, Measure, Colour, Tab order,
+  tools: Bypass, Site data, Measure, Colour, Tab order,
   Accessibility and Fonts. This release lands the tab, its launcher and the
   shared plumbing; each tool arrives in a later release.
-- **Tools → Unlock (God Mode)** — strips the client-side locks an app puts on
+- **Tools → Bypass** — strips the client-side locks an app puts on
   its own form so you can drive it in a test: `disabled`, `readonly`, their ARIA
   equivalents, `required`, `pattern`, length limits, and disabled dropdown
   options. Optionally reveals hidden elements, reveals password fields, closes
   modal dialogs, and descends into open shadow roots — all off by default.
   - **Restore** puts every changed attribute back exactly as it was, telling an
     absent attribute apart from a present empty one.
-  - **Sticky mode** re-applies the unlock when the page re-renders, for apps
+  - **Sticky mode** re-applies the bypass when the page re-renders, for apps
     that put their own locks back.
-  - **Unlock Dynamics form** appears on Dynamics 365 / Power Apps pages and
+  - **Bypass Dynamics form** appears on Dynamics 365 / Power Apps pages and
     additionally uses the Xrm client API to make required fields optional and
     reveal hidden controls, tabs and sections — the behaviour Level Up for
     Dynamics CRM provides, which no DOM-level pass can reach.
   - **Save as a script** hands the current settings to the Scripts tab as a
-    standalone script, so the unlock can be re-run after every page load.
+    standalone script, so the bypass can be re-run after every page load.
+- **Tools → Measure** — measure the page in pixels three ways: **Element**
+  (hover for the box model — content / border / margin boxes and each side),
+  **Region** (drag a rectangle, in viewport and page coordinates), and
+  **Distance** (click two elements for the gap and centre-to-centre distance).
+  - A pinned element also produces copy-ready **locators** and **size
+    assertions** for Playwright / Cypress / WebdriverIO / Selenium / Robot
+    Framework — with the content-box vs border-box distinction handled correctly,
+    so a CSS-property assertion never gets a bounding-box number by mistake.
+- **Tools → Site data** — clears the current origin's storage so you can retest
+  a flow or check a first-run experience, without a trip to `chrome://settings`
+  and without any new permission.
+  - Shows a per-origin breakdown (Cache Storage, IndexedDB, local/session
+    storage, cookies, service workers) using the page's own quota estimate.
+  - **Bust cache** (Cache Storage + service workers) re-fetches the app without
+    logging you out; **Fresh visitor** clears everything for a first-run test.
+  - **Clear + hard reload** also bypasses the HTTP cache on reload — the one way
+    to reach it, since no extension API can clear the HTTP cache per-origin.
+  - A session-destroying selection arms a two-step confirm, and the summary
+    states up front that HttpOnly cookies survive and that the HTTP cache size
+    is not something Chrome exposes to extensions.
 - **Highlight an element on the page** — a `HIGHLIGHT_ELEMENT` message scrolls
   an element into view and outlines it, so a findings list in the panel can
   point at the thing it is describing.
