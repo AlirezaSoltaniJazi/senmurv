@@ -27,6 +27,15 @@ All notable changes to Senmurv are documented here. The format is based on
     Dynamics CRM provides, which no DOM-level pass can reach.
   - **Save as a script** hands the current settings to the Scripts tab as a
     standalone script, so the bypass can be re-run after every page load.
+- **Tools → Colour** — hover an element for its colours in every format (HEX,
+  HEX8, RGB, HSL, HWB) and its **WCAG contrast** verdict (AA / AAA at normal and
+  large text), click to pin it with copy-ready locators. Also a **screen
+  eyedropper** (where the browser supports it) to sample any pixel.
+  - The effective background is resolved by compositing ancestor
+    `background-color`s; background images, gradients, `::before` overlays and
+    non-sRGB (`oklch`/`lab`/`display-p3`) colours are **flagged, not guessed**.
+  - Contrast maths are shared with the coming Accessibility tool and were
+    verified against independently-computed reference values.
 - **Tools → Measure** — measure the page in pixels three ways: **Element**
   (hover for the box model — content / border / margin boxes and each side),
   **Region** (drag a rectangle, in viewport and page coordinates), and

@@ -1408,3 +1408,36 @@ input[type='checkbox'] {
   color: var(--muted);
   line-height: 1.45;
 }
+
+/* Colour tool — swatches + contrast badges */
+.swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+  flex: none;
+}
+.swatch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.swatch-role {
+  color: var(--muted);
+  min-width: 96px;
+}
+.badge.pass {
+  background: var(--good);
+  color: #fff;
+}
+.badge.fail {
+  background: var(--danger);
+  color: #fff;
+}
+.contrast-ratio {
+  font-size: 22px;
+  font-weight: 600;
+}

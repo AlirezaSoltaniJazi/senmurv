@@ -1,5 +1,6 @@
 import type { MeasureMode, PageMode } from '@/shared/types';
 import { restorePage, bypassPage, bypassState } from './tools/bypass';
+import { startColor, stopColor } from './tools/color';
 import { startMeasure, stopMeasure } from './tools/measure';
 
 /**
@@ -26,7 +27,7 @@ interface ModeHandlers {
  * safe to call while already active (the panel re-sends START to re-configure).
  */
 const HANDLERS: Partial<Record<PageMode, ModeHandlers>> = {
-  // 'color'    → Phase 4
+  color: { start: startColor, stop: stopColor },
   // 'taborder' → Phase 5
   // 'font'     → Phase 7
 };

@@ -56,9 +56,33 @@ ones: **top frame only** (cross-origin iframes are unreachable), closed shadow
 roots cannot be inspected, and the tools are unavailable on `chrome://`,
 `file://`, `view-source:` and Web Store pages.
 
-> **Status:** the tab, its shared plumbing, **Bypass**, **Site data** and
-> **Measure** have shipped; the remaining tools are landing one release at a
-> time, and an unbuilt tool says so when opened.
+> **Status:** the tab, its shared plumbing, **Bypass**, **Site data**,
+> **Measure** and **Colour** have shipped; the remaining tools are landing one
+> release at a time, and an unbuilt tool says so when opened.
+
+### Colour — detail
+
+Hover an element to read its **text**, **background**, **border** and
+**effective background** colours in HEX / HEX8 / RGB / HSL / HWB (each
+copyable), plus its **WCAG contrast** verdict; click to pin it with copy-ready
+locators. Where the browser supports it, **Pick a screen colour** opens the
+native eyedropper to sample any pixel.
+
+- **Contrast** grades AA (≥4.5, or ≥3 large) and AAA (≥7, or ≥4.5 large) for the
+  actual text size. The maths use the single normative WCAG threshold (0.04045)
+  and are **shared with the Accessibility tool**, so both agree with
+  axe/Lighthouse. The values were checked against an independently-computed
+  reference (e.g. `#767676` on white = 4.54 → passes AA; `#777777` = 4.48 →
+  fails).
+- **Effective background** is resolved by compositing ancestor
+  `background-color`s (in gamma space, folding in `opacity`) over an assumed
+  white backstop. This ancestor walk **cannot see** background images/gradients,
+  `::before`/`::after` overlays, non-ancestor elements pulled behind by
+  `z-index`, blend modes, or a dark page default — all of which are **flagged as
+  warnings, never guessed**.
+- **Non-sRGB colours** (`oklch()`, `lab()`, `color(display-p3 …)`) are shown as
+  their raw computed string and excluded from contrast — the tool never
+  fabricates a hex for a colour it cannot convert.
 
 ### Measure — detail
 

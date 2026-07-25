@@ -2,6 +2,7 @@ import type { ReactElement } from 'react';
 import { findTool, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
+import { ColorTool } from './tools/ColorTool';
 import { MeasureTool } from './tools/MeasureTool';
 import { SiteDataTool } from './tools/SiteDataTool';
 import { BypassTool } from './tools/BypassTool';
@@ -46,6 +47,7 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
         {tool === 'bypass' && <BypassTool onSaveScript={onSaveScript} />}
         {tool === 'sitedata' && <SiteDataTool />}
         {tool === 'measure' && <MeasureTool />}
+        {tool === 'color' && <ColorTool />}
       </ToolShell>
     </div>
   );

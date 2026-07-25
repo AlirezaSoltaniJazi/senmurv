@@ -28,6 +28,9 @@ describe('isRuntimeMessage', () => {
     ).toBe(true);
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.TOOL_STREAM, payload: {} })).toBe(true);
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.TOOL_PICKED, payload: {} })).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.START_TOOL_MODE, payload: { mode: 'color' } })
+    ).toBe(true);
   });
 
   it('rejects unknown or malformed values', () => {

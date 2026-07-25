@@ -12,6 +12,9 @@ import type {
   MeasureMode,
   ToolPickData,
 } from '@/shared/types';
+
+/** The measure arm of the pick union — the only one this tool handles. */
+type MeasurePick = Extract<ToolPickData, { tool: 'measure' }>;
 import { CopyButton } from '@/sidepanel/components/CopyButton';
 import { FrameworkChips, LocatorSuggestions } from '@/sidepanel/components/LocatorSuggestions';
 import type { FrameworkFilter } from '@/sidepanel/components/LocatorSuggestions';
@@ -100,7 +103,7 @@ function pickSelector(locators: LocatorSet): string {
 export function MeasureTool(): ReactElement {
   const [mode, setMode] = useState<MeasureMode>('element');
   const [live, setLive] = useState<MeasureData | null>(null);
-  const [picked, setPicked] = useState<ToolPickData | null>(null);
+  const [picked, setPicked] = useState<MeasurePick | null>(null);
   const [filter, setFilter] = useState<FrameworkFilter>('all');
 
   // (Re)start the in-page mode on mount and whenever the sub-mode changes.

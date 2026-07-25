@@ -60,7 +60,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Reads an element’s colours in every format plus its WCAG contrast. Background images, gradients and ::before overlays are invisible to the ancestor walk and are flagged, not guessed.',
     mode: 'color',
     requiresPage: true,
-    isReady: false,
+    isReady: true,
   },
   {
     key: 'taborder',

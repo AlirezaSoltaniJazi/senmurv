@@ -201,22 +201,76 @@ export type MeasureData =
   | { readonly mode: 'element'; readonly box: BoxModel; readonly tag: string }
   | { readonly mode: 'distance'; readonly distance: DistanceReading };
 
-/** Live, high-frequency reading pushed while the user drags or hovers (TOOL_STREAM). */
-export type ToolStreamData = { readonly tool: 'measure'; readonly data: MeasureData };
+/**
+ * Live, high-frequency reading pushed while the user drags or hovers
+ * (TOOL_STREAM). Discriminated by `tool` so each Tools mode adds its own arm.
+ */
+export type ToolStreamData =
+  | { readonly tool: 'measure'; readonly data: MeasureData }
+  | { readonly tool: 'color'; readonly data: ColorReport };
 
-/** A committed reading pushed on click/mouse-up (TOOL_PICKED). */
-export type ToolPickData = {
-  readonly tool: 'measure';
-  readonly data: MeasureData;
-  /** Present for element/distance picks so the panel can offer copy-ready locators. */
-  readonly locators?: LocatorSet;
-};
+/** A committed reading pushed on click (TOOL_PICKED), with copy-ready locators. */
+export type ToolPickData =
+  | { readonly tool: 'measure'; readonly data: MeasureData; readonly locators?: LocatorSet }
+  | { readonly tool: 'color'; readonly data: ColorReport; readonly locators?: LocatorSet };
 
 /** One framework's copy-ready size assertion for a measured element. */
 export interface SizeAssertion {
   readonly framework: Framework;
   readonly label: string;
   readonly code: string;
+}
+
+// ---------------------------------------------------------------------------
+// Colour
+// ---------------------------------------------------------------------------
+
+/** An sRGB colour with straight (non-premultiplied) alpha, channels 0-255, alpha 0-1. */
+export interface Rgba {
+  readonly r: number;
+  readonly g: number;
+  readonly b: number;
+  readonly a: number;
+}
+
+/** A colour rendered in every format the panel shows, ready to copy. */
+export interface ColorFormats {
+  readonly hex: string;
+  readonly hex8: string;
+  readonly rgb: string;
+  readonly hsl: string;
+  readonly hwb: string;
+}
+
+/** The WCAG contrast verdict of a foreground colour over its effective background. */
+export interface ContrastVerdict {
+  readonly ratio: number;
+  readonly aaNormal: boolean;
+  readonly aaLarge: boolean;
+  readonly aaaNormal: boolean;
+  readonly aaaLarge: boolean;
+  /** Whether the measured text counts as "large" (≥24px, or ≥18.66px bold). */
+  readonly isLargeText: boolean;
+}
+
+/** One colour read off an element, with its role (text, background, border…). */
+export interface ColorSwatch {
+  readonly role: string;
+  /** The colour as authored/computed. `null` when it is not sRGB-convertible (oklch/lab/…). */
+  readonly rgba: Rgba | null;
+  /** The raw computed string, always shown (covers the non-sRGB pass-through case). */
+  readonly raw: string;
+  readonly formats: ColorFormats | null;
+}
+
+/** Everything the Colour tool reports for one inspected element. */
+export interface ColorReport {
+  readonly tag: string;
+  readonly swatches: ColorSwatch[];
+  /** Text-vs-effective-background contrast, when both are known sRGB colours. */
+  readonly contrast: ContrastVerdict | null;
+  /** Honest caveats: background images, ::before overlays, non-sRGB colours, etc. */
+  readonly warnings: string[];
 }
 
 // ---------------------------------------------------------------------------
