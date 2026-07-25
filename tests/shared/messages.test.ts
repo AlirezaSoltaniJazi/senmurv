@@ -33,6 +33,21 @@ describe('isRuntimeMessage', () => {
     ).toBe(true);
   });
 
+  it('accepts the locator-match highlight types', () => {
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
+        payload: { query: 'div', kind: 'css' },
+      })
+    ).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.SCROLL_TO_MATCH, payload: { index: 2 } })).toBe(
+      true
+    );
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.STOP_TOOL_MODE, payload: { mode: 'match' } })
+    ).toBe(true);
+  });
+
   it('rejects unknown or malformed values', () => {
     expect(isRuntimeMessage(null)).toBe(false);
     expect(isRuntimeMessage(undefined)).toBe(false);

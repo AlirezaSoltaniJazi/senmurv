@@ -138,7 +138,16 @@ export type PageMode =
   | 'measure'
   | 'color'
   | 'font'
-  | 'taborder';
+  | 'taborder'
+  | 'match';
+
+/** One highlighted locator-match run: total matches, how many were drawn, and
+ *  which (0-based) is currently selected (−1 when none). */
+export interface MatchResult {
+  readonly count: number;
+  readonly shown: number;
+  readonly selected: number;
+}
 
 /** Modes the Tools tab starts. A subset of PageMode, excluding the pre-existing ones. */
 export type ToolMode = Extract<PageMode, 'measure' | 'color' | 'font' | 'taborder'>;

@@ -77,6 +77,11 @@ export type RuntimeMessage =
   // A null selector clears the highlight — without it a highlight can never be
   // removed, which is the trap this signature exists to avoid.
   | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } }
+  // Locator tab: highlight every match of a CSS/XPath (returns the count), and
+  // scroll the Nth match into view. HIGHLIGHT_MATCHES enters PageMode 'match';
+  // STOP_TOOL_MODE { mode: 'match' } tears it down.
+  | { type: typeof MESSAGE_TYPES.HIGHLIGHT_MATCHES; payload: { query: string; kind: LocatorKind } }
+  | { type: typeof MESSAGE_TYPES.SCROLL_TO_MATCH; payload: { index: number } }
   // Bypass. BYPASS_XRM is worker-local — the Xrm client API only
   // exists in the page's own realm, so it needs a MAIN-world injection.
   | {

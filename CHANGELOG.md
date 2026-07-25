@@ -92,6 +92,13 @@ All notable changes to Senmurv are documented here. The format is based on
     baselines and an `@font-face` walk (surfacing the web font's `src`), so it
     does not fall for `document.fonts.check` returning true for unknown families.
     The ordering logic is pure and unit-tested; the DOM probes are injected.
+- **Locator → Highlight matches** — the "Test a locator" box gains a **Highlight**
+  toggle that outlines and numbers **every** element a CSS/XPath matches directly
+  on the page, not just a count, and updates live as you edit the selector. **‹ ›**
+  scroll through the matches one at a time ("match 3 of 5"). It answers the daily
+  question a bare count can't — _which_ of the N matches are they? A broad selector
+  is capped at the first 200 badges (the true match count is still reported), and
+  the badges stay aligned as you scroll.
 - **Tools → JWT decoder** — paste a JWT and read its header and claims as an
   annotated table (registered claims like `iss`/`sub`/`exp` are labelled, and
   `exp`/`nbf`/`iat` show their ISO date), with a live **expired / valid / not-yet-valid**

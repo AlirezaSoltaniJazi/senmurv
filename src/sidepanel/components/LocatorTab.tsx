@@ -3,7 +3,7 @@ import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
-import type { LocatorKind, LocatorSet, Result } from '@/shared/types';
+import type { LocatorKind, LocatorSet, MatchResult, Result } from '@/shared/types';
 import { FrameworkChips, LocatorSuggestions } from './LocatorSuggestions';
 import type { FrameworkFilter } from './LocatorSuggestions';
 
@@ -19,6 +19,8 @@ export function LocatorTab(): ReactElement {
   const [testKind, setTestKind] = useState<LocatorKind>('css');
   const [testedQuery, setTestedQuery] = useState('');
   const [testError, setTestError] = useState<string | null>(null);
+  const [highlighting, setHighlighting] = useState(false);
+  const [matchInfo, setMatchInfo] = useState<MatchResult | null>(null);
 
   useEffect(() => {
     function onMessage(message: unknown): void {
@@ -34,8 +36,46 @@ export function LocatorTab(): ReactElement {
     return () => chrome.runtime.onMessage.removeListener(onMessage);
   }, []);
 
+  // Tear the highlight mode down when the tab unmounts (a no-op if not active).
+  useEffect(() => {
+    return () => {
+      void sendRuntimeMessage({
+        type: MESSAGE_TYPES.STOP_TOOL_MODE,
+        payload: { mode: 'match' },
+      });
+    };
+  }, []);
+
+  // Live re-highlight as the query changes while highlighting is on (debounced).
+  useEffect(() => {
+    if (!highlighting) return undefined;
+    const id = setTimeout(() => {
+      const parsed = parseLocatorInput(query);
+      if (!parsed.query) return;
+      setTestKind(parsed.kind);
+      setTestedQuery(parsed.query);
+      void (async () => {
+        const res = await sendRuntimeMessage<Result<MatchResult>>({
+          type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
+          payload: { query: parsed.query, kind: parsed.kind },
+        });
+        if (res.ok) {
+          setMatchInfo(res.value);
+          setTestError(null);
+        } else {
+          setTestError(res.error);
+        }
+      })();
+    }, 300);
+    return () => clearTimeout(id);
+  }, [query, highlighting]);
+
   async function startPick(): Promise<void> {
     setError(null);
+    // Starting a pick switches the in-page mode, which the arbiter tears the
+    // highlight down for — reflect that in the panel so the nav strip clears.
+    setHighlighting(false);
+    setMatchInfo(null);
     const res = await sendRuntimeMessage<Result<void>>({ type: MESSAGE_TYPES.START_PICK });
     if (!res.ok) {
       setError(res.error);
@@ -62,6 +102,49 @@ export function LocatorTab(): ReactElement {
     });
     if (res.ok) setTestCount(res.value.count);
     else setTestError(res.error);
+  }
+
+  async function toggleHighlight(): Promise<void> {
+    if (highlighting) {
+      setHighlighting(false);
+      setMatchInfo(null);
+      await sendRuntimeMessage<Result<void>>({
+        type: MESSAGE_TYPES.STOP_TOOL_MODE,
+        payload: { mode: 'match' },
+      });
+      return;
+    }
+    setTestError(null);
+    const parsed = parseLocatorInput(query);
+    if (!parsed.query) return;
+    setTestKind(parsed.kind);
+    setTestedQuery(parsed.query);
+    const res = await sendRuntimeMessage<Result<MatchResult>>({
+      type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
+      payload: { query: parsed.query, kind: parsed.kind },
+    });
+    if (res.ok) {
+      setHighlighting(true);
+      setMatchInfo(res.value);
+    } else {
+      setTestError(res.error);
+    }
+  }
+
+  /** Scroll to the previous/next match (delta ±1), wrapping around. */
+  function stepMatch(delta: number): void {
+    if (!matchInfo || matchInfo.shown === 0) return;
+    const current = matchInfo.selected + 1; // 1-based; 0 when nothing is selected
+    let next = current + delta;
+    if (next < 1) next = matchInfo.shown;
+    if (next > matchInfo.shown) next = 1;
+    void (async () => {
+      const res = await sendRuntimeMessage<Result<MatchResult>>({
+        type: MESSAGE_TYPES.SCROLL_TO_MATCH,
+        payload: { index: next },
+      });
+      if (res.ok) setMatchInfo(res.value);
+    })();
   }
 
   return (
@@ -99,6 +182,13 @@ export function LocatorTab(): ReactElement {
           <button type="button" className="primary" onClick={() => void runTest()}>
             Test
           </button>
+          <button
+            type="button"
+            className={highlighting ? 'primary' : ''}
+            onClick={() => void toggleHighlight()}
+          >
+            {highlighting ? 'Clear' : 'Highlight'}
+          </button>
         </div>
         {testCount !== null && (
           <p className={testCount === 1 ? 'status' : 'hint'}>
@@ -111,6 +201,32 @@ export function LocatorTab(): ReactElement {
               ({testKind}: <code>{testedQuery}</code>)
             </span>
           </p>
+        )}
+        {highlighting && matchInfo && (
+          <div className="row match-nav">
+            {matchInfo.count === 0 ? (
+              <span className="hint">No elements match — nothing to highlight.</span>
+            ) : (
+              <>
+                <button type="button" onClick={() => stepMatch(-1)} aria-label="Previous match">
+                  ‹
+                </button>
+                <span className="hint">
+                  {matchInfo.selected >= 0
+                    ? `match ${matchInfo.selected + 1} of ${matchInfo.shown}`
+                    : `${matchInfo.shown} highlighted`}
+                </span>
+                <button type="button" onClick={() => stepMatch(1)} aria-label="Next match">
+                  ›
+                </button>
+                {matchInfo.count > matchInfo.shown && (
+                  <span className="dim">
+                    (first {matchInfo.shown} of {matchInfo.count})
+                  </span>
+                )}
+              </>
+            )}
+          </div>
         )}
         {testError && <p className="error">{testError}</p>}
       </div>

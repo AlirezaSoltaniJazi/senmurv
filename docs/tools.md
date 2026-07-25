@@ -17,6 +17,7 @@ Pick an element and get ranked, copy-ready locators — each annotated with how 
 - **Ranking** (`LOCATOR_PRIORITY`): `data-testid` (and `data-test`/`data-cy`/`data-qa`) › `id` › role + accessible name › unique CSS selector › relative XPath (absolute XPath as fallback). The top viable strategy is marked **recommended**.
 - **Match count / uniqueness**: every locator shows its live match count, so you can immediately tell whether a selector is unique on the page.
 - **Test a locator**: type any CSS selector or XPath (e.g. `mat-label` or `//button[@type='submit']`) and see how many elements match — no picking required. CSS vs XPath is auto-detected.
+  - **Highlight** outlines and numbers **every** match on the page (not just a count), updating live as you edit the selector, with **‹ ›** to scroll through them one at a time. Answers "my selector matches 7 — but _which_ 7?". A broad selector is capped at the first 200 boxes (the true count is still shown); top frame only.
 - **Framework snippets** (all shown at once; filter with the chips):
   - **Playwright** — `getByTestId`, `getByRole`, `getByLabel`, `locator(css)`, `locator('xpath=…')`
   - **WebdriverIO** — `$('#id')`, `$('[data-testid="…"]')`, `$('aria/Name')`, `$('css')`, `$x('xpath')`

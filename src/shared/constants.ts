@@ -42,6 +42,10 @@ export const MESSAGE_TYPES = {
   START_TOOL_MODE: 'START_TOOL_MODE',
   STOP_TOOL_MODE: 'STOP_TOOL_MODE',
   HIGHLIGHT_ELEMENT: 'HIGHLIGHT_ELEMENT',
+  // Locator tab — highlight every element matching a CSS/XPath, numbered, and
+  // scroll a chosen match into view. A live in-page mode (PageMode 'match').
+  HIGHLIGHT_MATCHES: 'HIGHLIGHT_MATCHES',
+  SCROLL_TO_MATCH: 'SCROLL_TO_MATCH',
   // tab → panel pushes from an in-page tool mode (no service-worker handler)
   TOOL_STREAM: 'TOOL_STREAM',
   TOOL_PICKED: 'TOOL_PICKED',
@@ -236,6 +240,10 @@ export const BYPASS_CSS = `
 
 /** Cap on tab-order stops, so a pathological page can't stall the scan. */
 export const TAB_ORDER_MAX_STOPS = 500;
+
+/** Cap on drawn locator-match badges, so a broad selector (e.g. `div`) can't
+ *  paint thousands of boxes. The true match count is still reported. */
+export const MATCH_HIGHLIGHT_MAX = 200;
 
 /** Snap-to-element-edge threshold for the Measure tool, in CSS px. */
 export const MEASURE_SNAP_PX = 6;

@@ -495,6 +495,14 @@ select,
   flex: 1;
 }
 
+/* ‹ › match navigation under the Test box */
+.match-nav button {
+  min-width: 28px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1;
+}
+
 /* Framework filter chips */
 .chips {
   display: flex;

@@ -2,9 +2,10 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
 import { isRuntimeMessage } from '@/shared/messages';
-import type { MeasureMode, PageMode, Result } from '@/shared/types';
+import type { LocatorKind, MatchResult, MeasureMode, PageMode, Result } from '@/shared/types';
 import { contextAlive, notify } from './context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
+import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
 import { isRecording, startRecording, stopRecording } from './recorder';
 
 // The page-side router. Idle until the side panel asks for a mode, then it owns
@@ -104,6 +105,8 @@ function stopCurrentMode(): void {
     stopPickListeners();
   } else if (outgoing === 'record') {
     stopRecording();
+  } else if (outgoing === 'match') {
+    stopMatch();
   } else if (isToolMode(outgoing)) {
     // The chunk is necessarily resolved — we could not have entered the mode
     // without it — so this settles immediately.
@@ -146,6 +149,21 @@ async function enterToolMode(next: PageMode, measureMode?: MeasureMode): Promise
     restoreCursor();
     return { ok: false, error: `Could not load the Tools module: ${errorText(err)}` };
   }
+}
+
+/**
+ * Enter (or refresh) the locator-match highlight mode. Re-callable while already
+ * in it so the panel can update the drawing live as the query changes; an
+ * invalid selector leaves the mode idle and reports why.
+ */
+function enterMatchMode(query: string, kind: LocatorKind): Result<MatchResult> {
+  if (pageMode !== 'match') {
+    stopCurrentMode();
+    pageMode = 'match';
+  }
+  const res = startMatch(query, kind);
+  if (!res.ok) pageMode = 'idle';
+  return res;
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +332,16 @@ function register(): void {
 
       case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
         sendResponse(highlightSelector(message.payload.selector));
+        return true;
+
+      case MESSAGE_TYPES.HIGHLIGHT_MATCHES: {
+        const { query, kind } = message.payload;
+        sendResponse(enterMatchMode(query, kind));
+        return true;
+      }
+
+      case MESSAGE_TYPES.SCROLL_TO_MATCH:
+        sendResponse(scrollToMatch(message.payload.index));
         return true;
 
       case MESSAGE_TYPES.BYPASS_PAGE: {
