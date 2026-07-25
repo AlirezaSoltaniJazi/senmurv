@@ -13,6 +13,8 @@ import type {
 import { contextAlive, notify } from './context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
 import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
+import { rafThrottle } from './raf-throttle';
+import type { RafThrottled } from './raf-throttle';
 import { isRecording, startRecording, stopRecording } from './recorder';
 
 // The page-side router. Idle until the side panel asks for a mode, then it owns
@@ -252,14 +254,21 @@ function onKeyDown(e: KeyboardEvent): void {
   notify({ type: MESSAGE_TYPES.PICK_CANCELLED }, bail);
 }
 
+let pickHover: RafThrottled | null = null;
+
 function startPickListeners(): void {
-  document.addEventListener('mousemove', onMouseMove, true);
+  pickHover = rafThrottle(onMouseMove);
+  document.addEventListener('mousemove', pickHover.handler, true);
   document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKeyDown, true);
 }
 
 function stopPickListeners(): void {
-  document.removeEventListener('mousemove', onMouseMove, true);
+  if (pickHover) {
+    document.removeEventListener('mousemove', pickHover.handler, true);
+    pickHover.cancel();
+    pickHover = null;
+  }
   document.removeEventListener('click', onClick, true);
   document.removeEventListener('keydown', onKeyDown, true);
   destroyOverlay();
@@ -375,6 +384,11 @@ function register(): void {
       case MESSAGE_TYPES.STOP_TOOL_MODE: {
         const { mode } = message.payload;
         if (mode === 'all' || pageMode === mode) enterMode('idle');
+        // A11y is request/response, not an arbiter mode, so enterMode('idle')
+        // does not reach its retained scan elements. On a full teardown release
+        // them too — but only if the Tools chunk is already loaded (`toolsModule`
+        // set); never force it in just to reset.
+        if (mode === 'all' && toolsModule) void loadTools().then((t) => t.resetA11y());
         sendResponse({ ok: true, value: undefined });
         return true;
       }
@@ -436,6 +450,12 @@ function register(): void {
         return false;
     }
   });
+
+  // Defense in depth for the panel-close teardown (whose primary path is the
+  // worker's port.onDisconnect): a bfcache eviction or SPA soft-navigation can
+  // otherwise leave a mode's listeners and the crosshair cursor stranded. On a
+  // hard navigation this world is discarded anyway, so tearing down here is free.
+  window.addEventListener('pagehide', bail);
 }
 
 // A tab that existed before the extension loaded gets the script injected on

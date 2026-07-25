@@ -107,6 +107,19 @@ describe('script storage', () => {
     const remaining = await deleteScript('scr_1');
     expect(remaining.map((s) => s.id)).toEqual(['scr_2']);
   });
+
+  it('serializes concurrent upserts so neither write is lost (race)', async () => {
+    // Fire two upserts WITHOUT awaiting the first. Without the per-key lock both
+    // read the empty base list and the second `set` clobbers the first — only
+    // one script would survive. The lock makes the second op read the first's
+    // committed write, so both persist.
+    await Promise.all([
+      upsertScript(makeScript({ id: 'scr_a' })),
+      upsertScript(makeScript({ id: 'scr_b' })),
+    ]);
+    const all = await getScripts();
+    expect(all.map((s) => s.id).sort()).toEqual(['scr_a', 'scr_b']);
+  });
 });
 
 describe('isTimeEntry', () => {

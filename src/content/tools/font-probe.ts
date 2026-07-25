@@ -2,6 +2,8 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { notify, notifyQuiet } from '@/content/context';
 import { buildLocatorSet } from '@/shared/locators';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from '@/content/overlay';
+import { rafThrottle } from '@/content/raf-throttle';
+import type { RafThrottled } from '@/content/raf-throttle';
 import {
   fontShorthand,
   isGenericFamily,
@@ -28,6 +30,11 @@ let active = false;
 let lastSig = '';
 let lastSent = 0;
 let ctx: CanvasRenderingContext2D | null = null;
+let hover: RafThrottled | null = null;
+// @font-face scan is O(all stylesheets × all rules); it changes rarely during a
+// hover session, so compute it once per session and reuse. Reset on start/stop.
+// Accepted staleness: a webface loaded mid-session appears only after a restart.
+let faceCache: Map<string, string> | null = null;
 
 const SAMPLE = 'mmmmmwwwwwiiiii0123456789MMMMMWWWWW';
 const GENERIC_PROBES = ['monospace', 'sans-serif', 'serif'];
@@ -110,7 +117,7 @@ function fontFaceRules(): Map<string, string> {
 function readFont(el: HTMLElement): FontInfo {
   const s = getComputedStyle(el);
   const stack = parseFontStack(s.fontFamily);
-  const webFaces = fontFaceRules();
+  const webFaces = (faceCache ??= fontFaceRules());
   const probes: FaceProbes = {
     renders: rendersFamily,
     hasWebFace: (f) => webFaces.has(f.trim().toLowerCase()),
@@ -159,9 +166,11 @@ function outline(el: Element, label: string): void {
 }
 
 function stream(info: FontInfo): void {
-  const sig = JSON.stringify(info);
+  // Cheap time gate before the expensive JSON.stringify (skipped on dropped frames).
   const now = Date.now();
-  if (sig === lastSig || now - lastSent < 100) return;
+  if (now - lastSent < 100) return;
+  const sig = JSON.stringify(info);
+  if (sig === lastSig) return;
   lastSig = sig;
   lastSent = now;
   notifyQuiet({ type: MESSAGE_TYPES.TOOL_STREAM, payload: { tool: 'font', data: info } });
@@ -197,15 +206,22 @@ export function startFont(): void {
   if (active) stopFont();
   active = true;
   lastSig = '';
+  faceCache = null;
   clearOverlay();
-  document.addEventListener('mousemove', onHover, true);
+  hover = rafThrottle(onHover);
+  document.addEventListener('mousemove', hover.handler, true);
   document.addEventListener('click', onPick, true);
 }
 
 export function stopFont(): void {
   if (!active) return;
   active = false;
-  document.removeEventListener('mousemove', onHover, true);
+  faceCache = null;
+  if (hover) {
+    document.removeEventListener('mousemove', hover.handler, true);
+    hover.cancel();
+    hover = null;
+  }
   document.removeEventListener('click', onPick, true);
   destroyOverlay();
 }

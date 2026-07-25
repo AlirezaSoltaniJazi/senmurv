@@ -9,6 +9,8 @@ import {
   targetAt,
 } from '@/content/overlay';
 import { buildLocatorSet } from '@/shared/locators';
+import { rafThrottle } from '@/content/raf-throttle';
+import type { RafThrottled } from '@/content/raf-throttle';
 import { analyzeStack } from '@/shared/tools/stacking';
 import type { RawLayer } from '@/shared/tools/stacking';
 import type { StackLayer } from '@/shared/types';
@@ -22,6 +24,7 @@ import type { StackLayer } from '@/shared/types';
  */
 
 let active = false;
+let hover: RafThrottled | null = null;
 
 const INTERACTIVE_TAGS = /^(button|input|select|textarea|summary|label|option)$/;
 const INTERACTIVE_ROLES = new Set([
@@ -135,14 +138,19 @@ export function startStacking(): void {
   if (active) stopStacking();
   active = true;
   clearOverlay();
-  document.addEventListener('mousemove', onHover, true);
+  hover = rafThrottle(onHover);
+  document.addEventListener('mousemove', hover.handler, true);
   document.addEventListener('click', onPick, true);
 }
 
 export function stopStacking(): void {
   if (!active) return;
   active = false;
-  document.removeEventListener('mousemove', onHover, true);
+  if (hover) {
+    document.removeEventListener('mousemove', hover.handler, true);
+    hover.cancel();
+    hover = null;
+  }
   document.removeEventListener('click', onPick, true);
   destroyOverlay();
 }

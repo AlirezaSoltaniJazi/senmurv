@@ -152,6 +152,24 @@ export function stopLocators(index: number): LocatorSet {
   return buildLocatorSet(el, document);
 }
 
+// The only attributes that change what is focusable or where it sits in the tab
+// order. Filtering to these stops an unrelated attribute storm (class/style/data-*
+// churn on a busy SPA) from firing markStale on every mutation, while childList +
+// subtree still catch focusable elements being added or removed — the dominant
+// staleness signal. Accepted gap: a stop toggled only via an unlisted attribute
+// won't prompt a rescan until the next add/remove.
+const TAB_ORDER_ATTRS = [
+  'tabindex',
+  'disabled',
+  'hidden',
+  'inert',
+  'contenteditable',
+  'href',
+  'type',
+  'role',
+  'aria-hidden',
+];
+
 function startObservers(): void {
   observer?.disconnect();
   observer = new MutationObserver((records) => {
@@ -159,7 +177,12 @@ function startObservers(): void {
     if (records.every((r) => isOurHost(r.target) || isOurHost(r.target.parentNode))) return;
     markStale();
   });
-  observer.observe(document.documentElement, { subtree: true, childList: true, attributes: true });
+  observer.observe(document.documentElement, {
+    subtree: true,
+    childList: true,
+    attributes: true,
+    attributeFilter: TAB_ORDER_ATTRS,
+  });
   window.addEventListener('scroll', scheduleRedraw, true);
   window.addEventListener('resize', scheduleRedraw, true);
 }

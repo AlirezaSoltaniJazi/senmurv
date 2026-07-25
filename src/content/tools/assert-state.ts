@@ -1,6 +1,8 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { notify } from '@/content/context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from '@/content/overlay';
+import { rafThrottle } from '@/content/raf-throttle';
+import type { RafThrottled } from '@/content/raf-throttle';
 import { buildLocatorSet } from '@/shared/locators';
 import { readElementState } from '@/shared/tools/element-state';
 import type { StateEnv } from '@/shared/tools/element-state';
@@ -20,6 +22,7 @@ import type { ElementState } from '@/shared/types';
 
 let active = false;
 let downSnapshot: { el: Element; state: ElementState } | null = null;
+let hover: RafThrottled | null = null;
 
 const ENV: StateEnv = {
   isVisible: (el) => {
@@ -77,7 +80,8 @@ export function startAssert(): void {
   active = true;
   downSnapshot = null;
   clearOverlay();
-  document.addEventListener('mousemove', onHover, true);
+  hover = rafThrottle(onHover);
+  document.addEventListener('mousemove', hover.handler, true);
   document.addEventListener('mousedown', onDown, true);
   document.addEventListener('click', onPick, true);
 }
@@ -86,7 +90,11 @@ export function stopAssert(): void {
   if (!active) return;
   active = false;
   downSnapshot = null;
-  document.removeEventListener('mousemove', onHover, true);
+  if (hover) {
+    document.removeEventListener('mousemove', hover.handler, true);
+    hover.cancel();
+    hover = null;
+  }
   document.removeEventListener('mousedown', onDown, true);
   document.removeEventListener('click', onPick, true);
   destroyOverlay();

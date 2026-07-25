@@ -22,6 +22,7 @@ const chromeMock = {
     onMessage: makeEvent(),
     onInstalled: makeEvent(),
     onStartup: makeEvent(),
+    onConnect: makeEvent(),
     sendMessage: vi.fn(),
     getURL: (path: string): string => `chrome-extension://test/${path}`,
     getManifest: () => ({ content_scripts: [{ js: ['assets/picker.js'] }] }),

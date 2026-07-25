@@ -160,6 +160,22 @@ const RANDOM_TOKEN_GENERATORS = new Set<GeneratorId>([
   'pastDate',
 ]);
 
+/**
+ * Every valid {@link GeneratorId} — mirrors the union in `types.ts`. Used to
+ * reject an unknown `generator` string coming from a hand-written or imported
+ * `STEPS` array before it reaches the Recorder, where `GENERATOR_LABELS[id]`
+ * would otherwise be `undefined` and crash the render.
+ */
+const GENERATOR_IDS = new Set<GeneratorId>([
+  ...RANDOM_TOKEN_GENERATORS,
+  'check',
+  'uncheck',
+  'boolean',
+  'pickFirst',
+  'pickRandom',
+  'custom',
+]);
+
 /** The `{random:KIND}` (or `{random:KIND:ARG}`) token for a generator id. */
 export function randomToken(generator: GeneratorId): string {
   return `{random:${generator}}`;
@@ -612,7 +628,11 @@ function toStep(item: unknown): WorkflowStep | null {
   if (typeof o.checked === 'boolean') step.checked = o.checked;
   if (o.disabled === true) step.disabled = true;
   if (typeof o.index === 'number') step.index = o.index;
-  if (typeof o.generator === 'string') step.generator = o.generator as GeneratorId;
+  // Only accept a KNOWN generator id — an unknown string (foreign / hand-edited
+  // script) has no GENERATOR_LABELS entry and would crash the Recorder render.
+  if (typeof o.generator === 'string' && GENERATOR_IDS.has(o.generator as GeneratorId)) {
+    step.generator = o.generator as GeneratorId;
+  }
   if (typeof o.key === 'string') step.key = o.key;
   if (typeof o.code === 'string') step.code = o.code;
   return step;

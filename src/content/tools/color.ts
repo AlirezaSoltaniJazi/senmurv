@@ -2,6 +2,8 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { notify, notifyQuiet } from '@/content/context';
 import { buildLocatorSet } from '@/shared/locators';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from '@/content/overlay';
+import { rafThrottle } from '@/content/raf-throttle';
+import type { RafThrottled } from '@/content/raf-throttle';
 import { parseColor, toFormats } from '@/shared/tools/color';
 import { compositeOver, contrastVerdict } from '@/shared/tools/contrast';
 import { resolveEffectiveBackground } from '@/shared/tools/element-colors';
@@ -18,6 +20,7 @@ import type { ColorReport, ColorSwatch } from '@/shared/types';
 let active = false;
 let lastSig = '';
 let lastSent = 0;
+let hover: RafThrottled | null = null;
 
 function px(value: string): number {
   const n = parseFloat(value);
@@ -99,9 +102,12 @@ function label(report: ColorReport): string {
 }
 
 function stream(report: ColorReport): void {
-  const sig = JSON.stringify(report);
+  // Cheap time gate first, so the ~10 Hz throttle skips the expensive
+  // JSON.stringify on the frames it would drop anyway.
   const now = Date.now();
-  if (sig === lastSig || now - lastSent < 100) return;
+  if (now - lastSent < 100) return;
+  const sig = JSON.stringify(report);
+  if (sig === lastSig) return;
   lastSig = sig;
   lastSent = now;
   notifyQuiet({ type: MESSAGE_TYPES.TOOL_STREAM, payload: { tool: 'color', data: report } });
@@ -138,14 +144,19 @@ export function startColor(): void {
   active = true;
   lastSig = '';
   clearOverlay();
-  document.addEventListener('mousemove', onHover, true);
+  hover = rafThrottle(onHover);
+  document.addEventListener('mousemove', hover.handler, true);
   document.addEventListener('click', onPick, true);
 }
 
 export function stopColor(): void {
   if (!active) return;
   active = false;
-  document.removeEventListener('mousemove', onHover, true);
+  if (hover) {
+    document.removeEventListener('mousemove', hover.handler, true);
+    hover.cancel();
+    hover = null;
+  }
   document.removeEventListener('click', onPick, true);
   destroyOverlay();
 }

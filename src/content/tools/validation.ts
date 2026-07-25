@@ -1,6 +1,8 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { notify } from '@/content/context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from '@/content/overlay';
+import { rafThrottle } from '@/content/raf-throttle';
+import type { RafThrottled } from '@/content/raf-throttle';
 import { buildLocatorSet } from '@/shared/locators';
 import { readFieldContract } from '@/shared/tools/validation-contract';
 
@@ -12,6 +14,7 @@ import { readFieldContract } from '@/shared/tools/validation-contract';
  */
 
 let active = false;
+let hover: RafThrottled | null = null;
 
 function outline(el: Element, label: string): void {
   const r = el.getBoundingClientRect();
@@ -48,14 +51,19 @@ export function startValidation(): void {
   if (active) stopValidation();
   active = true;
   clearOverlay();
-  document.addEventListener('mousemove', onHover, true);
+  hover = rafThrottle(onHover);
+  document.addEventListener('mousemove', hover.handler, true);
   document.addEventListener('click', onPick, true);
 }
 
 export function stopValidation(): void {
   if (!active) return;
   active = false;
-  document.removeEventListener('mousemove', onHover, true);
+  if (hover) {
+    document.removeEventListener('mousemove', hover.handler, true);
+    hover.cancel();
+    hover = null;
+  }
   document.removeEventListener('click', onPick, true);
   destroyOverlay();
 }

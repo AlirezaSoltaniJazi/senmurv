@@ -394,3 +394,71 @@ describe('picking + scripts CRUD', () => {
     expect(injection.args).toEqual(['mat-label', 'css']);
   });
 });
+
+describe('never hangs the caller', () => {
+  it('answers with an error for a valid-type message with a missing payload (sync branch)', async () => {
+    // isRuntimeMessage passes on `type` alone; reading message.payload.script
+    // throws synchronously. The hub must catch it and respond, not hang.
+    const res = await send({ type: MESSAGE_TYPES.SAVE_SCRIPT });
+    expect(res?.ok).toBe(false);
+    expect(typeof res?.error).toBe('string');
+  });
+
+  it('answers with an error for a missing payload on a tab-directed branch (async branch)', async () => {
+    // message.payload.code is read lazily inside the withActiveTab callback, so
+    // the throw is async — withActiveTab must turn it into a Result, not reject.
+    const res = await send({ type: MESSAGE_TYPES.RUN_SCRIPT });
+    expect(res?.ok).toBe(false);
+    expect(typeof res?.error).toBe('string');
+  });
+
+  it('answers with an error when chrome.tabs.query rejects', async () => {
+    chromeMock.tabs.query.mockRejectedValueOnce(new Error('No current window'));
+    const res = await send({ type: MESSAGE_TYPES.RUN_SCRIPT, payload: { code: '1' } });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+});
+
+describe('panel lifecycle teardown', () => {
+  /** A minimal chrome.runtime.Port with a dispatchable onDisconnect. */
+  function makePort(name: string) {
+    const disc = new Set<() => void>();
+    return {
+      name,
+      onMessage: { addListener: () => undefined },
+      onDisconnect: {
+        addListener: (fn: () => void) => disc.add(fn),
+        dispatch: () => disc.forEach((fn) => fn()),
+      },
+    };
+  }
+
+  it('stops every in-page mode on the driven tab when the panel port disconnects', async () => {
+    // A panel→page command records the driven tab (id 1 from the default mock).
+    await send({ type: MESSAGE_TYPES.RUN_SCRIPT, payload: { code: '1' } });
+    const port = makePort('panel');
+    chromeMock.runtime.onConnect.dispatch(port);
+    port.onDisconnect.dispatch();
+    await flush();
+
+    const calls = chromeMock.tabs.sendMessage.mock.calls as unknown as [
+      number,
+      { type?: string; payload?: unknown },
+    ][];
+    const stop = calls.find(([, m]) => m?.type === MESSAGE_TYPES.STOP_TOOL_MODE);
+    expect(stop).toBeDefined();
+    expect(stop![0]).toBe(1);
+    expect(stop![1].payload).toEqual({ mode: 'all' });
+  });
+
+  it('ignores ports that are not the panel', async () => {
+    await send({ type: MESSAGE_TYPES.RUN_SCRIPT, payload: { code: '1' } });
+    chromeMock.tabs.sendMessage.mockClear();
+    const port = makePort('something-else');
+    chromeMock.runtime.onConnect.dispatch(port);
+    port.onDisconnect.dispatch();
+    await flush();
+    expect(chromeMock.tabs.sendMessage).not.toHaveBeenCalled();
+  });
+});

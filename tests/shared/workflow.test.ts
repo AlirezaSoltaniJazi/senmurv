@@ -204,6 +204,22 @@ describe('parseWorkflowScript', () => {
     expect(parsed![0]!.value).toBeUndefined();
   });
 
+  it('drops an UNKNOWN generator from an imported STEPS array (would crash the Recorder render)', () => {
+    // A hand-edited / foreign script whose fill step names a generator that is not
+    // a real GeneratorId. Before the guard this reached GENERATOR_LABELS[id] ==
+    // undefined and threw on .toLowerCase(); now the id is dropped, non-lossily —
+    // the static value is preserved so the step falls back to the "custom" dropdown.
+    const code = `const STEPS = [{ kind: 'fill', selector: '#x', generator: 'bogusGen', value: 'keepme' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', selector: '#x', value: 'keepme' });
+    expect(parsed![0]!.generator).toBeUndefined();
+  });
+
+  it('keeps a KNOWN generator on an imported STEPS array unchanged', () => {
+    const code = `const STEPS = [{ kind: 'fill', selector: '#e', generator: 'email' }];`;
+    expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'email' });
+  });
+
   it('round-trips control characters (\\uXXXX / \\b / \\f escapes) without corruption', () => {
     const raw = 'a\u000bb\u0008c\u000cd\u0000e'; // vertical tab, backspace, form feed, NUL
     const code = buildWorkflowScript([{ id: 'u', kind: 'fill', selector: '#c', value: raw }]);

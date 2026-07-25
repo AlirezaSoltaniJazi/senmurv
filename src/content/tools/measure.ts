@@ -10,6 +10,8 @@ import {
   flashOverlay,
   targetAt,
 } from '@/content/overlay';
+import { rafThrottle } from '@/content/raf-throttle';
+import type { RafThrottled } from '@/content/raf-throttle';
 import {
   computeBoxModel,
   computeDistance,
@@ -35,6 +37,7 @@ let dragStart: { x: number; y: number } | null = null;
 let distanceFirst: MeasureRect | null = null;
 let lastSig = '';
 let lastSent = 0;
+let hoverHandle: RafThrottled | null = null;
 
 // ---------------------------------------------------------------------------
 // DOM reads
@@ -85,9 +88,11 @@ function readBoxModel(el: HTMLElement): { box: BoxModel; rect: MeasureRect } {
 
 /** Throttled live push: only on a changed reading, at most ~10 Hz. */
 function stream(data: MeasureData): void {
-  const sig = JSON.stringify(data);
+  // Cheap time gate before the expensive JSON.stringify (skipped on dropped frames).
   const now = Date.now();
-  if (sig === lastSig || now - lastSent < 100) return;
+  if (now - lastSent < 100) return;
+  const sig = JSON.stringify(data);
+  if (sig === lastSig) return;
   lastSig = sig;
   lastSent = now;
   notifyQuiet({ type: MESSAGE_TYPES.TOOL_STREAM, payload: { tool: 'measure', data } });
@@ -240,14 +245,18 @@ function attach(): void {
   }
   const hover = mode === 'element' ? onElementHover : onDistanceHover;
   const pick = mode === 'element' ? onElementPick : onDistancePick;
-  document.addEventListener('mousemove', hover, true);
+  hoverHandle = rafThrottle(hover);
+  document.addEventListener('mousemove', hoverHandle.handler, true);
   document.addEventListener('click', pick, true);
 }
 
 function detach(): void {
   disableCapture();
-  document.removeEventListener('mousemove', onElementHover, true);
-  document.removeEventListener('mousemove', onDistanceHover, true);
+  if (hoverHandle) {
+    document.removeEventListener('mousemove', hoverHandle.handler, true);
+    hoverHandle.cancel();
+    hoverHandle = null;
+  }
   document.removeEventListener('click', onElementPick, true);
   document.removeEventListener('click', onDistancePick, true);
 }

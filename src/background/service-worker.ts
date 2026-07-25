@@ -62,27 +62,48 @@ function isRunnableUrl(url: string | undefined): boolean {
   return !BLOCKED_URL_PREFIXES.some((prefix) => url.startsWith(prefix));
 }
 
+// The tab the side panel is currently driving — the last runnable tab any
+// panel→page command resolved through withActiveTab. Used to tear down in-page
+// modes on that tab when the panel closes (see the onConnect handler below).
+let drivenTabId: number | undefined;
+
 async function getActiveTab(): Promise<chrome.tabs.Tab | undefined> {
-  const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
-  return tab;
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    return tab;
+  } catch {
+    // chrome.tabs.query can reject during window teardown / no-window states.
+    // Treat it as "no active tab" so the caller answers cleanly instead of hanging.
+    return undefined;
+  }
 }
 
 /**
  * Resolve the active tab and reject blocked pages, then run `fn` against it.
  * Use this when the handler needs the tab's URL as well as its id.
+ *
+ * The whole body is guarded so this NEVER rejects: a throw inside `fn` (e.g. a
+ * malformed message payload read lazily inside the callback) becomes a
+ * `{ ok: false }` Result, so every `withActiveTab(...).then(sendResponse)` branch
+ * in the hub always answers and the caller's `sendMessage` never hangs.
  */
 async function withActiveTab<T>(
   fn: (tab: { id: number; url: string | undefined }) => Promise<Result<T>>
 ): Promise<Result<T>> {
-  const tab = await getActiveTab();
-  if (!tab?.id) return { ok: false, error: 'No active tab found.' };
-  if (!isRunnableUrl(tab.url)) {
-    return {
-      ok: false,
-      error: 'This page does not allow extensions (chrome://, Web Store, or similar).',
-    };
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.id) return { ok: false, error: 'No active tab found.' };
+    if (!isRunnableUrl(tab.url)) {
+      return {
+        ok: false,
+        error: 'This page does not allow extensions (chrome://, Web Store, or similar).',
+      };
+    }
+    drivenTabId = tab.id;
+    return await fn({ id: tab.id, url: tab.url });
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
   }
-  return fn({ id: tab.id, url: tab.url });
 }
 
 /** Resolve the active tab, reject blocked pages, then run `fn` against its id. */
@@ -612,9 +633,22 @@ async function clearStorageInPage(
       await run(type, async () => {
         const databases = indexedDB.databases as undefined | (() => Promise<{ name?: string }[]>);
         if (typeof databases !== 'function') throw new Error('This browser cannot list databases.');
-        for (const db of await databases.call(indexedDB)) {
-          if (db.name !== undefined) indexedDB.deleteDatabase(db.name);
-        }
+        // Await each delete instead of firing and forgetting: deleteDatabase is
+        // an async request that BLOCKS while another tab holds the DB open, so
+        // the old code reported "cleared" for a delete that had not happened.
+        await Promise.all(
+          (await databases.call(indexedDB)).map((db) => {
+            const name = db.name;
+            if (name === undefined) return Promise.resolve();
+            return new Promise<void>((resolve, reject) => {
+              const req = indexedDB.deleteDatabase(name);
+              req.onsuccess = () => resolve();
+              req.onerror = () => reject(req.error ?? new Error(`Could not delete "${name}".`));
+              req.onblocked = () =>
+                reject(new Error(`"${name}" is open in another tab — close it and retry.`));
+            });
+          })
+        );
       });
     } else if (type === 'cookies') {
       await run(type, () => {
@@ -882,9 +916,11 @@ function applyRegionShim(config: RegionConfig): { ok: boolean; error?: string } 
       const geo = navigator.geolocation as unknown as {
         getCurrentPosition: unknown;
         watchPosition: unknown;
+        clearWatch: unknown;
       };
       const origGet = geo.getCurrentPosition;
       const origWatch = geo.watchPosition;
+      const origClear = geo.clearWatch;
       const makePos = (): GeolocationPosition =>
         ({
           coords: {
@@ -898,16 +934,26 @@ function applyRegionShim(config: RegionConfig): { ok: boolean; error?: string } 
           },
           timestamp: Date.now(),
         }) as unknown as GeolocationPosition;
+      let watchId = 0;
       geo.getCurrentPosition = (success: PositionCallback): void => {
         if (typeof success === 'function') success(makePos());
       };
       geo.watchPosition = (success: PositionCallback): number => {
         if (typeof success === 'function') success(makePos());
-        return 0;
+        // A spoofed region is static, so the position never changes: deliver it
+        // once and never re-fire. Return a unique NON-ZERO id (the old shim
+        // returned 0 for every watch) so the paired clearWatch(id) is well-formed.
+        watchId += 1;
+        return watchId;
+      };
+      geo.clearWatch = (): void => {
+        // No live watch is ever scheduled, so there is nothing to cancel — but
+        // the method must exist and accept our ids without reaching the original.
       };
       undo.push(() => {
         geo.getCurrentPosition = origGet;
         geo.watchPosition = origWatch;
+        geo.clearWatch = origClear;
       });
     }
 
@@ -998,178 +1044,219 @@ async function getRegionState(
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-  if (!isRuntimeMessage(message)) return false;
+  // isRuntimeMessage only validates the `type` discriminant, not the payload
+  // shape. A valid-type message with a missing/renamed payload throws
+  // synchronously here (e.g. reading `message.payload.script`); catch it so the
+  // caller gets an error instead of a hung `sendMessage`. Async branches guard
+  // themselves via withActiveTab / the storage `.catch`.
+  try {
+    if (!isRuntimeMessage(message)) return false;
 
-  switch (message.type) {
-    case MESSAGE_TYPES.GET_SCRIPTS:
-      getScripts()
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+    switch (message.type) {
+      case MESSAGE_TYPES.GET_SCRIPTS:
+        getScripts()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.SAVE_SCRIPT:
-      upsertScript(message.payload.script)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.SAVE_SCRIPT:
+        upsertScript(message.payload.script)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.SET_SCRIPTS:
-      saveScripts(message.payload.scripts)
-        .then(() => sendResponse({ ok: true, value: message.payload.scripts }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.SET_SCRIPTS:
+        saveScripts(message.payload.scripts)
+          .then(() => sendResponse({ ok: true, value: message.payload.scripts }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.DELETE_SCRIPT:
-      deleteScript(message.payload.id)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.DELETE_SCRIPT:
+        deleteScript(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.GET_TASKS:
-      getTasks()
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.GET_TASKS:
+        getTasks()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.SAVE_TASK:
-      upsertTask(message.payload.entry)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.SAVE_TASK:
+        upsertTask(message.payload.entry)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.DELETE_TASK:
-      deleteTask(message.payload.id)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.DELETE_TASK:
+        deleteTask(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.GET_CHECKLISTS:
-      getChecklists()
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.GET_CHECKLISTS:
+        getChecklists()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.SAVE_CHECKLIST:
-      upsertChecklist(message.payload.checklist)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.SAVE_CHECKLIST:
+        upsertChecklist(message.payload.checklist)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.DELETE_CHECKLIST:
-      deleteChecklist(message.payload.id)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.DELETE_CHECKLIST:
+        deleteChecklist(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.GET_NOTES:
-      getNotes()
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.GET_NOTES:
+        getNotes()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.SAVE_NOTE:
-      upsertNote(message.payload.note)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.SAVE_NOTE:
+        upsertNote(message.payload.note)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.DELETE_NOTE:
-      deleteNote(message.payload.id)
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.DELETE_NOTE:
+        deleteNote(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.GET_PREFS:
-      getPrefs()
-        .then((value) => sendResponse({ ok: true, value }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.GET_PREFS:
+        getPrefs()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.SAVE_PREFS:
-      savePrefs(message.payload.prefs)
-        .then(() => sendResponse({ ok: true, value: message.payload.prefs }))
-        .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
-      return true;
+      case MESSAGE_TYPES.SAVE_PREFS:
+        savePrefs(message.payload.prefs)
+          .then(() => sendResponse({ ok: true, value: message.payload.prefs }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
 
-    case MESSAGE_TYPES.RUN_SCRIPT:
-      withActiveRunnableTab((tabId) => runScriptInPage(tabId, message.payload.code)).then(
-        sendResponse
-      );
-      return true;
+      case MESSAGE_TYPES.RUN_SCRIPT:
+        withActiveRunnableTab((tabId) => runScriptInPage(tabId, message.payload.code)).then(
+          sendResponse
+        );
+        return true;
 
-    case MESSAGE_TYPES.TEST_LOCATOR:
-      withActiveRunnableTab((tabId) =>
-        testLocator(tabId, message.payload.query, message.payload.kind)
-      ).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.TEST_LOCATOR:
+        withActiveRunnableTab((tabId) =>
+          testLocator(tabId, message.payload.query, message.payload.kind)
+        ).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.START_PICK:
-    case MESSAGE_TYPES.START_PICK_FIELDS:
-    case MESSAGE_TYPES.START_RECORD:
-    case MESSAGE_TYPES.START_TOOL_MODE:
-      withActiveRunnableTab((tabId) => startInTab(tabId, message)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.START_PICK:
+      case MESSAGE_TYPES.START_PICK_FIELDS:
+      case MESSAGE_TYPES.START_RECORD:
+      case MESSAGE_TYPES.START_TOOL_MODE:
+        withActiveRunnableTab((tabId) => startInTab(tabId, message)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.CANCEL_PICK:
-    case MESSAGE_TYPES.STOP_RECORD:
-    case MESSAGE_TYPES.STOP_TOOL_MODE:
-      withActiveRunnableTab((tabId) => stopInTab(tabId, message)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.CANCEL_PICK:
+      case MESSAGE_TYPES.STOP_RECORD:
+      case MESSAGE_TYPES.STOP_TOOL_MODE:
+        withActiveRunnableTab((tabId) => stopInTab(tabId, message)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.TOOL_PING:
-    case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
-    case MESSAGE_TYPES.HIGHLIGHT_MATCHES:
-    case MESSAGE_TYPES.SCROLL_TO_MATCH:
-    case MESSAGE_TYPES.RESOLVE_SELECTOR:
-    case MESSAGE_TYPES.SCAN_TAB_ORDER:
-    case MESSAGE_TYPES.GET_STOP_LOCATORS:
-    case MESSAGE_TYPES.RUN_A11Y_SCAN:
-      withActiveRunnableTab((tabId) => askTab(tabId, message)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.TOOL_PING:
+      case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
+      case MESSAGE_TYPES.HIGHLIGHT_MATCHES:
+      case MESSAGE_TYPES.SCROLL_TO_MATCH:
+      case MESSAGE_TYPES.RESOLVE_SELECTOR:
+      case MESSAGE_TYPES.SCAN_TAB_ORDER:
+      case MESSAGE_TYPES.GET_STOP_LOCATORS:
+      case MESSAGE_TYPES.RUN_A11Y_SCAN:
+        withActiveRunnableTab((tabId) => askTab(tabId, message)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.BYPASS_PAGE:
-      withActiveRunnableTab((tabId) => bypassPage(tabId, message)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.BYPASS_PAGE:
+        withActiveRunnableTab((tabId) => bypassPage(tabId, message)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.RESTORE_PAGE:
-      withActiveRunnableTab((tabId) => restorePage(tabId, message)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.RESTORE_PAGE:
+        withActiveRunnableTab((tabId) => restorePage(tabId, message)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.GET_BYPASS_STATE:
-      withActiveRunnableTab((tabId) => bypassStateFor(tabId, message)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.GET_BYPASS_STATE:
+        withActiveRunnableTab((tabId) => bypassStateFor(tabId, message)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.BYPASS_XRM:
-      withActiveRunnableTab((tabId) => bypassXrm(tabId)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.BYPASS_XRM:
+        withActiveRunnableTab((tabId) => bypassXrm(tabId)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.PROBE_SITE_STORAGE:
-      withActiveRunnableTab((tabId) => probeSiteStorage(tabId)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.PROBE_SITE_STORAGE:
+        withActiveRunnableTab((tabId) => probeSiteStorage(tabId)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.CLEAR_SITE_DATA:
-      withActiveTab((tab) =>
-        clearSiteData(tab.id, tab.url, message.payload.types, message.payload.shouldReload)
-      ).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.CLEAR_SITE_DATA:
+        withActiveTab((tab) =>
+          clearSiteData(tab.id, tab.url, message.payload.types, message.payload.shouldReload)
+        ).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.APPLY_REGION:
-      withActiveRunnableTab((tabId) => applyRegion(tabId, message.payload.config)).then(
-        sendResponse
-      );
-      return true;
+      case MESSAGE_TYPES.APPLY_REGION:
+        withActiveRunnableTab((tabId) => applyRegion(tabId, message.payload.config)).then(
+          sendResponse
+        );
+        return true;
 
-    case MESSAGE_TYPES.RESTORE_REGION:
-      withActiveRunnableTab((tabId) => restoreRegion(tabId)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.RESTORE_REGION:
+        withActiveRunnableTab((tabId) => restoreRegion(tabId)).then(sendResponse);
+        return true;
 
-    case MESSAGE_TYPES.GET_REGION_STATE:
-      withActiveRunnableTab((tabId) => getRegionState(tabId)).then(sendResponse);
-      return true;
+      case MESSAGE_TYPES.GET_REGION_STATE:
+        withActiveRunnableTab((tabId) => getRegionState(tabId)).then(sendResponse);
+        return true;
 
-    default:
-      // ELEMENT_PICKED / PICK_CANCELLED / FIELD_PICKED / ACTION_RECORDED are
-      // addressed to the side panel, which listens directly.
-      return false;
+      default:
+        // ELEMENT_PICKED / PICK_CANCELLED / FIELD_PICKED / ACTION_RECORDED are
+        // addressed to the side panel, which listens directly.
+        return false;
+    }
+  } catch (err) {
+    sendResponse({ ok: false, error: errorMessage(err) });
+    return true;
   }
+});
+
+// ---------------------------------------------------------------------------
+// Side-panel lifecycle — tear down in-page modes when the panel closes
+// ---------------------------------------------------------------------------
+
+// Chrome does NOT run the panel's React effect cleanups when the panel is
+// closed (the document is destroyed, not unmounted), so a Tool / pick / record
+// mode left active would strand its listeners and a crosshair cursor on the
+// page until the next navigation. The panel opens a long-lived port on mount;
+// its onDisconnect is the one reliable "panel closed" signal. On disconnect we
+// stop every arbiter mode on the tab the panel was last driving.
+//
+// The panel heartbeats over the port (< the 30s idle threshold) so the SW stays
+// alive while the panel is open — meaning onDisconnect fires ONLY on a genuine
+// close, never on an idle-SW recycle that would wrongly kill an active hover.
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== 'panel') return;
+  // Draining heartbeats is enough; their arrival is what keeps the SW awake.
+  port.onMessage.addListener(() => {});
+  port.onDisconnect.addListener(() => {
+    if (drivenTabId === undefined) return;
+    // STOP_TOOL_MODE { mode: 'all' } routes to enterMode('idle') in the picker,
+    // which stops every tool mode, pick, match AND record, restores the cursor
+    // and destroys the overlay. stopInTab is a no-op if no content script runs
+    // there (blocked page, already navigated away).
+    void stopInTab(drivenTabId, {
+      type: MESSAGE_TYPES.STOP_TOOL_MODE,
+      payload: { mode: 'all' },
+    });
+  });
 });

@@ -702,7 +702,8 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                   />
                 ) : (
                   <span className="hint" style={{ flex: 1, alignSelf: 'center' }}>
-                    random {GENERATOR_LABELS[s.generator ?? 'custom'].toLowerCase()} on each run
+                    random {(GENERATOR_LABELS[s.generator ?? 'custom'] ?? 'value').toLowerCase()} on
+                    each run
                   </span>
                 )}
               </div>

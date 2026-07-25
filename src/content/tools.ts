@@ -1,5 +1,5 @@
 import type { MeasureMode, PageMode } from '@/shared/types';
-import { a11yLocators, runA11yScan } from './tools/a11y';
+import { a11yLocators, resetA11y, runA11yScan } from './tools/a11y';
 import { startAssert, stopAssert } from './tools/assert-state';
 import { restorePage, bypassPage, bypassState } from './tools/bypass';
 import { startColor, stopColor } from './tools/color';
@@ -68,4 +68,5 @@ export { restorePage, bypassPage, bypassState };
 export { scanTabOrder, stopLocators };
 
 // Accessibility: RUN scans + retains elements; the panel fetches locators lazily.
-export { runA11yScan, a11yLocators };
+// resetA11y drops those retained refs on panel-close teardown.
+export { runA11yScan, a11yLocators, resetA11y };

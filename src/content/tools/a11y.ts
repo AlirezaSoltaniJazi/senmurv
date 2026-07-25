@@ -54,3 +54,12 @@ export function a11yLocators(index: number): LocatorSet {
   if (!el) throw new Error('That element no longer exists — rescan the page.');
   return buildLocatorSet(el, document);
 }
+
+/**
+ * Release the retained scan elements. A11y is request/response, not an arbiter
+ * mode, so it has no `stop*()` — the panel-close teardown calls this so the last
+ * scan's (possibly detached) element references do not linger until navigation.
+ */
+export function resetA11y(): void {
+  elements = [];
+}

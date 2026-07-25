@@ -92,7 +92,7 @@ export function App(): ReactElement {
     window.scrollTo({ top: 0 });
   }, [tab]);
 
-  // Load persisted preferences (font size) on mount.
+  // Load persisted preferences (font size) on mount. (Reset-scroll effect above.)
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -106,12 +106,6 @@ export function App(): ReactElement {
       cancelled = true;
     };
   }, []);
-
-  // Reset scroll to the top of the panel whenever the active tab changes, so a
-  // new tab always starts at its header instead of inheriting the prior scroll.
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [tab]);
 
   // Choosing a preset clears any manual fine-tune so the preset's zoom applies.
   const changeFontSize = useCallback((size: FontSize) => {
