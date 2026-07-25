@@ -18,7 +18,7 @@ import {
   toRegion,
 } from '@/shared/tools/measure';
 import type { MeasureRect } from '@/shared/tools/measure';
-import type { BoxModel, MeasureData, MeasureMode } from '@/shared/types';
+import type { BoxModel, DistanceReading, MeasureData, MeasureMode } from '@/shared/types';
 
 /**
  * The in-page Measure mode: drag a region, hover an element for its box model,
@@ -154,8 +154,11 @@ function drawPair(a: MeasureRect, b: MeasureRect, label: string): void {
   ]);
 }
 
-function distanceLabel(h: number, v: number): string {
-  return `↔ ${round(h)}  ↕ ${round(v)}`;
+function distanceLabel(d: DistanceReading): string {
+  // Edge gaps AND centre-to-centre: adjacent elements (e.g. touching table
+  // cells) have zero edge gaps, so "↔ 0 ↕ 0" alone looks broken — the ⤢ number
+  // stays meaningful.
+  return `↔ ${round(d.horizontal)}  ↕ ${round(d.vertical)}  ⤢ ${round(d.centerToCenter)}`;
 }
 
 function onDistanceHover(e: MouseEvent): void {
@@ -167,7 +170,7 @@ function onDistanceHover(e: MouseEvent): void {
     return;
   }
   const d = computeDistance(distanceFirst, rect);
-  drawPair(distanceFirst, rect, distanceLabel(d.horizontal, d.vertical));
+  drawPair(distanceFirst, rect, distanceLabel(d));
   stream({ mode: 'distance', distance: d });
 }
 
@@ -185,7 +188,7 @@ function onDistancePick(e: MouseEvent): void {
     return;
   }
   const d = computeDistance(distanceFirst, rect);
-  drawPair(distanceFirst, rect, distanceLabel(d.horizontal, d.vertical));
+  drawPair(distanceFirst, rect, distanceLabel(d));
   commit({ mode: 'distance', distance: d });
   distanceFirst = null; // ready for the next pair
 }
