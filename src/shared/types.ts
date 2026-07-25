@@ -140,6 +140,8 @@ export type PageMode =
   | 'font'
   | 'taborder'
   | 'assert'
+  | 'stack'
+  | 'validation'
   | 'match';
 
 /** One highlighted locator-match run: total matches, how many were drawn, and
@@ -151,7 +153,10 @@ export interface MatchResult {
 }
 
 /** Modes the Tools tab starts. A subset of PageMode, excluding the pre-existing ones. */
-export type ToolMode = Extract<PageMode, 'measure' | 'color' | 'font' | 'taborder' | 'assert'>;
+export type ToolMode = Extract<
+  PageMode,
+  'measure' | 'color' | 'font' | 'taborder' | 'assert' | 'stack' | 'validation'
+>;
 
 // ---------------------------------------------------------------------------
 // Measure
@@ -227,7 +232,73 @@ export type ToolPickData =
   | { readonly tool: 'measure'; readonly data: MeasureData; readonly locators?: LocatorSet }
   | { readonly tool: 'color'; readonly data: ColorReport; readonly locators?: LocatorSet }
   | { readonly tool: 'font'; readonly data: FontInfo; readonly locators?: LocatorSet }
-  | { readonly tool: 'assert'; readonly data: ElementState; readonly locators?: LocatorSet };
+  | { readonly tool: 'assert'; readonly data: ElementState; readonly locators?: LocatorSet }
+  | { readonly tool: 'stack'; readonly data: StackReport; readonly locators?: LocatorSet }
+  | { readonly tool: 'validation'; readonly data: FieldContract; readonly locators?: LocatorSet };
+
+/** One declared client-side constraint on a form control (Validation Inspector). */
+export interface FieldConstraint {
+  readonly name: string;
+  readonly value: string;
+  /** Extra explanation, e.g. a plain-English gloss of a `pattern`. */
+  readonly detail?: string;
+}
+
+/** A live snapshot of a control's `ValidityState`. */
+export interface ValiditySnapshot {
+  readonly valid: boolean;
+  /** The failing `ValidityState` flags, e.g. `['valueMissing']`. */
+  readonly failing: string[];
+}
+
+/** The full client-side validation contract of a picked form control. */
+export interface FieldContract {
+  readonly tag: string;
+  /** Display label, e.g. `input[type=email]` or `select`. */
+  readonly label: string;
+  readonly type: string;
+  readonly required: boolean;
+  readonly isFormField: boolean;
+  readonly constraints: FieldConstraint[];
+  readonly validity: ValiditySnapshot | null;
+}
+
+/** One suggested boundary test derived from a field's constraints. */
+export interface BoundaryCase {
+  readonly category: string;
+  readonly label: string;
+  /** A concrete value to try, or null when one can't be generated (e.g. a pattern mismatch). */
+  readonly example: string | null;
+  readonly expect: 'reject' | 'accept' | 'review';
+}
+
+/** One element at a clicked point (Stacking Inspector). */
+export interface StackLayer {
+  /** Short descriptor, e.g. `div#overlay` or `button.btn`. */
+  readonly tag: string;
+  readonly zIndex: string;
+  readonly position: string;
+  readonly opacity: string;
+  readonly pointerEvents: string;
+  readonly width: number;
+  readonly height: number;
+  /** Is this a clickable element (button/link/input/role=button/…)? */
+  readonly interactive: boolean;
+  /** `hit` receives the click; `above` is click-through; `blocked` is behind the hit. */
+  readonly relation: 'above' | 'hit' | 'blocked';
+  /** The layer's recommended locator (top layers only; filled by the content bridge). */
+  readonly locator?: LocatorSuggestion;
+}
+
+/** The full hit-test at a clicked point. */
+export interface StackReport {
+  readonly layers: StackLayer[];
+  /** Index of the layer that receives the click, or −1 if none is hit-testable. */
+  readonly hitIndex: number;
+  /** True when a non-interactive overlay is intercepting an interactive element below it. */
+  readonly interceptsInteractive: boolean;
+  readonly point: { readonly x: number; readonly y: number };
+}
 
 /** One curated attribute of a picked element (name + current value). */
 export interface ElementAttr {

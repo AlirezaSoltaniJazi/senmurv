@@ -10,6 +10,8 @@ export type ToolKey =
   | 'a11y'
   | 'font'
   | 'assert'
+  | 'stack'
+  | 'validation'
   | 'harden'
   | 'jwt';
 
@@ -105,6 +107,24 @@ export const TOOLS: readonly ToolDescriptor[] = [
     blurb:
       'Click an element to snapshot its state (text, value, checked, enabled, visible, attributes) and get copy-ready assertions for Playwright / Cypress / WebdriverIO / Selenium / Robot, targeted by its recommended locator.',
     mode: 'assert',
+    requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'stack',
+    label: 'Stacking',
+    blurb:
+      'Click a point to see every element stacked under it and which one receives the click — finds the overlay behind an “element click intercepted” failure. Top frame only.',
+    mode: 'stack',
+    requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'validation',
+    label: 'Validation',
+    blurb:
+      'Click a form field to read every client-side validation rule it declares (required, length, range, step, pattern, autocomplete) and a suggested boundary-test checklist. Declared constraints only — the server may enforce more.',
+    mode: 'validation',
     requiresPage: true,
     isReady: true,
   },

@@ -5,7 +5,9 @@ import { restorePage, bypassPage, bypassState } from './tools/bypass';
 import { startColor, stopColor } from './tools/color';
 import { startFont, stopFont } from './tools/font-probe';
 import { startMeasure, stopMeasure } from './tools/measure';
+import { startStacking, stopStacking } from './tools/stacking';
 import { scanTabOrder, startTabOrder, stopLocators, stopTabOrder } from './tools/tab-index';
+import { startValidation, stopValidation } from './tools/validation';
 
 /**
  * Entry point for the Tools-tab in-page modes.
@@ -35,6 +37,8 @@ const HANDLERS: Partial<Record<PageMode, ModeHandlers>> = {
   taborder: { start: startTabOrder, stop: stopTabOrder },
   font: { start: startFont, stop: stopFont },
   assert: { start: startAssert, stop: stopAssert },
+  stack: { start: startStacking, stop: stopStacking },
+  validation: { start: startValidation, stop: stopValidation },
 };
 
 /** Start an in-page Tools mode. Unknown/unimplemented modes are a no-op. */

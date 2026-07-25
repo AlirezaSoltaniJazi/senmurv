@@ -11,6 +11,8 @@ import { JwtTool } from './tools/JwtTool';
 import { MeasureTool } from './tools/MeasureTool';
 import { TabOrderTool } from './tools/TabOrderTool';
 import { SiteDataTool } from './tools/SiteDataTool';
+import { StackTool } from './tools/StackTool';
+import { ValidationTool } from './tools/ValidationTool';
 import { BypassTool } from './tools/BypassTool';
 
 interface Props {
@@ -58,6 +60,8 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
         {tool === 'a11y' && <A11yTool />}
         {tool === 'font' && <FontTool />}
         {tool === 'assert' && <AssertTool />}
+        {tool === 'stack' && <StackTool />}
+        {tool === 'validation' && <ValidationTool />}
         {tool === 'harden' && <HardenTool />}
         {tool === 'jwt' && <JwtTool />}
       </ToolShell>

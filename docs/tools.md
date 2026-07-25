@@ -52,6 +52,8 @@ panel's full height; **← Tools** goes back.
 | **Accessibility**   | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                  |
 | **Fonts**           | Typography of the hovered element, and the typeface that actually renders.                                                                                                                                                                                                                           |
 | **Assertions**      | Click an element to snapshot its state and get copy-ready framework assertions.                                                                                                                                                                                                                      |
+| **Stacking**        | Click a point to see every element under it and which one intercepts the click.                                                                                                                                                                                                                      |
+| **Validation**      | Click a form field to read its client-side validation rules and a boundary-test checklist.                                                                                                                                                                                                           |
 | **Harden selector** | Scores a pasted selector's robustness, names why it will break, and gives the recommended replacement.                                                                                                                                                                                               |
 | **JWT decoder**     | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
 
@@ -62,8 +64,52 @@ on `chrome://`, `file://`, `view-source:` and Web Store pages. The JWT decoder
 is the exception — it reads no page, so it runs anywhere.
 
 > **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
-> **Tab order**, **Accessibility**, **Fonts**, **Assertions**, **Harden
-> selector** and the **JWT decoder**.
+> **Tab order**, **Accessibility**, **Fonts**, **Assertions**, **Stacking**,
+> **Validation**, **Harden selector** and the **JWT decoder**.
+
+### Validation — detail
+
+Click a form field to read **every client-side validation rule it declares** —
+the fastest way to know what a form expects before you test it.
+
+- **Constraints**: `required` (incl. `aria-required`), `minlength` / `maxlength`,
+  `min` / `max` / `step`, `pattern` (with a plain-English gloss — `\d{5}` →
+  "exactly 5 digits"), `inputmode`, `autocomplete`, `multiple`, `readonly`, plus
+  the field's **live `ValidityState`** (e.g. `invalid — valueMissing` on an empty
+  required field).
+- **Boundary checklist**: generated from those constraints — empty, whitespace,
+  exactly/over max-length, under/at min-length, below-min / at / above-max,
+  off-step, format (bad email / non-numeric / not-a-URL), and a unicode/emoji
+  edge case. Each case carries a concrete **example value** to try and an expected
+  **accept / reject / review**. Copy one value or the whole checklist.
+- Extraction and the checklist are **pure and unit-tested**
+  (`validation-contract.ts`); the checklist is built in the panel from the picked
+  field's contract.
+
+**Limits**: **client-side, declared constraints only** — the server can (and
+should) enforce more, and JS-framework validation that isn't expressed as DOM
+attributes is invisible here. Top frame only.
+
+### Stacking — detail
+
+Click a point and see **every element under the cursor**, top to bottom, and
+**which one actually receives the click**. This is the tool for the automation
+flake everyone hits: _"element click intercepted"_ / _"element is not clickable
+at point"_.
+
+- Each layer shows its `z-index`, position, opacity and `pointer-events`, its
+  size, whether it's clickable, and a **copy-ready locator** — so you can grab
+  the interceptor's selector directly.
+- The layer that receives the click is marked **hit**; a clickable element behind
+  it is marked **blocked**. When a **non-interactive overlay** (often an
+  invisible `opacity: 0` backdrop) is on top of a clickable element, a warning
+  calls it out — that's the bug.
+- The classification is **pure and unit-tested** (`stacking.ts`); the content
+  bridge supplies `elementsFromPoint` + computed styles.
+
+**Limits**: top frame only. `elementsFromPoint` **excludes** `pointer-events:
+none` elements by design — which is correct here, since a click-through overlay
+does not intercept anything and so should not appear.
 
 ### Assertions — detail
 

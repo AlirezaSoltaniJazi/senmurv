@@ -92,6 +92,23 @@ All notable changes to Senmurv are documented here. The format is based on
     baselines and an `@font-face` walk (surfacing the web font's `src`), so it
     does not fall for `document.fonts.check` returning true for unknown families.
     The ordering logic is pure and unit-tested; the DOM probes are injected.
+- **Tools → Validation** — click a form field to read **every client-side
+  validation rule it declares** — `required`, min/maxlength, min/max/step,
+  `pattern` (explained in plain English, e.g. `\d{5}` → "exactly 5 digits"),
+  `inputmode`, `autocomplete` — plus its live `ValidityState`, and get a
+  **boundary-test checklist** generated from those constraints (empty, over/under
+  length, below-min/above-max, off-step, format and unicode edge cases) with a
+  concrete example value to try per case and an expected accept/reject/review.
+  Copy any value or the whole checklist. Knowing a form's rules before testing it
+  is half the battle; this reads them in one click instead of from source.
+- **Tools → Stacking** — click a point to see every element stacked under it,
+  top to bottom, and **which one actually receives the click**. It flags when a
+  non-interactive overlay (often an invisible, `opacity: 0` backdrop) is sitting
+  on top of a clickable element and stealing its clicks — the direct cause of the
+  "element click intercepted / not clickable at point" failure that flakes
+  Playwright, Cypress and Selenium tests. Each layer shows its `z-index`,
+  position, opacity and `pointer-events`, plus a copy-ready locator, so you can
+  grab the interceptor's selector and fix the test.
 - **Tools → Assertions** — click any element to snapshot its state — text, form
   value, checked, enabled/disabled, visible, and a curated set of attributes —
   and get **copy-ready assertions** for Playwright, Cypress, WebdriverIO,

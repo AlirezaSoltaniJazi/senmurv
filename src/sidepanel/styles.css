@@ -528,6 +528,56 @@ select,
   color: var(--danger);
 }
 
+/* Stacking Inspector */
+.badge.hit {
+  background: var(--accent);
+  color: #fff;
+}
+.badge.dim {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.stack-warn {
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stack-layer {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--panel);
+}
+.stack-layer.hit {
+  border-color: var(--accent);
+}
+.stack-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.stack-tag {
+  font-size: 12px;
+}
+.stack-meta {
+  font-size: 11px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
 /* Locator card (raw locator + its framework snippets) */
 .locator-card {
   background: var(--panel);

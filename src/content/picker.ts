@@ -82,6 +82,8 @@ const MODE_CURSOR: Partial<Record<PageMode, string>> = {
   color: 'crosshair',
   font: 'crosshair',
   assert: 'crosshair',
+  stack: 'crosshair',
+  validation: 'crosshair',
 };
 
 function applyCursor(mode: PageMode): void {
@@ -107,7 +109,9 @@ function isToolMode(mode: PageMode): boolean {
     mode === 'color' ||
     mode === 'font' ||
     mode === 'taborder' ||
-    mode === 'assert'
+    mode === 'assert' ||
+    mode === 'stack' ||
+    mode === 'validation'
   );
 }
 
