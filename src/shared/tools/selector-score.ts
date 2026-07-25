@@ -206,13 +206,16 @@ function scoreCss(sel: string): SelectorScore {
   ) {
     flagIds.add('positional');
   }
-  if (cssClasses(sel).some(isHashedClass)) flagIds.add('hashed-class');
-  if (cssClasses(sel).some(isUtilityClass)) flagIds.add('utility-class');
-  if (cssIds(sel).some(isGeneratedId)) flagIds.add('generated-id');
+  // Tokenize the full selector once — these lists are invariant for `sel`.
+  const selClasses = cssClasses(sel);
+  const selIds = cssIds(sel);
+  if (selClasses.some(isHashedClass)) flagIds.add('hashed-class');
+  if (selClasses.some(isUtilityClass)) flagIds.add('utility-class');
+  if (selIds.some(isGeneratedId)) flagIds.add('generated-id');
   if (compounds.length >= 4) flagIds.add('deep-chain');
   const hasAnchor =
-    hasTestId(sel) || cssIds(sel).some((id) => !isGeneratedId(id)) || hasSemanticAttr(sel);
-  if (!hasAnchor && !cssClasses(sel).some(isSemanticClass)) flagIds.add('structural');
+    hasTestId(sel) || selIds.some((id) => !isGeneratedId(id)) || hasSemanticAttr(sel);
+  if (!hasAnchor && !selClasses.some(isSemanticClass)) flagIds.add('structural');
 
   return finalize(base, flagIds);
 }

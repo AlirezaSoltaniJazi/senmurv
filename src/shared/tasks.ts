@@ -171,6 +171,35 @@ export function totalsByDay(entries: TimeEntry[], now: number): Map<string, numb
 }
 
 /**
+ * Distinct non-empty tags per day, keyed by "YYYY-MM-DD" — the whole-month
+ * equivalent of calling {@link dayTags} once per cell. Built in a single pass so
+ * the calendar computes it once (beside {@link totalsByDay}) instead of
+ * re-scanning every entry for all 42 grid cells on each render.
+ */
+export function tagsByDay(entries: TimeEntry[]): Map<string, string[]> {
+  const sets = new Map<string, Set<string>>();
+  for (const entry of entries) {
+    const tag = entry.tag.trim();
+    if (!tag) continue;
+    const key = entryDayKey(entry);
+    let set = sets.get(key);
+    if (!set) {
+      set = new Set<string>();
+      sets.set(key, set);
+    }
+    set.add(tag);
+  }
+  const out = new Map<string, string[]>();
+  for (const [key, set] of sets) {
+    out.set(
+      key,
+      [...set].sort((a, b) => a.localeCompare(b))
+    );
+  }
+  return out;
+}
+
+/**
  * Wall-clock ("net") total across entries: overlapping intervals are merged into
  * a union and counted once, so concurrent timers don't double-count. Always
  * <= the plain sum of {@link entryDurationMs}.

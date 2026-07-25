@@ -981,8 +981,18 @@ function hasDirectText(el: Element): boolean {
   return false;
 }
 
-function backgroundLayers(el: Element, env: A11yEnv): BackgroundLayer[] {
+/**
+ * One ancestor walk (el → root) yielding BOTH the background layers for the
+ * effective-background resolve and whether any ancestor is positioned. The
+ * contrast rule needs both; computing them in a single pass avoids walking the
+ * chain — and calling `getComputedStyle` on every node — twice.
+ */
+function backgroundContext(
+  el: Element,
+  env: A11yEnv
+): { layers: BackgroundLayer[]; positioned: boolean } {
   const layers: BackgroundLayer[] = [];
+  let positioned = false;
   for (let node: Element | null = el; node !== null; node = node.parentElement) {
     const cs = env.styleOf(node);
     layers.push({
@@ -990,8 +1000,9 @@ function backgroundLayers(el: Element, env: A11yEnv): BackgroundLayer[] {
       opacity: parseFloat(cs.opacity) || 1,
       hasImage: cs.backgroundImage !== 'none' && cs.backgroundImage !== '',
     });
+    if (POSITIONED.has(cs.position)) positioned = true;
   }
-  return layers;
+  return { layers, positioned };
 }
 
 const POSITIONED = new Set(['absolute', 'fixed', 'sticky']);
@@ -1023,7 +1034,8 @@ function contrastRule(level: 'AA' | 'AAA'): Rule {
         continue;
       }
 
-      const eff = resolveEffectiveBackground(backgroundLayers(el, env));
+      const { layers, positioned } = backgroundContext(el, env);
+      const eff = resolveEffectiveBackground(layers);
       const fgOpaque: Rgba = fg.a < 1 ? { ...compositeOver(fg, eff.rgb), a: 1 } : fg;
       const v = contrastVerdict(fgOpaque, eff.rgb, fontSize, weight);
       const fails =
@@ -1036,12 +1048,6 @@ function contrastRule(level: 'AA' | 'AAA'): Rule {
             : !v.aaaNormal;
       if (!fails) continue;
 
-      const positioned = (() => {
-        for (let n: Element | null = el; n !== null; n = n.parentElement) {
-          if (POSITIONED.has(env.styleOf(n).position)) return true;
-        }
-        return false;
-      })();
       const confidence: FindingConfidence =
         eff.warnings.length === 0 && !eff.assumedWhite && !positioned
           ? 'violation'

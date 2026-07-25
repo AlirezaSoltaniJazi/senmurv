@@ -3,7 +3,6 @@ import type { ChangeEvent, DragEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { decodeBookmarklet } from '@/shared/bookmarklet';
-import { formatJs } from '@/shared/format-js';
 import { isFillScript, parseFillScript } from '@/shared/generators';
 import {
   applyScriptImport,
@@ -194,10 +193,17 @@ export function ScriptsTab({
     setStatus('Bookmarklet decoded into the editor.');
   }
 
-  function formatCode(): void {
+  async function formatCode(): Promise<void> {
     if (!code.trim()) return;
-    setCode(formatJs(code));
-    setStatus('Formatted.');
+    try {
+      // Lazy-load js-beautify (~106 KB) only when the user actually formats, so
+      // it stays out of the Scripts-tab open payload.
+      const { formatJs } = await import('@/shared/format-js');
+      setCode(formatJs(code));
+      setStatus('Formatted.');
+    } catch (err) {
+      setError(`Could not format: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   function toggleSelect(id: string): void {
@@ -456,7 +462,7 @@ export function ScriptsTab({
         <button type="button" onClick={resetEditor}>
           New
         </button>
-        <button type="button" onClick={formatCode}>
+        <button type="button" onClick={() => void formatCode()}>
           Format
         </button>
         <button type="button" onClick={decode}>
