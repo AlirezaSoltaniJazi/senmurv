@@ -14,6 +14,7 @@ describe('TOOLS registry', () => {
       'taborder',
       'a11y',
       'font',
+      'assert',
       'harden',
       'jwt',
     ] satisfies ToolKey[]);
@@ -28,7 +29,7 @@ describe('TOOLS registry', () => {
 
   it('only assigns an in-page mode to tools that actually enter one', () => {
     const withMode = TOOLS.filter((t) => t.mode !== null).map((t) => t.key);
-    expect(withMode).toEqual(['measure', 'color', 'taborder', 'font']);
+    expect(withMode).toEqual(['measure', 'color', 'taborder', 'font', 'assert']);
   });
 });
 

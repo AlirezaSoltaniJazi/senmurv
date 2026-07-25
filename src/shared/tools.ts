@@ -9,6 +9,7 @@ export type ToolKey =
   | 'taborder'
   | 'a11y'
   | 'font'
+  | 'assert'
   | 'harden'
   | 'jwt';
 
@@ -95,6 +96,15 @@ export const TOOLS: readonly ToolDescriptor[] = [
     blurb:
       'Typography of the hovered element. Resolves the rendered face where it can and says so when it cannot.',
     mode: 'font',
+    requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'assert',
+    label: 'Assertions',
+    blurb:
+      'Click an element to snapshot its state (text, value, checked, enabled, visible, attributes) and get copy-ready assertions for Playwright / Cypress / WebdriverIO / Selenium / Robot, targeted by its recommended locator.',
+    mode: 'assert',
     requiresPage: true,
     isReady: true,
   },

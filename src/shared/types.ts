@@ -139,6 +139,7 @@ export type PageMode =
   | 'color'
   | 'font'
   | 'taborder'
+  | 'assert'
   | 'match';
 
 /** One highlighted locator-match run: total matches, how many were drawn, and
@@ -150,7 +151,7 @@ export interface MatchResult {
 }
 
 /** Modes the Tools tab starts. A subset of PageMode, excluding the pre-existing ones. */
-export type ToolMode = Extract<PageMode, 'measure' | 'color' | 'font' | 'taborder'>;
+export type ToolMode = Extract<PageMode, 'measure' | 'color' | 'font' | 'taborder' | 'assert'>;
 
 // ---------------------------------------------------------------------------
 // Measure
@@ -225,7 +226,31 @@ export type ToolStreamData =
 export type ToolPickData =
   | { readonly tool: 'measure'; readonly data: MeasureData; readonly locators?: LocatorSet }
   | { readonly tool: 'color'; readonly data: ColorReport; readonly locators?: LocatorSet }
-  | { readonly tool: 'font'; readonly data: FontInfo; readonly locators?: LocatorSet };
+  | { readonly tool: 'font'; readonly data: FontInfo; readonly locators?: LocatorSet }
+  | { readonly tool: 'assert'; readonly data: ElementState; readonly locators?: LocatorSet };
+
+/** One curated attribute of a picked element (name + current value). */
+export interface ElementAttr {
+  readonly name: string;
+  readonly value: string;
+}
+
+/** The assertion-relevant state of a picked element (Element → Assertions tool). */
+export interface ElementState {
+  readonly tag: string;
+  /** Collapsed, trimmed textContent — null for a form control or empty text. */
+  readonly text: string | null;
+  /** A form control's value — null for a non-control or a checkbox/radio. */
+  readonly value: string | null;
+  /** Checkbox/radio state — null for anything else. */
+  readonly checked: boolean | null;
+  readonly disabled: boolean;
+  readonly readOnly: boolean;
+  readonly visible: boolean;
+  /** `input`'s type, lowercased — null for other elements. */
+  readonly inputType: string | null;
+  readonly attributes: ElementAttr[];
+}
 
 /** One framework's copy-ready size assertion for a measured element. */
 export interface SizeAssertion {

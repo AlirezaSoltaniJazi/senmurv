@@ -81,6 +81,7 @@ const MODE_CURSOR: Partial<Record<PageMode, string>> = {
   measure: 'crosshair',
   color: 'crosshair',
   font: 'crosshair',
+  assert: 'crosshair',
 };
 
 function applyCursor(mode: PageMode): void {
@@ -101,7 +102,13 @@ function restoreCursor(): void {
 }
 
 function isToolMode(mode: PageMode): boolean {
-  return mode === 'measure' || mode === 'color' || mode === 'font' || mode === 'taborder';
+  return (
+    mode === 'measure' ||
+    mode === 'color' ||
+    mode === 'font' ||
+    mode === 'taborder' ||
+    mode === 'assert'
+  );
 }
 
 /** Tear down whatever is running. Safe to call when already idle. */

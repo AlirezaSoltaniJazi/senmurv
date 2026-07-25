@@ -1,5 +1,6 @@
 import type { MeasureMode, PageMode } from '@/shared/types';
 import { a11yLocators, runA11yScan } from './tools/a11y';
+import { startAssert, stopAssert } from './tools/assert-state';
 import { restorePage, bypassPage, bypassState } from './tools/bypass';
 import { startColor, stopColor } from './tools/color';
 import { startFont, stopFont } from './tools/font-probe';
@@ -33,6 +34,7 @@ const HANDLERS: Partial<Record<PageMode, ModeHandlers>> = {
   color: { start: startColor, stop: stopColor },
   taborder: { start: startTabOrder, stop: stopTabOrder },
   font: { start: startFont, stop: stopFont },
+  assert: { start: startAssert, stop: stopAssert },
 };
 
 /** Start an in-page Tools mode. Unknown/unimplemented modes are a no-op. */

@@ -51,6 +51,7 @@ panel's full height; **← Tools** goes back.
 | **Tab order**       | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                           |
 | **Accessibility**   | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                  |
 | **Fonts**           | Typography of the hovered element, and the typeface that actually renders.                                                                                                                                                                                                                           |
+| **Assertions**      | Click an element to snapshot its state and get copy-ready framework assertions.                                                                                                                                                                                                                      |
 | **Harden selector** | Scores a pasted selector's robustness, names why it will break, and gives the recommended replacement.                                                                                                                                                                                               |
 | **JWT decoder**     | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
 
@@ -61,8 +62,32 @@ on `chrome://`, `file://`, `view-source:` and Web Store pages. The JWT decoder
 is the exception — it reads no page, so it runs anywhere.
 
 > **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
-> **Tab order**, **Accessibility**, **Fonts**, **Harden selector** and the **JWT
-> decoder**.
+> **Tab order**, **Accessibility**, **Fonts**, **Assertions**, **Harden
+> selector** and the **JWT decoder**.
+
+### Assertions — detail
+
+Hover an element and click it to snapshot its state and get **copy-ready
+assertions** for the framework you use — the counterpart to the Recorder: a
+recorded flow with no assertions is not a test.
+
+- **State captured**: text, form value, `checked` (checkbox/radio),
+  enabled / disabled, visible, and a curated set of attributes (`type`, `name`,
+  `href`, `role`, `aria-*`, `data-*`, …). Reading is the pure, unit-tested
+  `element-state.ts`; visibility uses the browser's `checkVisibility`.
+- **Assertions emitted**, each targeted by the element's recommended locator and
+  filterable by framework chip: `toBeVisible` / `toBeHidden`, `toHaveText`,
+  `toHaveValue`, `toBeChecked`, `toBeEnabled` / `toBeDisabled`, `toHaveAttribute`
+  — with the Cypress `should(...)`, WebdriverIO, Selenium and Robot Framework
+  equivalents. The exact strings are pinned by tests.
+- **The checkbox trap it avoids**: a checkbox toggles as the click's default
+  action, so state is snapshotted on **mouse-down** (before the toggle) — you get
+  the element's real state, and the click never actually changes the page.
+
+**Limits**: top frame only; **short text only** for `toHaveText` (an exact match
+on a long container is rarely useful); a natively `disabled` control can't be
+clicked to pick because the browser suppresses its mouse events — pick its label,
+or use **Bypass** first.
 
 ### Harden selector — detail
 

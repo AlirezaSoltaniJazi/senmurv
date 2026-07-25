@@ -92,6 +92,14 @@ All notable changes to Senmurv are documented here. The format is based on
     baselines and an `@font-face` walk (surfacing the web font's `src`), so it
     does not fall for `document.fonts.check` returning true for unknown families.
     The ordering logic is pure and unit-tested; the DOM probes are injected.
+- **Tools → Assertions** — click any element to snapshot its state — text, form
+  value, checked, enabled/disabled, visible, and a curated set of attributes —
+  and get **copy-ready assertions** for Playwright, Cypress, WebdriverIO,
+  Selenium and Robot Framework, each targeted by the element's recommended
+  locator (`toHaveText` / `toHaveValue` / `toBeChecked` / `toBeEnabled` /
+  `toBeVisible` / `toHaveAttribute` and the equivalents). A recorded flow with no
+  assertions isn't a test — this fills that gap. State is read on mouse-down, so a
+  checkbox reports its real state instead of the value it toggles to on click.
 - **Tools → Harden selector** — paste a fragile selector (a DevTools "Copy
   selector" chain, a long `nth-child` CSS, an absolute XPath) and get a **0–100
   robustness score**, the **named reasons** it will break (positional `nth-child`,
