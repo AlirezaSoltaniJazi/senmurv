@@ -9,6 +9,7 @@ export type ToolKey =
   | 'taborder'
   | 'a11y'
   | 'font'
+  | 'harden'
   | 'jwt';
 
 /**
@@ -94,6 +95,15 @@ export const TOOLS: readonly ToolDescriptor[] = [
     blurb:
       'Typography of the hovered element. Resolves the rendered face where it can and says so when it cannot.',
     mode: 'font',
+    requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'harden',
+    label: 'Harden selector',
+    blurb:
+      'Paste a fragile selector to score its robustness, name why it will break, and get the picker’s recommended replacement. Resolves against the current page, top frame only.',
+    mode: null,
     requiresPage: true,
     isReady: true,
   },

@@ -832,6 +832,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
     case MESSAGE_TYPES.HIGHLIGHT_MATCHES:
     case MESSAGE_TYPES.SCROLL_TO_MATCH:
+    case MESSAGE_TYPES.RESOLVE_SELECTOR:
     case MESSAGE_TYPES.SCAN_TAB_ORDER:
     case MESSAGE_TYPES.GET_STOP_LOCATORS:
     case MESSAGE_TYPES.RUN_A11Y_SCAN:

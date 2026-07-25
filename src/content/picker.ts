@@ -2,7 +2,14 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
 import { isRuntimeMessage } from '@/shared/messages';
-import type { LocatorKind, MatchResult, MeasureMode, PageMode, Result } from '@/shared/types';
+import type {
+  LocatorKind,
+  LocatorSet,
+  MatchResult,
+  MeasureMode,
+  PageMode,
+  Result,
+} from '@/shared/types';
 import { contextAlive, notify } from './context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
 import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
@@ -279,6 +286,37 @@ function highlightSelector(selector: string | null): Result<void> {
   }
 }
 
+/**
+ * Resolve a fragile selector to its FIRST match and return that element's
+ * ranked locators (the hardened replacement) plus the total match count. The
+ * Selector Hardener scores the input string itself in the panel; this supplies
+ * the robust rewrite, which only the live DOM + `buildLocatorSet` can produce.
+ */
+function resolveSelector(
+  query: string,
+  kind: LocatorKind
+): Result<{ set: LocatorSet; count: number }> {
+  try {
+    let el: Node | null;
+    let count: number;
+    if (kind === 'xpath') {
+      const snapshot = document.evaluate(query, document, null, 7, null);
+      count = snapshot.snapshotLength;
+      el = count > 0 ? snapshot.snapshotItem(0) : null;
+    } else {
+      const list = document.querySelectorAll(query);
+      count = list.length;
+      el = list[0] ?? null;
+    }
+    if (!(el instanceof Element)) {
+      return { ok: false, error: 'No element matches that selector on this page.' };
+    }
+    return { ok: true, value: { set: buildLocatorSet(el, document), count } };
+  } catch (err) {
+    return { ok: false, error: errorText(err) };
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Message router
 // ---------------------------------------------------------------------------
@@ -343,6 +381,12 @@ function register(): void {
       case MESSAGE_TYPES.SCROLL_TO_MATCH:
         sendResponse(scrollToMatch(message.payload.index));
         return true;
+
+      case MESSAGE_TYPES.RESOLVE_SELECTOR: {
+        const { query, kind } = message.payload;
+        sendResponse(resolveSelector(query, kind));
+        return true;
+      }
 
       case MESSAGE_TYPES.BYPASS_PAGE: {
         const { options, shouldWatch } = message.payload;

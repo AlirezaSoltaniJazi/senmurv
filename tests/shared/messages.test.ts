@@ -46,6 +46,12 @@ describe('isRuntimeMessage', () => {
     expect(
       isRuntimeMessage({ type: MESSAGE_TYPES.STOP_TOOL_MODE, payload: { mode: 'match' } })
     ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.RESOLVE_SELECTOR,
+        payload: { query: '#app li:nth-child(3)', kind: 'css' },
+      })
+    ).toBe(true);
   });
 
   it('rejects unknown or malformed values', () => {

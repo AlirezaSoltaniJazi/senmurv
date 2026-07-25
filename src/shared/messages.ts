@@ -82,6 +82,8 @@ export type RuntimeMessage =
   // STOP_TOOL_MODE { mode: 'match' } tears it down.
   | { type: typeof MESSAGE_TYPES.HIGHLIGHT_MATCHES; payload: { query: string; kind: LocatorKind } }
   | { type: typeof MESSAGE_TYPES.SCROLL_TO_MATCH; payload: { index: number } }
+  // Selector Hardener: resolve a selector's first match → its ranked locators + count.
+  | { type: typeof MESSAGE_TYPES.RESOLVE_SELECTOR; payload: { query: string; kind: LocatorKind } }
   // Bypass. BYPASS_XRM is worker-local — the Xrm client API only
   // exists in the page's own realm, so it needs a MAIN-world injection.
   | {

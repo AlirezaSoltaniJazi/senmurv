@@ -42,16 +42,17 @@ Save and run JS in the page.
 A launcher of page-inspection and utility tools. Pick one and it takes the
 panel's full height; **← Tools** goes back.
 
-| Tool              | What it does                                                                                                                                                                                                                                                                                         |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Bypass**        | Strips client-side locks so you can drive a disabled or hidden form. Inspired by [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM), whose equivalent is Xrm-specific — Senmurv's works on any page, and additionally uses the Xrm API when `window.Xrm` is present. |
-| **Site data**     | Clears this origin's storage and offers a cache-bypassing reload.                                                                                                                                                                                                                                    |
-| **Measure**       | Drag a region, or hover an element for its box model.                                                                                                                                                                                                                                                |
-| **Colour**        | An element's colours in every format, plus its WCAG contrast verdict.                                                                                                                                                                                                                                |
-| **Tab order**     | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                           |
-| **Accessibility** | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                  |
-| **Fonts**         | Typography of the hovered element, and the typeface that actually renders.                                                                                                                                                                                                                           |
-| **JWT decoder**   | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
+| Tool                | What it does                                                                                                                                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Bypass**          | Strips client-side locks so you can drive a disabled or hidden form. Inspired by [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM), whose equivalent is Xrm-specific — Senmurv's works on any page, and additionally uses the Xrm API when `window.Xrm` is present. |
+| **Site data**       | Clears this origin's storage and offers a cache-bypassing reload.                                                                                                                                                                                                                                    |
+| **Measure**         | Drag a region, or hover an element for its box model.                                                                                                                                                                                                                                                |
+| **Colour**          | An element's colours in every format, plus its WCAG contrast verdict.                                                                                                                                                                                                                                |
+| **Tab order**       | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                           |
+| **Accessibility**   | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                  |
+| **Fonts**           | Typography of the hovered element, and the typeface that actually renders.                                                                                                                                                                                                                           |
+| **Harden selector** | Scores a pasted selector's robustness, names why it will break, and gives the recommended replacement.                                                                                                                                                                                               |
+| **JWT decoder**     | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
 ones for the page-inspection tools: **top frame only** (cross-origin iframes are
@@ -60,7 +61,32 @@ on `chrome://`, `file://`, `view-source:` and Web Store pages. The JWT decoder
 is the exception — it reads no page, so it runs anywhere.
 
 > **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
-> **Tab order**, **Accessibility**, **Fonts** and the **JWT decoder**.
+> **Tab order**, **Accessibility**, **Fonts**, **Harden selector** and the **JWT
+> decoder**.
+
+### Harden selector — detail
+
+Paste a fragile selector — a DevTools "Copy selector" chain, a long
+`nth-child` CSS, or an absolute XPath — and the tool tells you **why it will
+break** and **what to use instead**.
+
+- **Robustness score (0–100)** with the same high / medium / low bands the
+  locator list uses, plus **named brittleness flags**: positional `nth-child`,
+  build-hashed / CSS-in-JS classes (`css-1a2b3c`, `sc-hAxRer`), utility classes,
+  framework-generated ids (Angular / Ember / React `useId`), absolute XPath,
+  positional `[n]` indices, text dependence, and deep descendant chains. The
+  scoring is **pure and unit-tested** (`selector-score.ts`) and looks at the
+  target compound of the selector, so an anchor on a distant ancestor doesn't
+  inflate the score.
+- **The hardened replacement** is not guessed from the string — the selector is
+  resolved against the **live page** and its element run through the same ranking
+  as the picker (`data-testid` › stable `id` › role + name › unique CSS › XPath),
+  so you get the exact locator the Find Element Locator tool would recommend,
+  with copy-ready framework snippets.
+
+**Limits**: resolves against the top frame only; if the selector matches several
+elements it hardens the **first**; a selector that matches nothing can't be
+hardened (it says so).
 
 ### JWT decoder — detail
 

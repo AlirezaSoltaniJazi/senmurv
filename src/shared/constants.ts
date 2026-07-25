@@ -46,6 +46,9 @@ export const MESSAGE_TYPES = {
   // scroll a chosen match into view. A live in-page mode (PageMode 'match').
   HIGHLIGHT_MATCHES: 'HIGHLIGHT_MATCHES',
   SCROLL_TO_MATCH: 'SCROLL_TO_MATCH',
+  // Selector Hardener — resolve a fragile selector to its first match and return
+  // that element's ranked locators (the hardened replacement) plus the count.
+  RESOLVE_SELECTOR: 'RESOLVE_SELECTOR',
   // tab → panel pushes from an in-page tool mode (no service-worker handler)
   TOOL_STREAM: 'TOOL_STREAM',
   TOOL_PICKED: 'TOOL_PICKED',

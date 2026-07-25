@@ -522,6 +522,12 @@ select,
   color: #fff;
 }
 
+/* Brittleness flag chips (Selector Hardener) */
+.chip.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
 /* Locator card (raw locator + its framework snippets) */
 .locator-card {
   background: var(--panel);

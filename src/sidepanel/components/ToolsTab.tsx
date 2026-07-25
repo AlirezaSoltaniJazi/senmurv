@@ -5,6 +5,7 @@ import { ToolShell } from './tools/ToolShell';
 import { A11yTool } from './tools/A11yTool';
 import { ColorTool } from './tools/ColorTool';
 import { FontTool } from './tools/FontTool';
+import { HardenTool } from './tools/HardenTool';
 import { JwtTool } from './tools/JwtTool';
 import { MeasureTool } from './tools/MeasureTool';
 import { TabOrderTool } from './tools/TabOrderTool';
@@ -55,6 +56,7 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
         {tool === 'taborder' && <TabOrderTool />}
         {tool === 'a11y' && <A11yTool />}
         {tool === 'font' && <FontTool />}
+        {tool === 'harden' && <HardenTool />}
         {tool === 'jwt' && <JwtTool />}
       </ToolShell>
     </div>

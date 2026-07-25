@@ -92,6 +92,13 @@ All notable changes to Senmurv are documented here. The format is based on
     baselines and an `@font-face` walk (surfacing the web font's `src`), so it
     does not fall for `document.fonts.check` returning true for unknown families.
     The ordering logic is pure and unit-tested; the DOM probes are injected.
+- **Tools → Harden selector** — paste a fragile selector (a DevTools "Copy
+  selector" chain, a long `nth-child` CSS, an absolute XPath) and get a **0–100
+  robustness score**, the **named reasons** it will break (positional `nth-child`,
+  build-hashed / CSS-in-JS classes, framework-generated ids, absolute paths,
+  text dependence, deep chains), and the **robust replacement** the picker would
+  recommend — resolved against the live page. Turns the locator list's "here are
+  options" into "paste what you have, here's why it flakes, use this instead."
 - **Locator → Highlight matches** — the "Test a locator" box gains a **Highlight**
   toggle that outlines and numbers **every** element a CSS/XPath matches directly
   on the page, not just a count, and updates live as you edit the selector. **‹ ›**
