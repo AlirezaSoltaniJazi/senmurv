@@ -54,6 +54,7 @@ panel's full height; **← Tools** goes back.
 | **Assertions**      | Click an element to snapshot its state and get copy-ready framework assertions.                                                                                                                                                                                                                      |
 | **Stacking**        | Click a point to see every element under it and which one intercepts the click.                                                                                                                                                                                                                      |
 | **Validation**      | Click a form field to read its client-side validation rules and a boundary-test checklist.                                                                                                                                                                                                           |
+| **Region**          | Make page JS read another country's clock, timezone, locale and geolocation (client-side).                                                                                                                                                                                                           |
 | **Harden selector** | Scores a pasted selector's robustness, names why it will break, and gives the recommended replacement.                                                                                                                                                                                               |
 | **JWT decoder**     | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
 
@@ -65,7 +66,30 @@ is the exception — it reads no page, so it runs anywhere.
 
 > **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
 > **Tab order**, **Accessibility**, **Fonts**, **Assertions**, **Stacking**,
-> **Validation**, **Harden selector** and the **JWT decoder**.
+> **Validation**, **Region**, **Harden selector** and the **JWT decoder**.
+
+### Region — detail
+
+Make this page's JavaScript read **another country's clock, timezone, locale and
+geolocation** — so you can test date/time rendering, `Intl` formatting and
+location-aware UI as if you were there. Pick a region, **Apply**; **Restore** puts
+it back.
+
+- **What it overrides** (a reversible shim in the page's MAIN world, no new
+  permission): `Date.prototype.getTimezoneOffset` and the `toLocaleString`
+  family, `Intl.DateTimeFormat` / `Intl.NumberFormat` defaults,
+  `Number.prototype.toLocaleString`, `navigator.language` / `languages`, and —
+  optionally — `navigator.geolocation`. So `new Date().toLocaleString()`,
+  `Intl.DateTimeFormat().resolvedOptions().timeZone`, `(1234.5).toLocaleString()`
+  and `getCurrentPosition()` all report the chosen region.
+- **The presets** bundle an IANA timezone, a BCP-47 locale and representative
+  coordinates; the preset list is pure and unit-tested.
+
+**Honest limits (stated in the panel):** it is **client-side only**. It does
+**not** change your **IP** — a server's IP geolocation still sees your real
+country — nor the **`Accept-Language`** request header, so a site that decides
+locale/region from either won't switch. It only affects code that runs **after**
+you apply it, and a **page reload clears it**. Top frame only.
 
 ### Validation — detail
 

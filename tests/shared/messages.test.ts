@@ -54,6 +54,17 @@ describe('isRuntimeMessage', () => {
     ).toBe(true);
   });
 
+  it('accepts the region-emulator types', () => {
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.APPLY_REGION,
+        payload: { config: { timezone: 'Europe/Paris', locale: 'fr-FR', coords: null } },
+      })
+    ).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.RESTORE_REGION })).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.GET_REGION_STATE })).toBe(true);
+  });
+
   it('rejects unknown or malformed values', () => {
     expect(isRuntimeMessage(null)).toBe(false);
     expect(isRuntimeMessage(undefined)).toBe(false);

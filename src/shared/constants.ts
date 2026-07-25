@@ -65,6 +65,10 @@ export const MESSAGE_TYPES = {
   // Site data
   PROBE_SITE_STORAGE: 'PROBE_SITE_STORAGE',
   CLEAR_SITE_DATA: 'CLEAR_SITE_DATA',
+  // Region emulator — worker-local MAIN-world shim (clock/timezone/locale/geo)
+  APPLY_REGION: 'APPLY_REGION',
+  RESTORE_REGION: 'RESTORE_REGION',
+  GET_REGION_STATE: 'GET_REGION_STATE',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */

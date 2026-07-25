@@ -26,6 +26,7 @@ import type {
   BypassState,
   LocatorKind,
   PageBypassState,
+  RegionConfig,
   Result,
   StorageProbe,
   XrmReport,
@@ -706,6 +707,293 @@ async function clearSiteData(
 }
 
 // ---------------------------------------------------------------------------
+// Region emulator — a MAIN-world shim that makes page JS read another region's
+// clock, timezone, locale and geolocation
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected into the page's MAIN world. Overrides `Date`'s timezone-facing methods,
+ * `Intl` defaults, `navigator.language(s)` and `navigator.geolocation` so page
+ * code sees `config`'s region. Reversible: the undo stack is stored on
+ * `window.__senmurvRegion`, so RESTORE (a separate injection) can call it.
+ *
+ * NOTE: passes a real FUNCTION, not a code string — neither `eval` nor
+ * `new Function` — so it does NOT widen the sanctioned runner exception (see
+ * agents.md → Security). Serialized, therefore self-contained (no imports/closures
+ * from this module). Affects only code that runs AFTER it applies; a reload clears
+ * it, and it cannot change the IP or the `Accept-Language` header.
+ */
+function applyRegionShim(config: RegionConfig): { ok: boolean; error?: string } {
+  try {
+    const w = window as unknown as { __senmurvRegion?: { restore: () => void } };
+    if (w.__senmurvRegion && typeof w.__senmurvRegion.restore === 'function') {
+      w.__senmurvRegion.restore();
+    }
+
+    const undo: Array<() => void> = [];
+    const tz = config.timezone;
+    const locale = config.locale;
+    const coords = config.coords;
+    const OrigDTF = Intl.DateTimeFormat;
+    const intlRef = Intl as unknown as { DateTimeFormat: unknown; NumberFormat: unknown };
+
+    const eastOffsetMinutes = (date: Date): number => {
+      const parts = new OrigDTF('en-US', {
+        timeZone: tz,
+        hour12: false,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+      }).formatToParts(date);
+      const map: Record<string, string> = {};
+      for (const part of parts) map[part.type] = part.value;
+      let hour = Number(map.hour);
+      if (hour === 24) hour = 0;
+      const asUTC = Date.UTC(
+        Number(map.year),
+        Number(map.month) - 1,
+        Number(map.day),
+        hour,
+        Number(map.minute),
+        Number(map.second)
+      );
+      return Math.round((asUTC - date.getTime()) / 60000);
+    };
+
+    const withTz = (
+      locales: string | string[] | undefined,
+      options: Intl.DateTimeFormatOptions | undefined
+    ): [string | string[] | undefined, Intl.DateTimeFormatOptions] => {
+      const opts: Intl.DateTimeFormatOptions = options ? { ...options } : {};
+      if (opts.timeZone === undefined) opts.timeZone = tz;
+      return [locales === undefined && locale ? locale : locales, opts];
+    };
+
+    if (tz) {
+      const origGTO = Date.prototype.getTimezoneOffset;
+      Date.prototype.getTimezoneOffset = function (this: Date): number {
+        return -eastOffsetMinutes(this);
+      };
+      undo.push(() => {
+        Date.prototype.getTimezoneOffset = origGTO;
+      });
+
+      const PatchedDTF = function (
+        locales?: string | string[],
+        options?: Intl.DateTimeFormatOptions
+      ): Intl.DateTimeFormat {
+        const [loc, opts] = withTz(locales, options);
+        return new OrigDTF(loc, opts);
+      } as unknown as { prototype: unknown; supportedLocalesOf: unknown };
+      PatchedDTF.prototype = OrigDTF.prototype;
+      PatchedDTF.supportedLocalesOf = OrigDTF.supportedLocalesOf;
+      intlRef.DateTimeFormat = PatchedDTF;
+      undo.push(() => {
+        intlRef.DateTimeFormat = OrigDTF;
+      });
+
+      const origLS = Date.prototype.toLocaleString;
+      Date.prototype.toLocaleString = function (
+        this: Date,
+        locales?: string | string[],
+        options?: Intl.DateTimeFormatOptions
+      ): string {
+        const [loc, opts] = withTz(locales, options);
+        return origLS.call(this, loc, opts);
+      };
+      undo.push(() => {
+        Date.prototype.toLocaleString = origLS;
+      });
+
+      const origLDS = Date.prototype.toLocaleDateString;
+      Date.prototype.toLocaleDateString = function (
+        this: Date,
+        locales?: string | string[],
+        options?: Intl.DateTimeFormatOptions
+      ): string {
+        const [loc, opts] = withTz(locales, options);
+        return origLDS.call(this, loc, opts);
+      };
+      undo.push(() => {
+        Date.prototype.toLocaleDateString = origLDS;
+      });
+
+      const origLTS = Date.prototype.toLocaleTimeString;
+      Date.prototype.toLocaleTimeString = function (
+        this: Date,
+        locales?: string | string[],
+        options?: Intl.DateTimeFormatOptions
+      ): string {
+        const [loc, opts] = withTz(locales, options);
+        return origLTS.call(this, loc, opts);
+      };
+      undo.push(() => {
+        Date.prototype.toLocaleTimeString = origLTS;
+      });
+    }
+
+    if (locale) {
+      const nav = navigator as unknown as Record<string, unknown>;
+      const prevLang = Object.getOwnPropertyDescriptor(navigator, 'language');
+      const prevLangs = Object.getOwnPropertyDescriptor(navigator, 'languages');
+      Object.defineProperty(navigator, 'language', { get: () => locale, configurable: true });
+      Object.defineProperty(navigator, 'languages', { get: () => [locale], configurable: true });
+      undo.push(() => {
+        if (prevLang) Object.defineProperty(navigator, 'language', prevLang);
+        else delete nav.language;
+        if (prevLangs) Object.defineProperty(navigator, 'languages', prevLangs);
+        else delete nav.languages;
+      });
+
+      // `Number.prototype.toLocaleString()` (and Date's, handled above) read the
+      // default locale directly, NOT via the Intl.NumberFormat constructor — so
+      // patch it as well, or `(1234.5).toLocaleString()` ignores the region.
+      const origNTLS = Number.prototype.toLocaleString;
+      Number.prototype.toLocaleString = function (
+        this: number,
+        locales?: string | string[],
+        options?: Intl.NumberFormatOptions
+      ): string {
+        return origNTLS.call(this, locales === undefined ? locale : locales, options);
+      };
+      undo.push(() => {
+        Number.prototype.toLocaleString = origNTLS;
+      });
+
+      const OrigNF = Intl.NumberFormat;
+      const PatchedNF = function (
+        locales?: string | string[],
+        options?: Intl.NumberFormatOptions
+      ): Intl.NumberFormat {
+        return new OrigNF(locales === undefined ? locale : locales, options);
+      } as unknown as { prototype: unknown; supportedLocalesOf: unknown };
+      PatchedNF.prototype = OrigNF.prototype;
+      PatchedNF.supportedLocalesOf = OrigNF.supportedLocalesOf;
+      intlRef.NumberFormat = PatchedNF;
+      undo.push(() => {
+        intlRef.NumberFormat = OrigNF;
+      });
+    }
+
+    if (coords && navigator.geolocation) {
+      const geo = navigator.geolocation as unknown as {
+        getCurrentPosition: unknown;
+        watchPosition: unknown;
+      };
+      const origGet = geo.getCurrentPosition;
+      const origWatch = geo.watchPosition;
+      const makePos = (): GeolocationPosition =>
+        ({
+          coords: {
+            latitude: coords.lat,
+            longitude: coords.lon,
+            accuracy: 20,
+            altitude: null,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+          },
+          timestamp: Date.now(),
+        }) as unknown as GeolocationPosition;
+      geo.getCurrentPosition = (success: PositionCallback): void => {
+        if (typeof success === 'function') success(makePos());
+      };
+      geo.watchPosition = (success: PositionCallback): number => {
+        if (typeof success === 'function') success(makePos());
+        return 0;
+      };
+      undo.push(() => {
+        geo.getCurrentPosition = origGet;
+        geo.watchPosition = origWatch;
+      });
+    }
+
+    (window as unknown as { __senmurvRegion?: unknown }).__senmurvRegion = {
+      config,
+      restore: () => {
+        for (let i = undo.length - 1; i >= 0; i -= 1) {
+          try {
+            const fn = undo[i];
+            if (fn) fn();
+          } catch {
+            // best-effort restore
+          }
+        }
+        delete (window as unknown as Record<string, unknown>).__senmurvRegion;
+      },
+    };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/** Injected to undo the region shim, if one is active. */
+function restoreRegionShim(): { ok: boolean } {
+  const w = window as unknown as { __senmurvRegion?: { restore: () => void } };
+  if (w.__senmurvRegion && typeof w.__senmurvRegion.restore === 'function') {
+    w.__senmurvRegion.restore();
+  }
+  return { ok: true };
+}
+
+/** Injected to read whether a shim is active and with what config. */
+function regionStateShim(): { active: boolean; config: RegionConfig | null } {
+  const w = window as unknown as { __senmurvRegion?: { config: RegionConfig } };
+  return { active: Boolean(w.__senmurvRegion), config: w.__senmurvRegion?.config ?? null };
+}
+
+async function applyRegion(tabId: number, config: RegionConfig): Promise<Result<void>> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: applyRegionShim,
+      args: [config],
+    });
+    const outcome = results[0]?.result as { ok: boolean; error?: string } | undefined;
+    if (!outcome?.ok) return { ok: false, error: outcome?.error ?? 'The region shim failed.' };
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+async function restoreRegion(tabId: number): Promise<Result<void>> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: restoreRegionShim,
+    });
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+async function getRegionState(
+  tabId: number
+): Promise<Result<{ active: boolean; config: RegionConfig | null }>> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: regionStateShim,
+    });
+    const outcome = results[0]?.result as
+      | { active: boolean; config: RegionConfig | null }
+      | undefined;
+    return { ok: true, value: outcome ?? { active: false, config: null } };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Message hub
 // ---------------------------------------------------------------------------
 
@@ -863,6 +1151,20 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       withActiveTab((tab) =>
         clearSiteData(tab.id, tab.url, message.payload.types, message.payload.shouldReload)
       ).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.APPLY_REGION:
+      withActiveRunnableTab((tabId) => applyRegion(tabId, message.payload.config)).then(
+        sendResponse
+      );
+      return true;
+
+    case MESSAGE_TYPES.RESTORE_REGION:
+      withActiveRunnableTab((tabId) => restoreRegion(tabId)).then(sendResponse);
+      return true;
+
+    case MESSAGE_TYPES.GET_REGION_STATE:
+      withActiveRunnableTab((tabId) => getRegionState(tabId)).then(sendResponse);
       return true;
 
     default:

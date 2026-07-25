@@ -263,6 +263,16 @@ export interface FieldContract {
   readonly validity: ValiditySnapshot | null;
 }
 
+/** The region-emulation shim config applied to the page's MAIN world. */
+export interface RegionConfig {
+  /** IANA timezone, e.g. `Europe/Paris`. */
+  readonly timezone: string;
+  /** BCP-47 locale, e.g. `fr-FR`. */
+  readonly locale: string;
+  /** Geolocation to spoof, or null to leave `navigator.geolocation` alone. */
+  readonly coords: { readonly lat: number; readonly lon: number } | null;
+}
+
 /** One suggested boundary test derived from a field's constraints. */
 export interface BoundaryCase {
   readonly category: string;

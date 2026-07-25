@@ -17,6 +17,7 @@ describe('TOOLS registry', () => {
       'assert',
       'stack',
       'validation',
+      'region',
       'harden',
       'jwt',
     ] satisfies ToolKey[]);

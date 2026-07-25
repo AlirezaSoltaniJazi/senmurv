@@ -11,6 +11,7 @@ import type {
   Note,
   PageMode,
   Prefs,
+  RegionConfig,
   SavedScript,
   TimeEntry,
   ToolMode,
@@ -100,7 +101,13 @@ export type RuntimeMessage =
   | {
       type: typeof MESSAGE_TYPES.CLEAR_SITE_DATA;
       payload: { types: ClearTypeId[]; shouldReload: boolean };
-    };
+    }
+  // Region emulator. Worker-local like BYPASS_XRM: the shim is a MAIN-world
+  // executeScript that passes a real func (not a code string), so it does not
+  // widen the sanctioned runner exception.
+  | { type: typeof MESSAGE_TYPES.APPLY_REGION; payload: { config: RegionConfig } }
+  | { type: typeof MESSAGE_TYPES.RESTORE_REGION }
+  | { type: typeof MESSAGE_TYPES.GET_REGION_STATE };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

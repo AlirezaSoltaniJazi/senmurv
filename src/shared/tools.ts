@@ -12,6 +12,7 @@ export type ToolKey =
   | 'assert'
   | 'stack'
   | 'validation'
+  | 'region'
   | 'harden'
   | 'jwt';
 
@@ -125,6 +126,15 @@ export const TOOLS: readonly ToolDescriptor[] = [
     blurb:
       'Click a form field to read every client-side validation rule it declares (required, length, range, step, pattern, autocomplete) and a suggested boundary-test checklist. Declared constraints only — the server may enforce more.',
     mode: 'validation',
+    requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'region',
+    label: 'Region',
+    blurb:
+      'Make page JavaScript read another country’s clock, timezone, locale and geolocation. Client-side only — your IP and the Accept-Language header are unchanged, and a reload clears it.',
+    mode: null,
     requiresPage: true,
     isReady: true,
   },

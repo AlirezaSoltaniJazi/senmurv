@@ -92,6 +92,17 @@ All notable changes to Senmurv are documented here. The format is based on
     baselines and an `@font-face` walk (surfacing the web font's `src`), so it
     does not fall for `document.fonts.check` returning true for unknown families.
     The ordering logic is pure and unit-tested; the DOM probes are injected.
+- **Tools → Region** — make this page's JavaScript read **another country's
+  clock, timezone, locale and geolocation**, to test date/time rendering, `Intl`
+  formatting and location-aware UI as if you were there. Pick a region and Apply;
+  Restore puts it back. It overrides `Date`'s timezone methods, `Intl` +
+  `toLocaleString` defaults, `navigator.language(s)` and `navigator.geolocation`
+  via a reversible MAIN-world shim — **no new permission**.
+  - **Honest by design**: it is **client-side only**. Your IP is unchanged (a
+    server's IP geolocation still sees your real country) and so is the
+    `Accept-Language` request header, so a site that decides locale/region from
+    those won't switch. It affects code that runs after you apply it, and a page
+    reload clears it — all stated in the panel.
 - **Recorder → Export as spec** — turn a recorded flow into a **real, runnable
   test file** for Playwright, Cypress, WebdriverIO, Selenium or Robot Framework —
   not the MAIN-world replay script, but a paste-ready `.spec` wrapped in the
