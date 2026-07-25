@@ -578,6 +578,15 @@ select,
   overflow-wrap: anywhere;
 }
 
+/* Recorder → Export as spec */
+.spec-code {
+  display: block;
+  white-space: pre;
+  overflow: auto;
+  max-height: 340px;
+  margin-top: 6px;
+}
+
 /* Locator card (raw locator + its framework snippets) */
 .locator-card {
   background: var(--panel);

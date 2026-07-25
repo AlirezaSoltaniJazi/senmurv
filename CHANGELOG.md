@@ -92,6 +92,17 @@ All notable changes to Senmurv are documented here. The format is based on
     baselines and an `@font-face` walk (surfacing the web font's `src`), so it
     does not fall for `document.fonts.check` returning true for unknown families.
     The ordering logic is pure and unit-tested; the DOM probes are injected.
+- **Recorder → Export as spec** — turn a recorded flow into a **real, runnable
+  test file** for Playwright, Cypress, WebdriverIO, Selenium or Robot Framework —
+  not the MAIN-world replay script, but a paste-ready `.spec` wrapped in the
+  framework's `describe`/`test` scaffold with a `goto`/`visit` to the current
+  page. Pick the framework, copy the code; the suggested filename and each step
+  (click, fill, press, select, check, wait, run-JS) map to that framework's
+  idiom, disabled steps are skipped, and single quotes are escaped. It's
+  best-effort — random-value fills become a labelled placeholder and you still add
+  your assertions (the **Assertions** tool helps) — but it collapses
+  record-to-committed-test into one click. The codegen is pure and its output is
+  pinned by tests.
 - **Tools → Validation** — click a form field to read **every client-side
   validation rule it declares** — `required`, min/maxlength, min/max/step,
   `pattern` (explained in plain English, e.g. `\d{5}` → "exactly 5 digits"),

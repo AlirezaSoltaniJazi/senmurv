@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import {
   DEFAULT_LOCALE,
+  FRAMEWORK_LABELS,
+  FRAMEWORKS,
   LOCALE_LABELS,
   MESSAGE_TYPES,
   SUPPORTED_LOCALES,
@@ -27,8 +29,10 @@ import {
   STEP_KINDS,
 } from '@/shared/workflow';
 import type { RecorderSeed, SelectMode, StepKind, WorkflowStep } from '@/shared/workflow';
+import { buildSpec, specFilename } from '@/shared/tools/spec-codegen';
 import type {
   FieldType,
+  Framework,
   GeneratorId,
   Locale,
   PickedField,
@@ -36,6 +40,7 @@ import type {
   SavedScript,
 } from '@/shared/types';
 import { newId } from '@/utils/id';
+import { CopyButton } from './CopyButton';
 
 interface Props {
   seed: RecorderSeed | null;
@@ -67,6 +72,19 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   const [flowName, setFlowName] = useState('');
   // Id of a just-added/duplicated step — scrolled into view and briefly flashed.
   const [flashId, setFlashId] = useState<string | null>(null);
+  // "Export as spec" panel state.
+  const [showSpec, setShowSpec] = useState(false);
+  const [specFramework, setSpecFramework] = useState<Framework>('playwright');
+  const [specUrl, setSpecUrl] = useState('');
+
+  // The spec's goto/visit URL defaults to the active tab's URL.
+  useEffect(() => {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) return;
+      const url = tabs[0]?.url ?? '';
+      if (/^https?:/.test(url)) setSpecUrl(url);
+    });
+  }, []);
 
   const stepListRef = useRef<HTMLOListElement>(null);
 
@@ -764,6 +782,51 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
             >
               Clear
             </button>
+          </div>
+
+          <div className="export-panel">
+            <div className="row">
+              <button type="button" onClick={() => setShowSpec((v) => !v)}>
+                {showSpec ? 'Hide spec' : 'Export as spec'}
+              </button>
+              {showSpec && (
+                <>
+                  <select
+                    aria-label="Spec framework"
+                    value={specFramework}
+                    onChange={(e) => setSpecFramework(e.target.value as Framework)}
+                  >
+                    {FRAMEWORKS.map((f) => (
+                      <option key={f} value={f}>
+                        {FRAMEWORK_LABELS[f]}
+                      </option>
+                    ))}
+                  </select>
+                  <CopyButton
+                    text={buildSpec(steps, specFramework, {
+                      testName: flowName.trim() || 'recorded flow',
+                      ...(specUrl ? { url: specUrl } : {}),
+                    })}
+                    label="Copy spec"
+                  />
+                </>
+              )}
+            </div>
+            {showSpec && (
+              <>
+                <p className="hint dim">
+                  {specFilename(specFramework, flowName || 'recorded flow')} · opens{' '}
+                  {specUrl || 'http://localhost:3000'}. Best-effort — random fills become a
+                  placeholder; add your assertions.
+                </p>
+                <pre className="snippet-code spec-code">
+                  {buildSpec(steps, specFramework, {
+                    testName: flowName.trim() || 'recorded flow',
+                    ...(specUrl ? { url: specUrl } : {}),
+                  })}
+                </pre>
+              </>
+            )}
           </div>
         </>
       )}
