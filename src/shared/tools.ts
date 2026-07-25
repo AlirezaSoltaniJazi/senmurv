@@ -1,7 +1,15 @@
 import type { PageMode } from '@/shared/types';
 
 /** The sub-tools of the Tools tab. */
-export type ToolKey = 'bypass' | 'sitedata' | 'measure' | 'color' | 'taborder' | 'a11y' | 'font';
+export type ToolKey =
+  | 'bypass'
+  | 'sitedata'
+  | 'measure'
+  | 'color'
+  | 'taborder'
+  | 'a11y'
+  | 'font'
+  | 'jwt';
 
 /**
  * One entry in the Tools launcher. `mode` is the in-page mode the shell tears
@@ -87,6 +95,15 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Typography of the hovered element. Resolves the rendered face where it can and says so when it cannot.',
     mode: 'font',
     requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'jwt',
+    label: 'JWT decoder',
+    blurb:
+      'Decodes a JWT’s header and claims and shows how long it is valid. The signature is shown but never verified, and the token stays on your machine.',
+    mode: null,
+    requiresPage: false,
     isReady: true,
   },
 ];

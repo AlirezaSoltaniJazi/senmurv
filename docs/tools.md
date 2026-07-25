@@ -38,8 +38,8 @@ Save and run JS in the page.
 
 ## 4. Tools
 
-A launcher of seven page-inspection tools. Pick one and it takes the panel's
-full height; **← Tools** goes back.
+A launcher of page-inspection and utility tools. Pick one and it takes the
+panel's full height; **← Tools** goes back.
 
 | Tool              | What it does                                                                                                                                                                                                                                                                                         |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -50,15 +50,36 @@ full height; **← Tools** goes back.
 | **Tab order**     | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                           |
 | **Accessibility** | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                  |
 | **Fonts**         | Typography of the hovered element, and the typeface that actually renders.                                                                                                                                                                                                                           |
+| **JWT decoder**   | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
-ones: **top frame only** (cross-origin iframes are unreachable), closed shadow
-roots cannot be inspected, and the tools are unavailable on `chrome://`,
-`file://`, `view-source:` and Web Store pages.
+ones for the page-inspection tools: **top frame only** (cross-origin iframes are
+unreachable), closed shadow roots cannot be inspected, and they are unavailable
+on `chrome://`, `file://`, `view-source:` and Web Store pages. The JWT decoder
+is the exception — it reads no page, so it runs anywhere.
 
-> **Status:** all seven tools have shipped — **Bypass**, **Site data**,
-> **Measure**, **Colour**, **Tab order**, **Accessibility** and **Fonts** — on
-> the tab and its shared plumbing.
+> **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
+> **Tab order**, **Accessibility**, **Fonts** and the **JWT decoder**.
+
+### JWT decoder — detail
+
+Paste a JSON Web Token and read it as two annotated claim tables — header and
+payload. Registered claims (`iss`, `sub`, `aud`, `exp`, `nbf`, `iat`, `jti`) and
+common OIDC claims are labelled, and the timestamp claims are shown both as their
+raw Unix seconds and their ISO date. A live badge counts the token's standing
+against the current clock: **Expired \_N_d ago** (red), **Expires in _N_** (green)
+or **Not valid for _N_** (amber) when a `nbf` is still in the future.
+
+- **The token stays local.** Decoding is a pure base64url + `JSON.parse` in the
+  panel (`jwt.ts`) — nothing is sent anywhere. This is the point: the usual habit
+  is to paste a real, still-valid token into an online decoder, which is a genuine
+  credential leak.
+- **The signature is shown, never verified.** Verifying needs the signing key,
+  which is a server's job; the tool is explicit that a decoded token is not a
+  trusted one.
+
+**Limits**: needs no page, so it runs on any tab (including `chrome://`);
+signature verification and encrypted (JWE) tokens are out of scope.
 
 ### Fonts — detail
 

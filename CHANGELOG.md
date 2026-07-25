@@ -92,6 +92,13 @@ All notable changes to Senmurv are documented here. The format is based on
     baselines and an `@font-face` walk (surfacing the web font's `src`), so it
     does not fall for `document.fonts.check` returning true for unknown families.
     The ordering logic is pure and unit-tested; the DOM probes are injected.
+- **Tools → JWT decoder** — paste a JWT and read its header and claims as an
+  annotated table (registered claims like `iss`/`sub`/`exp` are labelled, and
+  `exp`/`nbf`/`iat` show their ISO date), with a live **expired / valid / not-yet-valid**
+  badge counting down from the token's own `exp`/`nbf`. The signature is shown
+  but **never verified** (that needs the signing key), and the token is decoded
+  entirely in the panel — it never leaves your machine, unlike pasting it into an
+  online decoder. Works on any page (it needs no page access).
 - **Highlight an element on the page** — a `HIGHLIGHT_ELEMENT` message scrolls
   an element into view and outlines it, so a findings list in the panel can
   point at the thing it is describing.

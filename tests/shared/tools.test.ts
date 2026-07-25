@@ -14,6 +14,7 @@ describe('TOOLS registry', () => {
       'taborder',
       'a11y',
       'font',
+      'jwt',
     ] satisfies ToolKey[]);
   });
 
