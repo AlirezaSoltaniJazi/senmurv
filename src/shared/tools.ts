@@ -87,7 +87,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Typography of the hovered element. Resolves the rendered face where it can and says so when it cannot.',
     mode: 'font',
     requiresPage: true,
-    isReady: false,
+    isReady: true,
   },
 ];
 

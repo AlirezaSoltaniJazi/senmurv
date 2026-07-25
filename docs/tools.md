@@ -49,16 +49,45 @@ full height; **← Tools** goes back.
 | **Colour**        | An element's colours in every format, plus its WCAG contrast verdict.                                                                                                                                                                                                                                |
 | **Tab order**     | The page's computed keyboard tab order, numbered in place.                                                                                                                                                                                                                                           |
 | **Accessibility** | WCAG A / AA / AAA checks with per-finding locators.                                                                                                                                                                                                                                                  |
-| **Fonts**         | Typography of the hovered element.                                                                                                                                                                                                                                                                   |
+| **Fonts**         | Typography of the hovered element, and the typeface that actually renders.                                                                                                                                                                                                                           |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
 ones: **top frame only** (cross-origin iframes are unreachable), closed shadow
 roots cannot be inspected, and the tools are unavailable on `chrome://`,
 `file://`, `view-source:` and Web Store pages.
 
-> **Status:** the tab, its shared plumbing, **Bypass**, **Site data**,
-> **Measure**, **Colour**, **Tab order** and **Accessibility** have shipped; the
-> last tool (Fonts) is landing in a later release.
+> **Status:** all seven tools have shipped — **Bypass**, **Site data**,
+> **Measure**, **Colour**, **Tab order**, **Accessibility** and **Fonts** — on
+> the tab and its shared plumbing.
+
+### Fonts — detail
+
+Hover any text to read its typography and, most importantly, the **typeface that
+actually renders**. The CSS `font-family` is only a wish-list; Fonts walks that
+stack and tells you which family the browser really used, badged **web font**
+(loaded via `@font-face`), **local / system** (installed on the machine) or
+**generic fallback**. Click to pin it with copy-ready locators.
+
+- **Reads** size (px · pt · rem), weight (numeric value + name, e.g. `600 — Semi
+Bold`), style, line height (both px and unitless ratio), letter/word spacing,
+  text-transform, font-variant and colour, and emits a copy-ready CSS `font`
+  **shorthand**.
+- **Resolving the rendered face** is the hard part, done honestly. A canvas
+  width test compares each family against **all three** generic baselines
+  (`serif` / `sans-serif` / `monospace`) — one baseline gives false negatives
+  (Arial ≡ sans-serif on Windows) — with an allow-list for ubiquitous system
+  faces whose metrics can coincide with a generic's. This sidesteps the classic
+  trap that `document.fonts.check('16px Whatever')` returns **true** for any
+  family with no matching `@font-face`. For web fonts it walks
+  `document.styleSheets` + `adoptedStyleSheets` for the `CSSFontFaceRule` to
+  surface the `src` URL (per-sheet `try/catch` for cross-origin sheets).
+- The ordering algorithm is **pure and unit-tested** (`typography.ts`); the DOM
+  probes (canvas render test, `@font-face` walk) are injected, since happy-dom
+  has neither a canvas 2d context nor `document.fonts`.
+
+**Limits**: top frame only; a face inside a closed shadow root or a cross-origin
+sheet whose rules cannot be read is reported by name without its `src`; the
+answer is element-level (the font under the cursor's element), not per-glyph.
 
 ### Accessibility — detail
 

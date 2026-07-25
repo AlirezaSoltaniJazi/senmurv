@@ -208,13 +208,15 @@ export type MeasureData =
 export type ToolStreamData =
   | { readonly tool: 'measure'; readonly data: MeasureData }
   | { readonly tool: 'color'; readonly data: ColorReport }
+  | { readonly tool: 'font'; readonly data: FontInfo }
   // The DOM changed since the last tab-order scan — the panel offers a rescan.
   | { readonly tool: 'taborder'; readonly data: { readonly stale: true } };
 
 /** A committed reading pushed on click (TOOL_PICKED), with copy-ready locators. */
 export type ToolPickData =
   | { readonly tool: 'measure'; readonly data: MeasureData; readonly locators?: LocatorSet }
-  | { readonly tool: 'color'; readonly data: ColorReport; readonly locators?: LocatorSet };
+  | { readonly tool: 'color'; readonly data: ColorReport; readonly locators?: LocatorSet }
+  | { readonly tool: 'font'; readonly data: FontInfo; readonly locators?: LocatorSet };
 
 /** One framework's copy-ready size assertion for a measured element. */
 export interface SizeAssertion {
@@ -336,6 +338,45 @@ export interface A11yReport {
   /** Rule ids that ran and found nothing (rule-level pass, no per-element data). */
   readonly passedRules: string[];
   readonly warnings: string[];
+}
+
+// ---------------------------------------------------------------------------
+// Fonts
+// ---------------------------------------------------------------------------
+
+/** Where the rendered typeface comes from. */
+export type FontSource = 'web' | 'local' | 'generic' | 'unknown';
+
+/** The typeface actually used to render the text (not just the CSS stack). */
+export interface RenderedFace {
+  readonly family: string;
+  readonly source: FontSource;
+  /** The @font-face `src` when it is a web font, else null. */
+  readonly src: string | null;
+}
+
+/** Typography of one element, as the Fonts tool reports it. */
+export interface FontInfo {
+  readonly tag: string;
+  /** The full CSS `font-family` stack, in order. */
+  readonly stack: string[];
+  readonly rendered: RenderedFace;
+  readonly size: { readonly px: number; readonly pt: number; readonly rem: number };
+  readonly weight: { readonly value: number; readonly name: string };
+  readonly style: string;
+  readonly lineHeight: {
+    readonly raw: string;
+    readonly px: number | null;
+    readonly ratio: number | null;
+  };
+  readonly letterSpacing: string;
+  readonly wordSpacing: string;
+  readonly textTransform: string;
+  readonly fontVariant: string;
+  readonly color: string;
+  /** A copy-ready CSS `font` shorthand. */
+  readonly shorthand: string;
+  readonly textPreview: string;
 }
 
 // ---------------------------------------------------------------------------

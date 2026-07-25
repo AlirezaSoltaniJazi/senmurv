@@ -81,6 +81,17 @@ All notable changes to Senmurv are documented here. The format is based on
   - A session-destroying selection arms a two-step confirm, and the summary
     states up front that HttpOnly cookies survive and that the HTTP cache size
     is not something Chrome exposes to extensions.
+- **Tools → Fonts** — hover any text for its typography and, crucially, the
+  **typeface that actually renders** — not just the CSS `font-family` stack but
+  which family in it the browser really used, labelled **web font** / **local /
+  system** / **generic fallback**. Click to pin it with copy-ready locators.
+  - Reads size (px / pt / rem), weight (value + name), style, line height (px and
+    ratio), letter/word spacing, transform, variant and colour, and emits a
+    copy-ready CSS `font` **shorthand**.
+  - Resolves the rendered face with a canvas width test against all three generic
+    baselines and an `@font-face` walk (surfacing the web font's `src`), so it
+    does not fall for `document.fonts.check` returning true for unknown families.
+    The ordering logic is pure and unit-tested; the DOM probes are injected.
 - **Highlight an element on the page** — a `HIGHLIGHT_ELEMENT` message scrolls
   an element into view and outlines it, so a findings list in the panel can
   point at the thing it is describing.

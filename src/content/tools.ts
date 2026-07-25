@@ -2,6 +2,7 @@ import type { MeasureMode, PageMode } from '@/shared/types';
 import { a11yLocators, runA11yScan } from './tools/a11y';
 import { restorePage, bypassPage, bypassState } from './tools/bypass';
 import { startColor, stopColor } from './tools/color';
+import { startFont, stopFont } from './tools/font-probe';
 import { startMeasure, stopMeasure } from './tools/measure';
 import { scanTabOrder, startTabOrder, stopLocators, stopTabOrder } from './tools/tab-index';
 
@@ -31,7 +32,7 @@ interface ModeHandlers {
 const HANDLERS: Partial<Record<PageMode, ModeHandlers>> = {
   color: { start: startColor, stop: stopColor },
   taborder: { start: startTabOrder, stop: stopTabOrder },
-  // 'font'     → Phase 7
+  font: { start: startFont, stop: stopFont },
 };
 
 /** Start an in-page Tools mode. Unknown/unimplemented modes are a no-op. */
