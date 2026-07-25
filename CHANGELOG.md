@@ -48,8 +48,10 @@ All notable changes to Senmurv are documented here. The format is based on
   - Correctly handles the flattened shadow tree (`<slot>`), per-scope positive
     tabindex, `delegatesFocus`, radio groups and disabled/inert exclusions — the
     computed order was verified to match Chrome's actual Tab-key order exactly.
-  - Badges stay aligned while you scroll, and a **Rescan** prompt appears when
-    the page changes.
+  - Badges stay aligned while you scroll, a **Clear overlay** button removes them
+    without leaving the tool, and a **Rescan** prompt appears when the page
+    changes. (The overlay is now also reliably removed when you switch away from
+    the tool.)
 - **Tools → Colour** — hover an element for its colours in every format (HEX,
   HEX8, RGB, HSL, HWB) and its **WCAG contrast** verdict (AA / AAA at normal and
   large text), click to pin it with copy-ready locators. Also a **screen

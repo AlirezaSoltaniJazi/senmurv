@@ -76,6 +76,12 @@ export function TabOrderTool(): ReactElement {
   const rescan = useCallback(async (): Promise<void> => {
     setBusy(true);
     setError(null);
+    // Enter the taborder mode first, so the arbiter owns pageMode and the badges
+    // are torn down on tool switch / unmount (and by the Clear button below).
+    await sendRuntimeMessage({
+      type: MESSAGE_TYPES.START_TOOL_MODE,
+      payload: { mode: 'taborder' },
+    });
     const res = await sendRuntimeMessage<Result<TabOrderScan>>({
       type: MESSAGE_TYPES.SCAN_TAB_ORDER,
     });
@@ -88,6 +94,17 @@ export function TabOrderTool(): ReactElement {
     } else {
       setError(res.error);
     }
+  }, []);
+
+  const clear = useCallback(async (): Promise<void> => {
+    await sendRuntimeMessage({
+      type: MESSAGE_TYPES.STOP_TOOL_MODE,
+      payload: { mode: 'taborder' },
+    });
+    setScan(null);
+    setStale(false);
+    setExpanded(null);
+    setLocators({});
   }, []);
 
   useEffect(() => {
@@ -143,6 +160,11 @@ export function TabOrderTool(): ReactElement {
         <button type="button" className="primary" disabled={busy} onClick={() => void rescan()}>
           {scan === null ? 'Scan tab order' : 'Rescan'}
         </button>
+        {scan !== null && (
+          <button type="button" disabled={busy} onClick={() => void clear()}>
+            Clear overlay
+          </button>
+        )}
         {scan !== null && (
           <span className="dim">
             {scan.stops.length} stops · {issueCount} with issues
