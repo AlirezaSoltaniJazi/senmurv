@@ -10,6 +10,38 @@ import type {
   TimeInterval,
 } from '@/shared/types';
 
+// ---------------------------------------------------------------------------
+// Per-key write serialization
+// ---------------------------------------------------------------------------
+
+/**
+ * chrome.storage has no compare-and-swap, so a read-modify-write
+ * (`get → compute → set`) can interleave with another and lose a write: two
+ * upserts both read the same base list, then the second `set` clobbers the
+ * first's addition. Every mutation funnels through the single service worker, so
+ * a per-key promise chain is enough — each locked op waits for the previous op
+ * on the SAME key to finish its `set` before it reads. Reads stay unlocked (a
+ * stale read is harmless; only overlapping writes lose data).
+ */
+const keyChains = new Map<string, Promise<unknown>>();
+
+function withKeyLock<T>(key: string, op: () => Promise<T>): Promise<T> {
+  const prev = keyChains.get(key) ?? Promise.resolve();
+  // Run `op` once `prev` settles, whether it resolved or rejected (both handlers
+  // are `op`), so one failed op cannot stall the queue.
+  const result = prev.then(op, op);
+  // Store a neutralized tail so a rejection here never poisons the next op; the
+  // original caller still observes its own error through the returned `result`.
+  keyChains.set(
+    key,
+    result.then(
+      () => undefined,
+      () => undefined
+    )
+  );
+  return result;
+}
+
 /** Type guard for a stored script (rejects corrupt / legacy data). */
 export function isSavedScript(value: unknown): value is SavedScript {
   if (typeof value !== 'object' || value === null) return false;
@@ -33,26 +65,32 @@ export async function getScripts(): Promise<SavedScript[]> {
 
 /** Overwrite the full script list. */
 export async function saveScripts(scripts: SavedScript[]): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: scripts });
+  await withKeyLock(STORAGE_KEYS.SCRIPTS, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: scripts })
+  );
 }
 
 /** Insert or update a script by id; returns the new list. */
 export async function upsertScript(script: SavedScript): Promise<SavedScript[]> {
-  const scripts = await getScripts();
-  const exists = scripts.some((s) => s.id === script.id);
-  const next = exists
-    ? scripts.map((s) => (s.id === script.id ? script : s))
-    : [...scripts, script];
-  await saveScripts(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.SCRIPTS, async () => {
+    const scripts = await getScripts();
+    const exists = scripts.some((s) => s.id === script.id);
+    const next = exists
+      ? scripts.map((s) => (s.id === script.id ? script : s))
+      : [...scripts, script];
+    await chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: next });
+    return next;
+  });
 }
 
 /** Remove a script by id; returns the new list. */
 export async function deleteScript(id: string): Promise<SavedScript[]> {
-  const scripts = await getScripts();
-  const next = scripts.filter((s) => s.id !== id);
-  await saveScripts(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.SCRIPTS, async () => {
+    const scripts = await getScripts();
+    const next = scripts.filter((s) => s.id !== id);
+    await chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: next });
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -94,24 +132,30 @@ export async function getTasks(): Promise<TimeEntry[]> {
 
 /** Overwrite the full task list. */
 export async function saveTasks(tasks: TimeEntry[]): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: tasks });
+  await withKeyLock(STORAGE_KEYS.TASKS, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: tasks })
+  );
 }
 
 /** Insert or update a task by id; returns the new list. */
 export async function upsertTask(task: TimeEntry): Promise<TimeEntry[]> {
-  const tasks = await getTasks();
-  const exists = tasks.some((t) => t.id === task.id);
-  const next = exists ? tasks.map((t) => (t.id === task.id ? task : t)) : [...tasks, task];
-  await saveTasks(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.TASKS, async () => {
+    const tasks = await getTasks();
+    const exists = tasks.some((t) => t.id === task.id);
+    const next = exists ? tasks.map((t) => (t.id === task.id ? task : t)) : [...tasks, task];
+    await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
+    return next;
+  });
 }
 
 /** Remove a task by id; returns the new list. */
 export async function deleteTask(id: string): Promise<TimeEntry[]> {
-  const tasks = await getTasks();
-  const next = tasks.filter((t) => t.id !== id);
-  await saveTasks(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.TASKS, async () => {
+    const tasks = await getTasks();
+    const next = tasks.filter((t) => t.id !== id);
+    await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -150,26 +194,32 @@ export async function getChecklists(): Promise<Checklist[]> {
 
 /** Overwrite the full checklist list. */
 export async function saveChecklists(checklists: Checklist[]): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: checklists });
+  await withKeyLock(STORAGE_KEYS.CHECKLISTS, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: checklists })
+  );
 }
 
 /** Insert or update a checklist by id; returns the new list. */
 export async function upsertChecklist(checklist: Checklist): Promise<Checklist[]> {
-  const checklists = await getChecklists();
-  const exists = checklists.some((c) => c.id === checklist.id);
-  const next = exists
-    ? checklists.map((c) => (c.id === checklist.id ? checklist : c))
-    : [...checklists, checklist];
-  await saveChecklists(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.CHECKLISTS, async () => {
+    const checklists = await getChecklists();
+    const exists = checklists.some((c) => c.id === checklist.id);
+    const next = exists
+      ? checklists.map((c) => (c.id === checklist.id ? checklist : c))
+      : [...checklists, checklist];
+    await chrome.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: next });
+    return next;
+  });
 }
 
 /** Remove a checklist by id; returns the new list. */
 export async function deleteChecklist(id: string): Promise<Checklist[]> {
-  const checklists = await getChecklists();
-  const next = checklists.filter((c) => c.id !== id);
-  await saveChecklists(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.CHECKLISTS, async () => {
+    const checklists = await getChecklists();
+    const next = checklists.filter((c) => c.id !== id);
+    await chrome.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: next });
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -199,24 +249,30 @@ export async function getNotes(): Promise<Note[]> {
 
 /** Overwrite the full note list. */
 export async function saveNotes(notes: Note[]): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: notes });
+  await withKeyLock(STORAGE_KEYS.NOTES, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: notes })
+  );
 }
 
 /** Insert or update a note by id; returns the new list. */
 export async function upsertNote(note: Note): Promise<Note[]> {
-  const notes = await getNotes();
-  const exists = notes.some((n) => n.id === note.id);
-  const next = exists ? notes.map((n) => (n.id === note.id ? note : n)) : [...notes, note];
-  await saveNotes(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.NOTES, async () => {
+    const notes = await getNotes();
+    const exists = notes.some((n) => n.id === note.id);
+    const next = exists ? notes.map((n) => (n.id === note.id ? note : n)) : [...notes, note];
+    await chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: next });
+    return next;
+  });
 }
 
 /** Remove a note by id; returns the new list. */
 export async function deleteNote(id: string): Promise<Note[]> {
-  const notes = await getNotes();
-  const next = notes.filter((n) => n.id !== id);
-  await saveNotes(next);
-  return next;
+  return withKeyLock(STORAGE_KEYS.NOTES, async () => {
+    const notes = await getNotes();
+    const next = notes.filter((n) => n.id !== id);
+    await chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: next });
+    return next;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -244,5 +300,7 @@ export async function getPrefs(): Promise<Prefs> {
 
 /** Overwrite the stored prefs object. */
 export async function savePrefs(prefs: Prefs): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEYS.PREFS]: prefs });
+  await withKeyLock(STORAGE_KEYS.PREFS, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.PREFS]: prefs })
+  );
 }

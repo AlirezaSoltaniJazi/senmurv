@@ -2,7 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
-import type { FontSize, Prefs, Result } from '@/shared/types';
+import type { ToolKey } from '@/shared/tools';
+import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
 
 // Lazy-load each tab so the panel shell renders instantly; heavy deps (faker
@@ -19,6 +20,7 @@ const RecorderTab = lazy(() =>
 const ScriptsTab = lazy(() =>
   import('./components/ScriptsTab').then((m) => ({ default: m.ScriptsTab }))
 );
+const ToolsTab = lazy(() => import('./components/ToolsTab').then((m) => ({ default: m.ToolsTab })));
 const TrackTab = lazy(() => import('./components/TrackTab').then((m) => ({ default: m.TrackTab })));
 const MyTasksTab = lazy(() =>
   import('./components/MyTasksTab').then((m) => ({ default: m.MyTasksTab }))
@@ -33,6 +35,7 @@ type TabKey =
   | 'locator'
   | 'recorder'
   | 'scripts'
+  | 'tools'
   | 'track'
   | 'mytasks'
   | 'notes'
@@ -43,6 +46,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'locator', label: 'Locator' },
   { key: 'recorder', label: 'Recorder' },
   { key: 'scripts', label: 'Scripts' },
+  { key: 'tools', label: 'Tools' },
   { key: 'track', label: 'Track' },
   { key: 'mytasks', label: 'My Tasks' },
   { key: 'notes', label: 'Notes' },
@@ -61,6 +65,9 @@ export function App(): ReactElement {
   const [recorderSeed, setRecorderSeed] = useState<RecorderSeed | null>(null);
   // Kept here so an in-progress recorded flow survives switching side-panel tabs.
   const [recorderSteps, setRecorderSteps] = useState<WorkflowStep[]>([]);
+  // Same reason: lazy tabs unmount on switch, so the open tool lives up here.
+  const [tool, setTool] = useState<ToolKey | null>(null);
+  const [scriptSeed, setScriptSeed] = useState<ScriptSeed | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
   const [fontScale, setFontScale] = useState<number | undefined>(undefined);
@@ -71,7 +78,21 @@ export function App(): ReactElement {
   }, []);
   const clearSeed = useCallback(() => setRecorderSeed(null), []);
 
-  // Load persisted preferences (font size) on mount.
+  // Tools → Scripts handoff: a tool generates a standalone script and hands it
+  // to the Scripts editor, mirroring the Scripts → Recorder "Customize" flow.
+  const saveToScripts = useCallback((name: string, code: string) => {
+    setScriptSeed({ name, code });
+    setTab('scripts');
+  }, []);
+  const clearScriptSeed = useCallback(() => setScriptSeed(null), []);
+
+  // Switching tabs should start at the top — the panel otherwise keeps the
+  // previous tab's scroll position.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+  }, [tab]);
+
+  // Load persisted preferences (font size) on mount. (Reset-scroll effect above.)
   useEffect(() => {
     let cancelled = false;
     void (async () => {
@@ -85,12 +106,6 @@ export function App(): ReactElement {
       cancelled = true;
     };
   }, []);
-
-  // Reset scroll to the top of the panel whenever the active tab changes, so a
-  // new tab always starts at its header instead of inheriting the prior scroll.
-  useEffect(() => {
-    window.scrollTo(0, 0);
-  }, [tab]);
 
   // Choosing a preset clears any manual fine-tune so the preset's zoom applies.
   const changeFontSize = useCallback((size: FontSize) => {
@@ -172,7 +187,15 @@ export function App(): ReactElement {
             />
           )}
           {tab === 'scripts' && (
-            <ScriptsTab onCustomize={customizeInRecorder} reloadNonce={reloadNonce} />
+            <ScriptsTab
+              onCustomize={customizeInRecorder}
+              reloadNonce={reloadNonce}
+              seed={scriptSeed}
+              onSeedConsumed={clearScriptSeed}
+            />
+          )}
+          {tab === 'tools' && (
+            <ToolsTab tool={tool} setTool={setTool} onSaveScript={saveToScripts} />
           )}
           {tab === 'track' && <TrackTab reloadNonce={reloadNonce} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}

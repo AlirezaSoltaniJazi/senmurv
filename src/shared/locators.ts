@@ -186,16 +186,28 @@ export function getRole(el: Element): string | null {
 }
 
 /** The accessible name (aria-label, labelledby, associated/wrapping label, placeholder, text). */
+/**
+ * Resolve an `aria-labelledby` IDREF LIST to its joined text. The attribute may
+ * name several ids (`aria-labelledby="a b"`), so it MUST be split — sending the
+ * whole value to getElementById returns null and breaks the recommended pattern.
+ */
+export function resolveLabelledby(el: Element, doc: Document): string {
+  const value = el.getAttribute('aria-labelledby');
+  if (value === null || value.trim() === '') return '';
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((id) => doc.getElementById(id)?.textContent?.trim())
+    .filter((t): t is string => Boolean(t))
+    .join(' ');
+}
+
 export function getAccessibleName(el: Element, doc: Document): string | null {
   const ariaLabel = el.getAttribute('aria-label');
   if (ariaLabel?.trim()) return ariaLabel.trim();
 
-  const labelledBy = el.getAttribute('aria-labelledby');
-  if (labelledBy) {
-    const ref = doc.getElementById(labelledBy);
-    const text = ref?.textContent?.trim();
-    if (text) return text;
-  }
+  const labelled = resolveLabelledby(el, doc);
+  if (labelled) return labelled;
 
   const id = el.getAttribute('id');
   if (id) {

@@ -265,6 +265,11 @@ select,
 
 .data-key {
   color: var(--muted);
+  /* The key sits in a fixed 92px grid column. Let a long unbreakable label
+     (e.g. a raw storage key) wrap within the column instead of overflowing
+     into the value cell and overlapping it. */
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .data-value {
@@ -490,6 +495,14 @@ select,
   flex: 1;
 }
 
+/* ‹ › match navigation under the Test box */
+.match-nav button {
+  min-width: 28px;
+  padding: 2px 8px;
+  font-size: 14px;
+  line-height: 1;
+}
+
 /* Framework filter chips */
 .chips {
   display: flex;
@@ -507,6 +520,71 @@ select,
   background: var(--accent);
   border-color: var(--accent);
   color: #fff;
+}
+
+/* Brittleness flag chips (Selector Hardener) */
+.chip.danger {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* Stacking Inspector */
+.badge.hit {
+  background: var(--accent);
+  color: #fff;
+}
+.badge.dim {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+.stack-warn {
+  border: 1px solid var(--warn);
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.stack-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.stack-layer {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+  background: var(--panel);
+}
+.stack-layer.hit {
+  border-color: var(--accent);
+}
+.stack-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.stack-tag {
+  font-size: 12px;
+}
+.stack-meta {
+  font-size: 11px;
+  margin-top: 4px;
+  overflow-wrap: anywhere;
+}
+
+/* Recorder → Export as spec */
+.spec-code {
+  display: block;
+  white-space: pre;
+  overflow: auto;
+  max-height: 340px;
+  margin-top: 6px;
 }
 
 /* Locator card (raw locator + its framework snippets) */
@@ -1375,4 +1453,64 @@ input[type='checkbox'] {
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* Tools tab — launcher list (base `button` already supplies panel/border/radius) */
+.tool-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tool-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+}
+.tool-row-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+.tool-row-blurb {
+  display: block;
+  color: var(--muted);
+  line-height: 1.45;
+}
+
+/* Colour tool — swatches + contrast badges */
+.swatch {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  vertical-align: middle;
+  flex: none;
+}
+.swatch-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.swatch-role {
+  color: var(--muted);
+  min-width: 96px;
+}
+.badge.pass {
+  background: var(--good);
+  color: #fff;
+}
+.badge.fail {
+  background: var(--danger);
+  color: #fff;
+}
+.contrast-ratio {
+  font-size: 22px;
+  font-weight: 600;
 }

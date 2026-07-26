@@ -35,6 +35,40 @@ export const MESSAGE_TYPES = {
   DELETE_NOTE: 'DELETE_NOTE',
   GET_PREFS: 'GET_PREFS',
   SAVE_PREFS: 'SAVE_PREFS',
+  // Tools tab — the generic in-page transport every sub-tool shares. Tool-
+  // specific messages (BYPASS_PAGE, CLEAR_SITE_DATA, TOOL_STREAM, …) are added
+  // by the phase that implements the tool, so no type ships without a handler.
+  TOOL_PING: 'TOOL_PING',
+  START_TOOL_MODE: 'START_TOOL_MODE',
+  STOP_TOOL_MODE: 'STOP_TOOL_MODE',
+  HIGHLIGHT_ELEMENT: 'HIGHLIGHT_ELEMENT',
+  // Locator tab — highlight every element matching a CSS/XPath, numbered, and
+  // scroll a chosen match into view. A live in-page mode (PageMode 'match').
+  HIGHLIGHT_MATCHES: 'HIGHLIGHT_MATCHES',
+  SCROLL_TO_MATCH: 'SCROLL_TO_MATCH',
+  // Selector Hardener — resolve a fragile selector to its first match and return
+  // that element's ranked locators (the hardened replacement) plus the count.
+  RESOLVE_SELECTOR: 'RESOLVE_SELECTOR',
+  // tab → panel pushes from an in-page tool mode (no service-worker handler)
+  TOOL_STREAM: 'TOOL_STREAM',
+  TOOL_PICKED: 'TOOL_PICKED',
+  // Tab order + Accessibility (both retain elements for lazy locators)
+  SCAN_TAB_ORDER: 'SCAN_TAB_ORDER',
+  GET_STOP_LOCATORS: 'GET_STOP_LOCATORS',
+  RUN_A11Y_SCAN: 'RUN_A11Y_SCAN',
+  // Bypass
+  BYPASS_PAGE: 'BYPASS_PAGE',
+  RESTORE_PAGE: 'RESTORE_PAGE',
+  GET_BYPASS_STATE: 'GET_BYPASS_STATE',
+  BYPASS_XRM: 'BYPASS_XRM',
+  BYPASS_STATE_CHANGED: 'BYPASS_STATE_CHANGED',
+  // Site data
+  PROBE_SITE_STORAGE: 'PROBE_SITE_STORAGE',
+  CLEAR_SITE_DATA: 'CLEAR_SITE_DATA',
+  // Region emulator — worker-local MAIN-world shim (clock/timezone/locale/geo)
+  APPLY_REGION: 'APPLY_REGION',
+  RESTORE_REGION: 'RESTORE_REGION',
+  GET_REGION_STATE: 'GET_REGION_STATE',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -132,6 +166,94 @@ export const BLOCKED_URL_PREFIXES = [
   'chrome-extension://',
   'edge://',
   'about:',
+  // The declared content script matches http/https only, so these never have a
+  // picker to talk to; naming them turns a confusing injection failure into a
+  // clear "this page does not allow extensions" message.
+  'file://',
+  'view-source:',
   'https://chrome.google.com/webstore',
   'https://chromewebstore.google.com',
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Tools tab
+// ---------------------------------------------------------------------------
+
+/** Custom-element tags Senmurv injects. Anything walking the page must skip these. */
+export const SENMURV_HOST_TAGS = ['senmurv-picker-overlay', 'senmurv-recorder-indicator'] as const;
+
+/**
+ * Attribute stamped on elements Bypass reveals. The injected override sheet
+ * keys off it, so revert only has to drop the attribute and remove the sheet.
+ * Its value is a space-separated token list (`show`, `interact`, `text`).
+ */
+export const BYPASS_MARKER_ATTR = 'data-senmurv-bypass';
+
+/**
+ * Attributes Bypass rewrites. Doubles as the MutationObserver's
+ * `attributeFilter` in sticky mode.
+ *
+ * `class` and `style` are DELIBERATELY absent: they are the highest-churn
+ * attributes on React/Angular and would produce an observer storm no debounce
+ * could contain. The cost is that a framework re-applying `style="display:none"`
+ * is invisible to sticky mode — which the UI says out loud.
+ */
+export const BYPASS_LOCK_ATTRS = [
+  'disabled',
+  'readonly',
+  'required',
+  'hidden',
+  'inert',
+  'contenteditable',
+  'aria-disabled',
+  'aria-readonly',
+  'aria-required',
+  'aria-hidden',
+  'pattern',
+  'min',
+  'max',
+  'minlength',
+  'maxlength',
+  'step',
+  'novalidate',
+  'type',
+] as const;
+
+/**
+ * The Bypass override sheet, injected with `chrome.scripting.insertCSS` and
+ * removed with `removeCSS`.
+ *
+ * Injected CSS is immune to the page's `style-src` CSP, which an appended
+ * `<style>` element is not — and `removeCSS` is a first-class revert primitive.
+ * BOTH calls must receive this exact string, or removal silently no-ops.
+ */
+export const BYPASS_CSS = `
+[${BYPASS_MARKER_ATTR}~="show"] {
+  display: revert !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  clip: auto !important;
+  clip-path: none !important;
+}
+[${BYPASS_MARKER_ATTR}~="interact"] {
+  pointer-events: auto !important;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+}
+[${BYPASS_MARKER_ATTR}~="text"] {
+  -webkit-text-security: none !important;
+}
+`;
+
+/** Cap on tab-order stops, so a pathological page can't stall the scan. */
+export const TAB_ORDER_MAX_STOPS = 500;
+
+/** Cap on drawn locator-match badges, so a broad selector (e.g. `div`) can't
+ *  paint thousands of boxes. The true match count is still reported. */
+export const MATCH_HIGHLIGHT_MAX = 200;
+
+/** Snap-to-element-edge threshold for the Measure tool, in CSS px. */
+export const MEASURE_SNAP_PX = 6;
+
+/** Max in-page stream rate (Hz) for hover/drag tools; see notifyQuiet. */
+export const TOOL_STREAM_HZ = 10;

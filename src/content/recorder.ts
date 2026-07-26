@@ -1,8 +1,8 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildCssSelector } from '@/shared/locators';
-import { sendRuntimeMessage } from '@/shared/messages';
 import type { RecordedStep } from '@/shared/workflow';
+import { notify } from './context';
 
 // Passive interaction recorder: while active, it observes real clicks / inputs /
 // selects / key presses and streams one WorkflowStep-like action per event to the
@@ -16,28 +16,16 @@ let indicatorEl: HTMLElement | null = null;
 
 // The in-progress text fill (one field edited at a time), flushed on idle / blur.
 let pending: { selector: string; label?: string; value: string } | null = null;
+let pendingEl: Element | null = null;
 let pendingTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function isRecording(): boolean {
   return recording;
 }
 
-function contextAlive(): boolean {
-  try {
-    return Boolean(chrome.runtime?.id);
-  } catch {
-    return false;
-  }
-}
-
 function send(step: RecordedStep): void {
-  if (!contextAlive()) {
-    stopRecording();
-    return;
-  }
-  void sendRuntimeMessage({ type: MESSAGE_TYPES.ACTION_RECORDED, payload: { step } }).catch(() =>
-    stopRecording()
-  );
+  // A recorded step is terminal, so an orphaned context tears recording down.
+  notify({ type: MESSAGE_TYPES.ACTION_RECORDED, payload: { step } }, stopRecording);
 }
 
 function trimmedText(el: Element): string {
@@ -82,6 +70,7 @@ function actionable(start: Element): Element | null {
 
 function flushPending(): void {
   clearTimeout(pendingTimer);
+  pendingEl = null;
   if (!pending) return;
   const p = pending;
   pending = null;
@@ -123,9 +112,20 @@ function onInput(e: Event): void {
     t instanceof HTMLTextAreaElement;
   if (!isText) return;
   const el = t as HTMLInputElement | HTMLTextAreaElement;
-  const selector = safeSelector(el);
-  const label = safeLabel(el);
-  pending = label ? { selector, label, value: el.value } : { selector, value: el.value };
+  // The selector and label are invariant while typing into the SAME field, so
+  // recompute them only when a new field is focused. Each rebuild runs
+  // buildCssSelector (whole-document querySelectorAll uniqueness checks) and
+  // detectField (which builds the selector a SECOND time just to read the
+  // label) — pure waste to repeat on every keystroke. Same field → only the
+  // value changes.
+  if (el === pendingEl && pending !== null) {
+    pending.value = el.value;
+  } else {
+    pendingEl = el;
+    const selector = safeSelector(el);
+    const label = safeLabel(el);
+    pending = label ? { selector, label, value: el.value } : { selector, value: el.value };
+  }
   clearTimeout(pendingTimer);
   pendingTimer = setTimeout(flushPending, 500);
 }

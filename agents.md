@@ -31,7 +31,11 @@ src/
 ├── background/
 │   └── service-worker.ts   # sidePanel behavior, message hub, script execution, locator-match counting
 ├── content/
-│   └── picker.ts           # idle until START_PICK; Shadow-DOM hover overlay + click capture; computes locators
+│   ├── picker.ts           # message router + mode arbiter; picks elements; lazily imports ./tools
+│   ├── context.ts          # contextAlive + notify (terminal) / notifyQuiet (streams)
+│   ├── overlay.ts          # the one Shadow-DOM overlay: rect pool, tones, isOurHost
+│   ├── recorder.ts         # passive interaction recorder
+│   └── tools.ts            # DYNAMIC-import entry for the Tools-tab in-page modes
 ├── sidepanel/
 │   ├── index.html
 │   ├── main.tsx            # React root
@@ -102,7 +106,11 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 - **Service worker is the coordinator** — side-panel UI sends typed messages; the worker performs `chrome.scripting` / `chrome.tabs` operations and storage mutations.
 - **Typed discriminated unions for messages** — `RuntimeMessage` uses a `type` field; validate with type guards before handling.
 - **Business logic in `shared/`** — `locators.ts` and `faker-data.ts` are PURE and unit-testable; keep components thin.
+- **The one carve-out from that purity rule** — `shared/tools/bypass.ts` MUTATES the DOM, and `field-detect.ts` reads it. They stay chrome-free and take their root (and, for bypass, a `BypassEnv` for the two reads needing a layout engine) as arguments, so happy-dom still drives them. Injecting the environment rather than reaching for globals is what keeps them testable — follow that shape rather than adding more DOM-touching modules to `shared/`.
 - **Content script bridges only** — `picker.ts` handles DOM highlight/capture and delegates locator computation to `shared/locators.ts`; no app state lives there.
+- **One in-page mode at a time** — every mode transition goes through `enterMode` in `picker.ts`, which stops the outgoing mode first. Never add a pairwise `if (otherModeActive) return` guard; they do not scale. The **arbiter** owns the page cursor, not the mode.
+- **Streams use `notifyQuiet`, terminal messages use `notify`** (`src/content/context.ts`). A panel-addressed message can fail to be answered when the panel is closed; `notify` treats that as "we are orphaned, tear down", which is right for a single pick but would kill a hover mode on its first frame.
+- **Keep the Tools chunk lazy** — `picker.ts` parses on every http/https page load, so the Tools modes sit behind `import('./tools')`. Nothing reachable from `src/shared/tools/*` may also be reachable from `picker.ts`'s _static_ graph. `tests/build/bundle-placement.test.ts` enforces this against `dist/`.
 - **Shadow DOM for injected UI** — the picker's highlight overlay must not pollute host-page styles.
 - **Side panel over popup** — the panel persists while the user interacts with the page (required for element picking).
 
@@ -111,7 +119,9 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 | File                               | Purpose                                                                        |
 | ---------------------------------- | ------------------------------------------------------------------------------ |
 | `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting |
-| `src/content/picker.ts`            | Hover-highlight + click-capture element picker                                 |
+| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader            |
+| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                     |
+| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                    |
 | `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting              |
 | `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                            |
 | `src/shared/messages.ts`           | `RuntimeMessage` union, `sendMessage` helper, type guards                      |
@@ -132,6 +142,7 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 
 - No `eval()` / `new Function()` in extension code — **except** the one sanctioned site below.
 - **Sanctioned exception — the script runner:** the Execute JS Script tool runs user-provided code in the page's MAIN world via `chrome.scripting.executeScript({ target, world: 'MAIN', func: runUserScript, args: [code] })`. The injected `runUserScript(code)` calls `new Function(code)()`. This is the extension's purpose and runs under the **page's** CSP — exactly like a `javascript:` bookmarklet — never under the extension's CSP. Extension pages keep `script-src 'self'`. It is isolated to that one injected function and suppressed with an inline `// eslint-disable-next-line @typescript-eslint/no-implied-eval` and a justifying comment. **Do not widen this beyond the runner, and do not "fix" it away.**
+- **`world: 'MAIN'` is NOT the same as the exception.** `BYPASS_XRM` also injects into the MAIN world (`executeScript({ world: 'MAIN', func: xrmBypass })`) because the Dynamics `Xrm` client API only exists in the page's own realm. It passes a **serialized function, not a code string**, and uses neither `eval` nor `new Function` — so it does not widen the sanctioned exception above. The **Region emulator** (`APPLY_REGION` / `RESTORE_REGION` / `GET_REGION_STATE`, funcs `applyRegionShim` / `restoreRegionShim` / `regionStateShim`) is the same shape: MAIN-world `func` injections that override `Date` / `Intl` / `navigator` to emulate a region, passing real functions, never strings. Any future MAIN-world injection must clear the same bar: a real `func`, never a string.
 - Validate all messages and stored data with type guards before processing.
 - Block script injection / picking on `chrome://`, Chrome Web Store, and `about:` URLs.
 - Shadow DOM isolation for the picker overlay.
@@ -164,6 +175,16 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 
 1. Create `src/sidepanel/components/MyTab.tsx` (named export, explicit return type, thin — delegate to `shared/`).
 2. Register it in `src/sidepanel/App.tsx` tab routing.
+
+### Adding a Tools sub-tool
+
+1. Pure logic in `src/shared/tools/<tool>.ts` — chrome-free and `Document`-injectable so happy-dom can drive it. Never import it from `picker.ts`'s static graph.
+2. In-page bridge in `src/content/tools/<tool>.ts`, registered in the `HANDLERS` map in `src/content/tools.ts` (only if it needs an interactive mode).
+3. UI in `src/sidepanel/components/tools/<Tool>Tool.tsx`, rendered by `ToolsTab` inside `ToolShell` — which already owns the title, the standing limits and stop-on-unmount.
+4. Flip `isReady: true` on its entry in `src/shared/tools.ts`, and add any new `PageMode` member to `src/shared/types.ts`.
+5. Tests in `tests/shared/tools/<tool>.test.ts`. `src/content/*` is not unit-testable — happy-dom has no layout engine (`getBoundingClientRect()` returns zeros).
+
+Imports from these nested directories must use `@/` aliases (`@/content/overlay`), never `../`.
 
 ## Testing
 

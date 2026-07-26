@@ -22,6 +22,7 @@ const chromeMock = {
     onMessage: makeEvent(),
     onInstalled: makeEvent(),
     onStartup: makeEvent(),
+    onConnect: makeEvent(),
     sendMessage: vi.fn(),
     getURL: (path: string): string => `chrome-extension://test/${path}`,
     getManifest: () => ({ content_scripts: [{ js: ['assets/picker.js'] }] }),
@@ -50,18 +51,19 @@ const chromeMock = {
   },
   tabs: {
     query: vi.fn(async () => [{ id: 1, url: 'https://example.com', active: true }]),
-    sendMessage: vi.fn(async () => undefined),
+    // Typed as unknown, not undefined, so a test can mockResolvedValueOnce the
+    // reply a content script would send back through askTab.
+    sendMessage: vi.fn(async (): Promise<unknown> => undefined),
+    reload: vi.fn(async () => undefined),
   },
   sidePanel: {
     setPanelBehavior: vi.fn(async () => undefined),
     setOptions: vi.fn(async () => undefined),
   },
   scripting: {
-    executeScript: vi.fn(
-      async (): Promise<{ result?: { ok: boolean; count?: number; error?: string } }[]> => [
-        { result: { ok: true } },
-      ]
-    ),
+    executeScript: vi.fn(async (): Promise<{ result?: unknown }[]> => [{ result: { ok: true } }]),
+    insertCSS: vi.fn(async () => undefined),
+    removeCSS: vi.fn(async () => undefined),
   },
 };
 

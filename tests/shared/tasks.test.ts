@@ -23,6 +23,7 @@ import {
   rootId,
   runTimeRange,
   tagColorClass,
+  tagsByDay,
   toLocalInputValue,
   totalsByDay,
 } from '@/shared/tasks';
@@ -416,6 +417,41 @@ describe('dayTags', () => {
       }),
     ];
     expect(dayTags(entries, '2026-07-20')).toEqual(['My Company']);
+  });
+});
+
+describe('tagsByDay', () => {
+  it('maps each day to distinct sorted tags in one pass, matching dayTags', () => {
+    const entries = [
+      makeEntry({
+        tag: 'My Company',
+        intervals: [{ start: at(2026, 6, 20, 9, 0), end: at(2026, 6, 20, 10, 0) }],
+      }),
+      makeEntry({
+        tag: 'Client X',
+        intervals: [{ start: at(2026, 6, 20, 11, 0), end: at(2026, 6, 20, 12, 0) }],
+      }),
+      makeEntry({
+        tag: 'My Company', // duplicate on the same day → collapses
+        intervals: [{ start: at(2026, 6, 20, 13, 0), end: at(2026, 6, 20, 14, 0) }],
+      }),
+      makeEntry({
+        tag: 'Client X',
+        intervals: [{ start: at(2026, 6, 19, 9, 0), end: at(2026, 6, 19, 10, 0) }],
+      }),
+      makeEntry({
+        tag: '   ', // blank tag → contributes no key
+        intervals: [{ start: at(2026, 6, 18, 9, 0), end: at(2026, 6, 18, 10, 0) }],
+      }),
+    ];
+    const byDay = tagsByDay(entries);
+    expect(byDay.get('2026-07-20')).toEqual(['Client X', 'My Company']); // distinct + sorted
+    expect(byDay.get('2026-07-19')).toEqual(['Client X']);
+    expect(byDay.get('2026-07-18')).toBeUndefined(); // blank-only day → caller uses []
+    // Equivalent to calling dayTags per day (the per-cell call it replaces).
+    for (const key of ['2026-07-20', '2026-07-19', '2026-07-18']) {
+      expect(byDay.get(key) ?? []).toEqual(dayTags(entries, key));
+    }
   });
 });
 

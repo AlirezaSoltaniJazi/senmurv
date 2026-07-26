@@ -1,18 +1,12 @@
 import type { ReactElement } from 'react';
-import {
-  dayKey,
-  dayLabel,
-  dayTags,
-  formatDurationShort,
-  monthLabel,
-  tagColorClass,
-} from '@/shared/tasks';
+import { dayKey, dayLabel, formatDurationShort, monthLabel, tagColorClass } from '@/shared/tasks';
 import type { DayBlocks, MonthGrid } from '@/shared/tasks';
 import type { TimeEntry } from '@/shared/types';
 import { TaskBlockView } from './TaskBlockView';
 
 interface TaskCalendarViewProps {
-  entries: TimeEntry[];
+  /** Distinct tags per "YYYY-MM-DD", precomputed once by the parent. */
+  tagsPerDay: Map<string, string[]>;
   dayBlocks: DayBlocks[];
   grid: MonthGrid;
   totals: Map<string, number>;
@@ -39,7 +33,7 @@ const MAX_CELL_DOTS = 4;
 
 /** Month grid of per-day totals; clicking a day reveals that day's task list. */
 export function TaskCalendarView({
-  entries,
+  tagsPerDay,
   dayBlocks,
   grid,
   totals,
@@ -86,7 +80,7 @@ export function TaskCalendarView({
       <div className="calendar-grid">
         {cells.map((cell) => {
           const total = totals.get(cell.key) ?? 0;
-          const cellTags = dayTags(entries, cell.key);
+          const cellTags = tagsPerDay.get(cell.key) ?? [];
           const classes = ['calendar-cell'];
           if (!cell.inMonth) classes.push('other-month');
           if (cell.key === todayKey) classes.push('today');

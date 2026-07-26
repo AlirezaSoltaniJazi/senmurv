@@ -3,7 +3,6 @@ import type { ChangeEvent, DragEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { decodeBookmarklet } from '@/shared/bookmarklet';
-import { formatJs } from '@/shared/format-js';
 import { isFillScript, parseFillScript } from '@/shared/generators';
 import {
   applyScriptImport,
@@ -15,7 +14,7 @@ import {
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
 import { fieldToStep, isWorkflowScript, parseWorkflowScript } from '@/shared/workflow';
 import type { RecorderSeed } from '@/shared/workflow';
-import type { Result, SavedScript } from '@/shared/types';
+import type { Result, SavedScript, ScriptSeed } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 interface Props {
@@ -23,13 +22,21 @@ interface Props {
   onCustomize: (seed: RecorderSeed) => void;
   /** Bumped by the header refresh button to re-pull data from storage. */
   reloadNonce: number;
+  /** A script handed over from another tool (e.g. Tools → Bypass), loaded once. */
+  seed: ScriptSeed | null;
+  onSeedConsumed: () => void;
 }
 
 function customizable(code: string): boolean {
   return isFillScript(code) || isWorkflowScript(code);
 }
 
-export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
+export function ScriptsTab({
+  onCustomize,
+  reloadNonce,
+  seed,
+  onSeedConsumed,
+}: Props): ReactElement {
   const [scripts, setScripts] = useState<SavedScript[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [name, setName] = useState('');
@@ -56,6 +63,18 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
       cancelled = true;
     };
   }, [reloadNonce]);
+
+  // One-shot seed from Tools → Bypass (loads into the editor, then clears).
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!seed) return;
+    setEditingId(null);
+    setName(seed.name);
+    setCode(seed.code);
+    setStatus('Loaded from Tools — review, then Save or Run.');
+    onSeedConsumed();
+  }, [seed, onSeedConsumed]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   function resetEditor(): void {
     setEditingId(null);
@@ -174,10 +193,17 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
     setStatus('Bookmarklet decoded into the editor.');
   }
 
-  function formatCode(): void {
+  async function formatCode(): Promise<void> {
     if (!code.trim()) return;
-    setCode(formatJs(code));
-    setStatus('Formatted.');
+    try {
+      // Lazy-load js-beautify (~106 KB) only when the user actually formats, so
+      // it stays out of the Scripts-tab open payload.
+      const { formatJs } = await import('@/shared/format-js');
+      setCode(formatJs(code));
+      setStatus('Formatted.');
+    } catch (err) {
+      setError(`Could not format: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }
 
   function toggleSelect(id: string): void {
@@ -436,7 +462,7 @@ export function ScriptsTab({ onCustomize, reloadNonce }: Props): ReactElement {
         <button type="button" onClick={resetEditor}>
           New
         </button>
-        <button type="button" onClick={formatCode}>
+        <button type="button" onClick={() => void formatCode()}>
           Format
         </button>
         <button type="button" onClick={decode}>

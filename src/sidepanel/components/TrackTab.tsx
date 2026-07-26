@@ -13,6 +13,7 @@ import {
   isRunning,
   rootId,
   tagColorClass,
+  tagsByDay,
   totalsByDay,
 } from '@/shared/tasks';
 import type { Result, TimeEntry } from '@/shared/types';
@@ -222,6 +223,9 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
   const dayBlocks = buildDayBlocks(entries, now);
   const grid = buildMonthGrid(cursor.year, cursor.month);
   const totals = totalsByDay(entries, now);
+  // One pass for the whole month, instead of the calendar re-scanning every
+  // entry for each of its 42 cells.
+  const tagsPerDay = tagsByDay(entries);
   const tags = distinctTags(entries);
   const titles = distinctTitles(entries);
 
@@ -324,7 +328,7 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
         />
       ) : (
         <TaskCalendarView
-          entries={entries}
+          tagsPerDay={tagsPerDay}
           dayBlocks={dayBlocks}
           grid={grid}
           totals={totals}

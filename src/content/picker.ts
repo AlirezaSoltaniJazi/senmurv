@@ -1,66 +1,194 @@
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
-import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
-import type { RuntimeMessage } from '@/shared/messages';
+import { isRuntimeMessage } from '@/shared/messages';
+import type {
+  LocatorKind,
+  LocatorSet,
+  MatchResult,
+  MeasureMode,
+  PageMode,
+  Result,
+} from '@/shared/types';
+import { contextAlive, notify } from './context';
+import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
+import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
+import { rafThrottle } from './raf-throttle';
+import type { RafThrottled } from './raf-throttle';
 import { isRecording, startRecording, stopRecording } from './recorder';
 
-type PickMode = 'locator' | 'fields';
+// The page-side router. Idle until the side panel asks for a mode, then it owns
+// exactly one in-page mode at a time (see `enterMode`) and reports back.
+//
+// The heavier Tools-tab modes live in ./tools, pulled in by a dynamic import on
+// first use so they never parse on ordinary page loads.
 
-// Idle until the side panel asks us to pick (START_PICK). Then we highlight the
-// hovered element and capture one click, compute its locators, and report back.
+declare global {
+  interface Window {
+    /** Set once per isolated world so a re-injection cannot register a 2nd listener. */
+    __senmurvPickerLoaded?: boolean;
+  }
+}
 
-const HOST_TAG = 'senmurv-picker-overlay';
+// ---------------------------------------------------------------------------
+// Lazy Tools chunk
+// ---------------------------------------------------------------------------
 
-let active = false;
-let mode: PickMode = 'locator';
-let hostEl: HTMLElement | null = null;
-let boxEl: HTMLDivElement | null = null;
-let labelEl: HTMLDivElement | null = null;
+let toolsModule: Promise<typeof import('./tools')> | null = null;
+
+/**
+ * Load (once) the Tools in-page modes. CRXJS lifts this dynamic import into
+ * `web_accessible_resources` automatically — never hardcode the chunk name,
+ * every filename is content-hashed.
+ */
+function loadTools(): Promise<typeof import('./tools')> {
+  toolsModule ??= import('./tools');
+  return toolsModule;
+}
+
+function errorText(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Run `fn` against the lazily-loaded Tools module and wrap it in a `Result`, so
+ * a chunk-load failure or a throw inside a tool reaches the panel as a message
+ * rather than an unanswered request.
+ */
+async function withTools<T>(fn: (tools: typeof import('./tools')) => T): Promise<Result<T>> {
+  try {
+    return { ok: true, value: fn(await loadTools()) };
+  } catch (err) {
+    return { ok: false, error: errorText(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Mode arbiter
+// ---------------------------------------------------------------------------
+
+/**
+ * Exactly one mode runs at a time. Every transition goes through `enterMode`,
+ * which stops the outgoing mode before starting the incoming one — replacing
+ * the pairwise guards that could not scale past two modes, and giving the
+ * page cursor a single owner (two owners interleaving strand a crosshair).
+ */
+let pageMode: PageMode = 'idle';
 let previousCursor = '';
+let cursorApplied = false;
 
-function ensureOverlay(): void {
-  if (hostEl) return;
-  hostEl = document.createElement(HOST_TAG);
-  hostEl.style.cssText =
-    'all: initial; position: fixed; inset: 0; z-index: 2147483647; pointer-events: none;';
-  const shadow = hostEl.attachShadow({ mode: 'open' });
-  const style = document.createElement('style');
-  style.textContent = `
-    .box {
-      position: fixed; pointer-events: none; box-sizing: border-box;
-      border: 2px solid #2d7ff9; background: rgba(45, 127, 249, 0.15);
-      border-radius: 2px; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.6);
-      transition: all 40ms ease-out;
+const MODE_CURSOR: Partial<Record<PageMode, string>> = {
+  'pick-locator': 'crosshair',
+  'pick-fields': 'crosshair',
+  measure: 'crosshair',
+  color: 'crosshair',
+  font: 'crosshair',
+  assert: 'crosshair',
+  stack: 'crosshair',
+  validation: 'crosshair',
+};
+
+function applyCursor(mode: PageMode): void {
+  const cursor = MODE_CURSOR[mode];
+  if (cursor === undefined) return;
+  if (!cursorApplied) {
+    previousCursor = document.documentElement.style.cursor;
+    cursorApplied = true;
+  }
+  document.documentElement.style.cursor = cursor;
+}
+
+function restoreCursor(): void {
+  if (!cursorApplied) return;
+  document.documentElement.style.cursor = previousCursor;
+  previousCursor = '';
+  cursorApplied = false;
+}
+
+function isToolMode(mode: PageMode): boolean {
+  return (
+    mode === 'measure' ||
+    mode === 'color' ||
+    mode === 'font' ||
+    mode === 'taborder' ||
+    mode === 'assert' ||
+    mode === 'stack' ||
+    mode === 'validation'
+  );
+}
+
+/** Tear down whatever is running. Safe to call when already idle. */
+function stopCurrentMode(): void {
+  const outgoing = pageMode;
+  pageMode = 'idle';
+  if (outgoing === 'pick-locator' || outgoing === 'pick-fields') {
+    stopPickListeners();
+  } else if (outgoing === 'record') {
+    stopRecording();
+  } else if (outgoing === 'match') {
+    stopMatch();
+  } else if (isToolMode(outgoing)) {
+    // The chunk is necessarily resolved — we could not have entered the mode
+    // without it — so this settles immediately.
+    void loadTools().then((tools) => tools.stopMode(outgoing));
+  }
+  restoreCursor();
+}
+
+/** Switch to `next`, stopping the current mode first. Synchronous modes only. */
+function enterMode(next: PageMode): void {
+  if (pageMode === next) return;
+  stopCurrentMode();
+  if (next === 'idle') return;
+  pageMode = next;
+  applyCursor(next);
+  if (next === 'pick-locator' || next === 'pick-fields') {
+    startPickListeners();
+  } else if (next === 'record') {
+    startRecording();
+  }
+}
+
+/**
+ * Switch to a Tools mode, which needs the lazy chunk first. Re-callable while
+ * already in the mode so the panel can re-configure it (e.g. change the Measure
+ * sub-mode) — the mode's own start() is idempotent.
+ */
+async function enterToolMode(next: PageMode, measureMode?: MeasureMode): Promise<Result<void>> {
+  try {
+    const tools = await loadTools();
+    if (pageMode !== next) {
+      stopCurrentMode();
+      pageMode = next;
+      applyCursor(next);
     }
-    .label {
-      position: fixed; pointer-events: none;
-      font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
-      color: #fff; background: #2d7ff9; padding: 2px 6px; border-radius: 3px;
-      white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
-    }
-  `;
-  boxEl = document.createElement('div');
-  boxEl.className = 'box';
-  labelEl = document.createElement('div');
-  labelEl.className = 'label';
-  shadow.append(style, boxEl, labelEl);
-  document.documentElement.appendChild(hostEl);
+    tools.startMode(next, measureMode);
+    return { ok: true, value: undefined };
+  } catch (err) {
+    pageMode = 'idle';
+    restoreCursor();
+    return { ok: false, error: `Could not load the Tools module: ${errorText(err)}` };
+  }
 }
 
-function removeOverlay(): void {
-  hostEl?.remove();
-  hostEl = null;
-  boxEl = null;
-  labelEl = null;
+/**
+ * Enter (or refresh) the locator-match highlight mode. Re-callable while already
+ * in it so the panel can update the drawing live as the query changes; an
+ * invalid selector leaves the mode idle and reports why.
+ */
+function enterMatchMode(query: string, kind: LocatorKind): Result<MatchResult> {
+  if (pageMode !== 'match') {
+    stopCurrentMode();
+    pageMode = 'match';
+  }
+  const res = startMatch(query, kind);
+  if (!res.ok) pageMode = 'idle';
+  return res;
 }
 
-/** The real page element at a point (our overlay is pointer-events:none, so it's skipped). */
-function targetAt(x: number, y: number): Element | null {
-  const el = document.elementFromPoint(x, y);
-  if (!el || el === hostEl || el.tagName.toLowerCase() === HOST_TAG) return null;
-  return el;
-}
+// ---------------------------------------------------------------------------
+// Element picking (locator + field modes)
+// ---------------------------------------------------------------------------
 
 function describe(el: Element): string {
   const id = el.getAttribute('id');
@@ -68,51 +196,27 @@ function describe(el: Element): string {
 }
 
 function highlight(el: Element): void {
-  if (!boxEl || !labelEl) return;
   const rect = el.getBoundingClientRect();
-  boxEl.style.left = `${rect.left}px`;
-  boxEl.style.top = `${rect.top}px`;
-  boxEl.style.width = `${rect.width}px`;
-  boxEl.style.height = `${rect.height}px`;
-  labelEl.textContent = describe(el);
-  labelEl.style.left = `${rect.left}px`;
-  labelEl.style.top = `${rect.top > 22 ? rect.top - 22 : rect.bottom + 4}px`;
+  drawBoxes([
+    {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      label: describe(el),
+    },
+  ]);
+}
+
+/** Terminal-message teardown: an invalidated extension context means stop everything. */
+function bail(): void {
+  enterMode('idle');
+  destroyOverlay();
 }
 
 function onMouseMove(e: MouseEvent): void {
   const el = targetAt(e.clientX, e.clientY);
   if (el) highlight(el);
-}
-
-function flashBox(): void {
-  if (!boxEl) return;
-  const previous = boxEl.style.borderColor;
-  boxEl.style.borderColor = '#3fb950';
-  setTimeout(() => {
-    if (boxEl) boxEl.style.borderColor = previous;
-  }, 200);
-}
-
-/** Is the extension context still valid? (False for an orphaned content script.) */
-function contextAlive(): boolean {
-  try {
-    return Boolean(chrome.runtime?.id);
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Fire-and-forget message. After the extension reloads/updates, this content
- * script lingers in the page with an invalidated context — sending then throws
- * "Extension context invalidated". Swallow it and tear the picker down quietly.
- */
-function notify(message: RuntimeMessage): void {
-  if (!contextAlive()) {
-    stopPicking();
-    return;
-  }
-  void sendRuntimeMessage(message).catch(() => stopPicking());
 }
 
 function onClick(e: MouseEvent): void {
@@ -121,69 +225,242 @@ function onClick(e: MouseEvent): void {
   e.stopImmediatePropagation();
   const el = targetAt(e.clientX, e.clientY);
 
-  if (mode === 'fields') {
+  if (pageMode === 'pick-fields') {
     // Continuous: report each clicked field and stay active for the next.
     if (el) {
-      notify({
-        type: MESSAGE_TYPES.FIELD_PICKED,
-        payload: { field: detectField(el, document) },
-      });
-      flashBox();
+      notify(
+        { type: MESSAGE_TYPES.FIELD_PICKED, payload: { field: detectField(el, document) } },
+        bail
+      );
+      flashOverlay();
     }
     return;
   }
 
-  stopPicking();
+  enterMode('idle');
+  destroyOverlay();
   if (el) {
-    notify({ type: MESSAGE_TYPES.ELEMENT_PICKED, payload: buildLocatorSet(el, document) });
+    notify({ type: MESSAGE_TYPES.ELEMENT_PICKED, payload: buildLocatorSet(el, document) }, bail);
   } else {
-    notify({ type: MESSAGE_TYPES.PICK_CANCELLED });
+    notify({ type: MESSAGE_TYPES.PICK_CANCELLED }, bail);
   }
 }
 
 function onKeyDown(e: KeyboardEvent): void {
-  if (e.key === 'Escape') {
-    e.preventDefault();
-    stopPicking();
-    notify({ type: MESSAGE_TYPES.PICK_CANCELLED });
-  }
+  if (e.key !== 'Escape') return;
+  e.preventDefault();
+  enterMode('idle');
+  destroyOverlay();
+  notify({ type: MESSAGE_TYPES.PICK_CANCELLED }, bail);
 }
 
-function startPicking(nextMode: PickMode): void {
-  if (isRecording()) return; // picking and recording are mutually exclusive
-  mode = nextMode;
-  if (active) return;
-  active = true;
-  ensureOverlay();
-  previousCursor = document.documentElement.style.cursor;
-  document.documentElement.style.cursor = 'crosshair';
-  document.addEventListener('mousemove', onMouseMove, true);
+let pickHover: RafThrottled | null = null;
+
+function startPickListeners(): void {
+  pickHover = rafThrottle(onMouseMove);
+  document.addEventListener('mousemove', pickHover.handler, true);
   document.addEventListener('click', onClick, true);
   document.addEventListener('keydown', onKeyDown, true);
 }
 
-function stopPicking(): void {
-  if (!active) return;
-  active = false;
-  document.removeEventListener('mousemove', onMouseMove, true);
+function stopPickListeners(): void {
+  if (pickHover) {
+    document.removeEventListener('mousemove', pickHover.handler, true);
+    pickHover.cancel();
+    pickHover = null;
+  }
   document.removeEventListener('click', onClick, true);
   document.removeEventListener('keydown', onKeyDown, true);
-  document.documentElement.style.cursor = previousCursor;
-  removeOverlay();
+  destroyOverlay();
 }
 
-chrome.runtime.onMessage.addListener((message: unknown) => {
-  if (!isRuntimeMessage(message)) return false;
-  if (message.type === MESSAGE_TYPES.START_PICK) {
-    startPicking('locator');
-  } else if (message.type === MESSAGE_TYPES.START_PICK_FIELDS) {
-    startPicking('fields');
-  } else if (message.type === MESSAGE_TYPES.CANCEL_PICK) {
-    stopPicking();
-  } else if (message.type === MESSAGE_TYPES.START_RECORD) {
-    if (!active) startRecording();
-  } else if (message.type === MESSAGE_TYPES.STOP_RECORD) {
-    stopRecording();
+// ---------------------------------------------------------------------------
+// Highlight-an-element (driven from a side-panel findings list)
+// ---------------------------------------------------------------------------
+
+function highlightSelector(selector: string | null): Result<void> {
+  if (selector === null) {
+    clearOverlay();
+    return { ok: true, value: undefined };
   }
-  return false;
-});
+  try {
+    const el = document.querySelector(selector);
+    if (!el) return { ok: false, error: 'No element matches that selector.' };
+    // 'instant' overrides a page-wide `scroll-behavior: smooth`, which would
+    // otherwise leave us drawing the box at the pre-scroll position.
+    el.scrollIntoView({ block: 'center', inline: 'nearest', behavior: 'instant' });
+    const rect = el.getBoundingClientRect();
+    drawBoxes([
+      {
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+        height: rect.height,
+        variant: 'outline',
+        tone: 'warn',
+      },
+    ]);
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorText(err) };
+  }
+}
+
+/**
+ * Resolve a fragile selector to its FIRST match and return that element's
+ * ranked locators (the hardened replacement) plus the total match count. The
+ * Selector Hardener scores the input string itself in the panel; this supplies
+ * the robust rewrite, which only the live DOM + `buildLocatorSet` can produce.
+ */
+function resolveSelector(
+  query: string,
+  kind: LocatorKind
+): Result<{ set: LocatorSet; count: number }> {
+  try {
+    let el: Node | null;
+    let count: number;
+    if (kind === 'xpath') {
+      const snapshot = document.evaluate(query, document, null, 7, null);
+      count = snapshot.snapshotLength;
+      el = count > 0 ? snapshot.snapshotItem(0) : null;
+    } else {
+      const list = document.querySelectorAll(query);
+      count = list.length;
+      el = list[0] ?? null;
+    }
+    if (!(el instanceof Element)) {
+      return { ok: false, error: 'No element matches that selector on this page.' };
+    }
+    return { ok: true, value: { set: buildLocatorSet(el, document), count } };
+  } catch (err) {
+    return { ok: false, error: errorText(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Message router
+// ---------------------------------------------------------------------------
+
+function register(): void {
+  chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+    if (!isRuntimeMessage(message)) return false;
+
+    switch (message.type) {
+      case MESSAGE_TYPES.START_PICK:
+        if (!isRecording()) enterMode('pick-locator');
+        return false;
+
+      case MESSAGE_TYPES.START_PICK_FIELDS:
+        if (!isRecording()) enterMode('pick-fields');
+        return false;
+
+      case MESSAGE_TYPES.CANCEL_PICK:
+        if (pageMode === 'pick-locator' || pageMode === 'pick-fields') enterMode('idle');
+        return false;
+
+      // Picking and recording stay mutually exclusive, as they were before the
+      // arbiter: whichever is already running wins. Switching *within* the pick
+      // modes is now handled correctly, which is what the arbiter changed.
+      case MESSAGE_TYPES.START_RECORD:
+        if (pageMode !== 'pick-locator' && pageMode !== 'pick-fields') enterMode('record');
+        return false;
+
+      case MESSAGE_TYPES.STOP_RECORD:
+        if (pageMode === 'record') enterMode('idle');
+        return false;
+
+      // Forces the lazy Tools chunk to load and answers once it has, so the
+      // panel can tell "page unreachable" from "chunk failed to load".
+      case MESSAGE_TYPES.TOOL_PING:
+        loadTools()
+          .then(() => sendResponse({ ok: true, value: { ready: true } }))
+          .catch((err) => sendResponse({ ok: false, error: errorText(err) }));
+        return true;
+
+      case MESSAGE_TYPES.START_TOOL_MODE:
+        void enterToolMode(message.payload.mode, message.payload.measureMode).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.STOP_TOOL_MODE: {
+        const { mode } = message.payload;
+        if (mode === 'all' || pageMode === mode) enterMode('idle');
+        // A11y is request/response, not an arbiter mode, so enterMode('idle')
+        // does not reach its retained scan elements. On a full teardown release
+        // them too — but only if the Tools chunk is already loaded (`toolsModule`
+        // set); never force it in just to reset.
+        if (mode === 'all' && toolsModule) void loadTools().then((t) => t.resetA11y());
+        sendResponse({ ok: true, value: undefined });
+        return true;
+      }
+
+      case MESSAGE_TYPES.HIGHLIGHT_ELEMENT:
+        sendResponse(highlightSelector(message.payload.selector));
+        return true;
+
+      case MESSAGE_TYPES.HIGHLIGHT_MATCHES: {
+        const { query, kind } = message.payload;
+        sendResponse(enterMatchMode(query, kind));
+        return true;
+      }
+
+      case MESSAGE_TYPES.SCROLL_TO_MATCH:
+        sendResponse(scrollToMatch(message.payload.index));
+        return true;
+
+      case MESSAGE_TYPES.RESOLVE_SELECTOR: {
+        const { query, kind } = message.payload;
+        sendResponse(resolveSelector(query, kind));
+        return true;
+      }
+
+      case MESSAGE_TYPES.BYPASS_PAGE: {
+        const { options, shouldWatch } = message.payload;
+        void withTools((tools) => tools.bypassPage(options, shouldWatch)).then(sendResponse);
+        return true;
+      }
+
+      case MESSAGE_TYPES.RESTORE_PAGE:
+        void withTools((tools) => tools.restorePage()).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.GET_BYPASS_STATE:
+        void withTools((tools) => tools.bypassState()).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.SCAN_TAB_ORDER:
+        void withTools((tools) => tools.scanTabOrder()).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.RUN_A11Y_SCAN: {
+        const { levels } = message.payload;
+        void withTools((tools) => tools.runA11yScan(levels)).then(sendResponse);
+        return true;
+      }
+
+      case MESSAGE_TYPES.GET_STOP_LOCATORS: {
+        const { source, index } = message.payload;
+        void withTools((tools) =>
+          source === 'a11y' ? tools.a11yLocators(index) : tools.stopLocators(index)
+        ).then(sendResponse);
+        return true;
+      }
+
+      default:
+        // Everything else is addressed to the side panel or the worker.
+        return false;
+    }
+  });
+
+  // Defense in depth for the panel-close teardown (whose primary path is the
+  // worker's port.onDisconnect): a bfcache eviction or SPA soft-navigation can
+  // otherwise leave a mode's listeners and the crosshair cursor stranded. On a
+  // hard navigation this world is discarded anyway, so tearing down here is free.
+  window.addEventListener('pagehide', bail);
+}
+
+// A tab that existed before the extension loaded gets the script injected on
+// demand, and that can happen more than once — register only for the first.
+if (!window.__senmurvPickerLoaded && contextAlive()) {
+  window.__senmurvPickerLoaded = true;
+  register();
+}
