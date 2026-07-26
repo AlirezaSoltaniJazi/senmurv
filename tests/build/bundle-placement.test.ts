@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
 /**
  * Guards the Tools tab's delivery mechanism against a silent regression.
@@ -29,13 +29,23 @@ interface BuiltManifest {
 const PICKER_CHUNK_MAX_BYTES = 32 * 1024;
 
 describe.skipIf(!hasBuild)('bundle placement (requires `npm run build`)', () => {
-  const manifest = JSON.parse(
-    readFileSync(path.join(DIST, 'manifest.json'), 'utf8')
-  ) as BuiltManifest;
-  const warResources = (manifest.web_accessible_resources ?? []).flatMap((e) => e.resources ?? []);
-  const assetNames = readdirSync(ASSETS);
-  const toolsChunk = assetNames.find((n) => /^tools-.*\.js$/.test(n));
-  const pickerChunk = assetNames.find((n) => /^picker\.ts-[^l].*\.js$/.test(n));
+  // Read dist/ in a hook, NOT at the top of the describe body: Vitest still runs
+  // a skipped suite's factory during collection, so a top-level read here would
+  // throw ENOENT when dist/ is absent (e.g. `npm test` before a build) instead
+  // of skipping cleanly. Hooks and test bodies do not run for a skipped suite.
+  let warResources: string[] = [];
+  let toolsChunk: string | undefined;
+  let pickerChunk: string | undefined;
+
+  beforeAll(() => {
+    const manifest = JSON.parse(
+      readFileSync(path.join(DIST, 'manifest.json'), 'utf8')
+    ) as BuiltManifest;
+    warResources = (manifest.web_accessible_resources ?? []).flatMap((e) => e.resources ?? []);
+    const assetNames = readdirSync(ASSETS);
+    toolsChunk = assetNames.find((n) => /^tools-.*\.js$/.test(n));
+    pickerChunk = assetNames.find((n) => /^picker\.ts-[^l].*\.js$/.test(n));
+  });
 
   it('emits the Tools modes as their own chunk', () => {
     expect(toolsChunk).toBeDefined();

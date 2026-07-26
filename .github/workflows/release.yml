@@ -91,6 +91,9 @@ jobs:
       - run: npm run lint
       - run: npm run format:check
       - run: npm run typecheck
+      # Build before test so the bundle-placement suite runs against dist/ here
+      # too (it skips when dist/ is absent). npm run package rebuilds below.
+      - run: npm run build
       - run: npm test
 
       - name: Bump version and promote changelog
