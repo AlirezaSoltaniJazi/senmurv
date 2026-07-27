@@ -8,7 +8,7 @@ import {
   MESSAGE_TYPES,
   SUPPORTED_LOCALES,
 } from '@/shared/constants';
-import { ensureFaker } from '@/shared/faker-data';
+import { ensureFaker, getFaker } from '@/shared/faker-data';
 import {
   buildInstruction,
   buildScript,
@@ -18,6 +18,7 @@ import {
   GENERATOR_LABELS,
   generatorsFor,
 } from '@/shared/generators';
+import type { PersonName } from '@/shared/generators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
 import {
@@ -49,18 +50,97 @@ interface Props {
   /** Steps are held in App so they survive switching tabs (this tab unmounts). */
   steps: WorkflowStep[];
   setSteps: Dispatch<SetStateAction<WorkflowStep[]>>;
+  /** Seconds the run popup lingers before auto-closing (baked into built flows). */
+  hudSeconds: number;
 }
 
 type PickTarget = { mode: 'step'; id: string } | { mode: 'adhoc' } | null;
 
 const TARGET_KINDS: StepKind[] = ['fill', 'select', 'check', 'radio', 'clickEl', 'waitEl'];
 
+/** Parse a Number field's digit-count genArg (`"dMIN-MAX"`), else sensible defaults. */
+function parseDigits(genArg: string | undefined): { min: number; max: number } {
+  const m = /^d(\d+)-(\d+)$/.exec(genArg ?? '');
+  return m ? { min: Number(m[1]), max: Number(m[2]) } : { min: 1, max: 5 };
+}
+
+/**
+ * Per-field generator argument controls: digit-count inputs for Number, and
+ * "Sync FName / Sync LName" toggles for Email (which make the email match the
+ * flow's name fields). Shared by the step editor and the Ad-hoc field editor.
+ */
+function GenArgControls({
+  generator,
+  genArg,
+  onChange,
+}: {
+  generator: GeneratorId;
+  genArg: string | undefined;
+  onChange: (genArg: string) => void;
+}): ReactElement | null {
+  if (generator === 'number') {
+    const { min, max } = parseDigits(genArg);
+    const set = (nextMin: number, nextMax: number): void => {
+      const lo = Math.max(1, Math.round(nextMin) || 1);
+      const hi = Math.max(lo, Math.round(nextMax) || lo);
+      onChange(`d${lo}-${hi}`);
+    };
+    return (
+      <span className="genarg" title="Number of digits (min–max)">
+        <span className="field-label">digits</span>
+        <input
+          type="number"
+          min={1}
+          aria-label="Minimum digits"
+          className="genarg-num"
+          value={min}
+          onChange={(e) => set(Number(e.target.value), max)}
+        />
+        <span className="dim">–</span>
+        <input
+          type="number"
+          min={1}
+          aria-label="Maximum digits"
+          className="genarg-num"
+          value={max}
+          onChange={(e) => set(min, Number(e.target.value))}
+        />
+      </span>
+    );
+  }
+  if (generator === 'email') {
+    const arg = genArg ?? '';
+    const hasF = arg.includes('f');
+    const hasL = arg.includes('l');
+    const set = (f: boolean, l: boolean): void => onChange(`${f ? 'f' : ''}${l ? 'l' : ''}`);
+    return (
+      <span className="genarg genarg-sync">
+        <label className="checkbox-inline" title="Use the flow's first name in the email">
+          <input type="checkbox" checked={hasF} onChange={(e) => set(e.target.checked, hasL)} />
+          👤 Sync FName
+        </label>
+        <label className="checkbox-inline" title="Use the flow's last name in the email">
+          <input type="checkbox" checked={hasL} onChange={(e) => set(hasF, e.target.checked)} />
+          🧑 Sync LName
+        </label>
+      </span>
+    );
+  }
+  return null;
+}
+
 /** Current epoch ms — wrapped so clock reads stay outside render-purity analysis. */
 function nowMs(): number {
   return Date.now();
 }
 
-export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): ReactElement {
+export function RecorderTab({
+  seed,
+  onSeedConsumed,
+  steps,
+  setSteps,
+  hudSeconds,
+}: Props): ReactElement {
   const [picking, setPicking] = useState(false);
   const [recording, setRecording] = useState(false);
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
@@ -239,6 +319,18 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   function updateStep(id: string, patch: Partial<WorkflowStep>): void {
     setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
+  // Switching a fill step's generator drops any stale `genArg` — a number's
+  // digit-count / an email's name-sync makes no sense on a different generator.
+  function changeStepGenerator(id: string, generator: GeneratorId): void {
+    setSteps((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const next: WorkflowStep = { ...s, generator };
+        delete next.genArg;
+        return next;
+      })
+    );
+  }
   function setStepIndex(id: string, value: string): void {
     setSteps((prev) =>
       prev.map((s) => {
@@ -291,7 +383,7 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   // Fill generators are emitted as in-page `{random:…}` tokens (see workflow.ts),
   // so a saved/copied flow re-randomizes on every run — no faker needed in the page.
   function buildScriptFor(list: WorkflowStep[]): string {
-    return buildWorkflowScript(list);
+    return buildWorkflowScript(list, { hudSeconds });
   }
   function buildFlow(): string {
     return buildScriptFor(steps);
@@ -377,9 +469,27 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   }
   function changeAdhocType(id: string, fieldType: FieldType): void {
     setAdhocFields((prev) =>
-      prev.map((f) =>
-        f.id === id ? { ...f, fieldType, generator: defaultGenerator(fieldType, f.hint) } : f
-      )
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const next: PickedField = {
+          ...f,
+          fieldType,
+          generator: defaultGenerator(fieldType, f.hint),
+        };
+        delete next.genArg;
+        return next;
+      })
+    );
+  }
+  // As with steps: a new generator invalidates any prior genArg.
+  function changeAdhocGenerator(id: string, generator: GeneratorId): void {
+    setAdhocFields((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const next: PickedField = { ...f, generator };
+        delete next.genArg;
+        return next;
+      })
     );
   }
   function removeAdhoc(id: string): void {
@@ -392,7 +502,14 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
       return;
     }
     await ensureFaker(locale);
-    const code = buildScript(adhocFields.map((f) => buildInstruction(f, locale)));
+    // One person for the whole batch so name-synced fields (First/Last/Full/Email)
+    // agree with each other.
+    const faker = getFaker(locale);
+    const person: PersonName = {
+      firstName: faker.person.firstName(),
+      lastName: faker.person.lastName(),
+    };
+    const code = buildScript(adhocFields.map((f) => buildInstruction(f, locale, person)));
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code },
@@ -496,7 +613,7 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                   </select>
                   <select
                     value={f.generator}
-                    onChange={(e) => patchAdhoc(f.id, { generator: e.target.value as GeneratorId })}
+                    onChange={(e) => changeAdhocGenerator(f.id, e.target.value as GeneratorId)}
                     title="Value generator"
                   >
                     {generatorsFor(f.fieldType).map((g) => (
@@ -505,6 +622,11 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                       </option>
                     ))}
                   </select>
+                  <GenArgControls
+                    generator={f.generator}
+                    genArg={f.genArg}
+                    onChange={(genArg) => patchAdhoc(f.id, { genArg })}
+                  />
                 </div>
                 {f.generator === 'custom' && (
                   <input
@@ -756,7 +878,7 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
               <div className="step-target">
                 <select
                   value={s.generator ?? 'custom'}
-                  onChange={(e) => updateStep(s.id, { generator: e.target.value as GeneratorId })}
+                  onChange={(e) => changeStepGenerator(s.id, e.target.value as GeneratorId)}
                   title="Value source"
                 >
                   {generatorsFor('text').map((g) => (
@@ -772,6 +894,12 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                     title="Tokens resolve at run time: {today}, {today+1}, {random:email}, {random:number:1-99}"
                     value={s.value ?? ''}
                     onChange={(e) => updateStep(s.id, { value: e.target.value })}
+                  />
+                ) : s.generator === 'number' || s.generator === 'email' ? (
+                  <GenArgControls
+                    generator={s.generator}
+                    genArg={s.genArg}
+                    onChange={(genArg) => updateStep(s.id, { genArg })}
                   />
                 ) : (
                   <span className="hint" style={{ flex: 1, alignSelf: 'center' }}>

@@ -1,4 +1,11 @@
-import { FONT_SCALE_MAX, FONT_SCALE_MIN, STORAGE_KEYS } from '@/shared/constants';
+import {
+  FONT_SCALE_MAX,
+  FONT_SCALE_MIN,
+  HUD_SECONDS_DEFAULT,
+  HUD_SECONDS_MAX,
+  HUD_SECONDS_MIN,
+  STORAGE_KEYS,
+} from '@/shared/constants';
 import type {
   Checklist,
   FontSize,
@@ -281,7 +288,7 @@ export async function deleteNote(id: string): Promise<Note[]> {
 // User preferences (single object, not a list)
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_PREFS: Prefs = { fontSize: 'medium' };
+export const DEFAULT_PREFS: Prefs = { fontSize: 'medium', hudSeconds: HUD_SECONDS_DEFAULT };
 
 function isFontSize(value: unknown): value is FontSize {
   return value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge';
@@ -293,9 +300,18 @@ export async function getPrefs(): Promise<Prefs> {
   const raw = result[STORAGE_KEYS.PREFS];
   if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_PREFS };
   const v = raw as Record<string, unknown>;
-  const prefs: Prefs = { fontSize: isFontSize(v.fontSize) ? v.fontSize : DEFAULT_PREFS.fontSize };
+  const prefs: Prefs = {
+    fontSize: isFontSize(v.fontSize) ? v.fontSize : DEFAULT_PREFS.fontSize,
+    hudSeconds: HUD_SECONDS_DEFAULT,
+  };
   if (typeof v.fontScale === 'number' && Number.isFinite(v.fontScale)) {
     prefs.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, v.fontScale));
+  }
+  if (typeof v.hudSeconds === 'number' && Number.isFinite(v.hudSeconds)) {
+    prefs.hudSeconds = Math.min(
+      HUD_SECONDS_MAX,
+      Math.max(HUD_SECONDS_MIN, Math.round(v.hudSeconds))
+    );
   }
   return prefs;
 }

@@ -14,7 +14,8 @@ export type ToolKey =
   | 'validation'
   | 'region'
   | 'harden'
-  | 'jwt';
+  | 'jwt'
+  | 'json';
 
 /**
  * One entry in the Tools launcher. `mode` is the in-page mode the shell tears
@@ -152,6 +153,15 @@ export const TOOLS: readonly ToolDescriptor[] = [
     label: 'JWT decoder',
     blurb:
       'Decodes a JWT’s header and claims and shows how long it is valid. The signature is shown but never verified, and the token stays on your machine.',
+    mode: null,
+    requiresPage: false,
+    isReady: true,
+  },
+  {
+    key: 'json',
+    label: 'JSON Formatter',
+    blurb:
+      'Pretty-prints or minifies JSON and shows it as a collapsible tree. Parsing is strict JSON (no comments or trailing commas); everything stays on your machine.',
     mode: null,
     requiresPage: false,
     isReady: true,

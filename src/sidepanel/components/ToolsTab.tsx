@@ -8,6 +8,7 @@ import { AssertTool } from './tools/AssertTool';
 import { ColorTool } from './tools/ColorTool';
 import { FontTool } from './tools/FontTool';
 import { HardenTool } from './tools/HardenTool';
+import { JsonFormatterTool } from './tools/JsonFormatterTool';
 import { JwtTool } from './tools/JwtTool';
 import { RegionTool } from './tools/RegionTool';
 import { MeasureTool } from './tools/MeasureTool';
@@ -73,6 +74,7 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
         {tool === 'region' && <RegionTool />}
         {tool === 'harden' && <HardenTool />}
         {tool === 'jwt' && <JwtTool />}
+        {tool === 'json' && <JsonFormatterTool />}
       </ToolShell>
     </div>
   );

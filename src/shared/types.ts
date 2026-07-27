@@ -13,6 +13,7 @@ export interface GeneratedData {
   phone: string;
   address: string;
   postalCode: string;
+  region: string;
   email: string;
   dateOfBirth: string;
 }
@@ -660,6 +661,11 @@ export interface Prefs {
    * preset; omitted when the user is on a plain preset.
    */
   fontScale?: number;
+  /**
+   * Seconds the Flow run popup (the in-page HUD) lingers before it auto-closes.
+   * Baked into a saved/run flow at build time. Omitted → the default applies.
+   */
+  hudSeconds?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -692,6 +698,7 @@ export type GeneratorId =
   | 'streetAddress'
   | 'city'
   | 'postalCode'
+  | 'region'
   | 'country'
   | 'company'
   | 'word'
@@ -725,6 +732,12 @@ export interface PickedField {
   hint: string;
   generator: GeneratorId;
   customValue?: string;
+  /**
+   * Per-field generator argument, mirroring the in-page `{random:KIND:ARG}`
+   * token: `"d{min}-{max}"` for a digit-count Number, `f`/`l`/`fl` for an
+   * Email synced to the flow's name fields. Omitted for argument-free generators.
+   */
+  genArg?: string;
   preview?: string;
 }
 

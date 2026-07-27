@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { MESSAGE_TYPES } from '@/shared/constants';
+import { HUD_SECONDS_DEFAULT, MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { ToolKey } from '@/shared/tools';
 import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
@@ -71,6 +71,8 @@ export function App(): ReactElement {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
   const [fontScale, setFontScale] = useState<number | undefined>(undefined);
+  // Seconds the Flow run popup lingers before auto-closing; baked into built flows.
+  const [hudSeconds, setHudSeconds] = useState<number>(HUD_SECONDS_DEFAULT);
 
   const customizeInRecorder = useCallback((s: RecorderSeed) => {
     setRecorderSeed(s);
@@ -100,6 +102,7 @@ export function App(): ReactElement {
       if (!cancelled && res.ok) {
         setFontSize(res.value.fontSize);
         setFontScale(res.value.fontScale);
+        setHudSeconds(res.value.hudSeconds ?? HUD_SECONDS_DEFAULT);
       }
     })();
     return () => {
@@ -107,15 +110,21 @@ export function App(): ReactElement {
     };
   }, []);
 
+  // savePrefs overwrites the whole object, so every SAVE_PREFS payload carries the
+  // full set of preferences — otherwise changing one would wipe the others.
+
   // Choosing a preset clears any manual fine-tune so the preset's zoom applies.
-  const changeFontSize = useCallback((size: FontSize) => {
-    setFontSize(size);
-    setFontScale(undefined);
-    void sendRuntimeMessage({
-      type: MESSAGE_TYPES.SAVE_PREFS,
-      payload: { prefs: { fontSize: size } },
-    });
-  }, []);
+  const changeFontSize = useCallback(
+    (size: FontSize) => {
+      setFontSize(size);
+      setFontScale(undefined);
+      void sendRuntimeMessage({
+        type: MESSAGE_TYPES.SAVE_PREFS,
+        payload: { prefs: { fontSize: size, hudSeconds } },
+      });
+    },
+    [hudSeconds]
+  );
 
   // The slider overrides the preset with an exact zoom (kept alongside fontSize
   // so the nearest preset chip can still show as active).
@@ -124,10 +133,21 @@ export function App(): ReactElement {
       setFontScale(scale);
       void sendRuntimeMessage({
         type: MESSAGE_TYPES.SAVE_PREFS,
-        payload: { prefs: { fontSize, fontScale: scale } },
+        payload: { prefs: { fontSize, fontScale: scale, hudSeconds } },
       });
     },
-    [fontSize]
+    [fontSize, hudSeconds]
+  );
+
+  // Flow popup auto-close delay — preserves the current font preset / fine-tune.
+  const changeHudSeconds = useCallback(
+    (seconds: number) => {
+      setHudSeconds(seconds);
+      const prefs: Prefs = { fontSize, hudSeconds: seconds };
+      if (fontScale !== undefined) prefs.fontScale = fontScale;
+      void sendRuntimeMessage({ type: MESSAGE_TYPES.SAVE_PREFS, payload: { prefs } });
+    },
+    [fontSize, fontScale]
   );
 
   return (
@@ -184,6 +204,7 @@ export function App(): ReactElement {
               onSeedConsumed={clearSeed}
               steps={recorderSteps}
               setSteps={setRecorderSteps}
+              hudSeconds={hudSeconds}
             />
           )}
           {tab === 'scripts' && (
@@ -206,6 +227,8 @@ export function App(): ReactElement {
               onFontSizeChange={changeFontSize}
               fontScale={fontScale}
               onFontScaleChange={changeFontScale}
+              hudSeconds={hudSeconds}
+              onHudSecondsChange={changeHudSeconds}
             />
           )}
         </Suspense>

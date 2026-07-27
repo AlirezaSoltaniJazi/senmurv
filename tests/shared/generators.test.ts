@@ -53,6 +53,62 @@ describe('generateValue', () => {
     expect(generateValue('check', 'en_GB')).toBeNull();
     expect(generateValue('custom', 'en_GB', 'hello')).toBe('hello');
   });
+
+  it('returns a non-empty region / county name', () => {
+    const region = generateValue('region', 'en_GB');
+    expect(typeof region).toBe('string');
+    expect((region ?? '').length).toBeGreaterThan(0);
+  });
+
+  it('honours a Number digit-count genArg (dMIN-MAX)', () => {
+    for (let i = 0; i < 40; i += 1) {
+      const v = generateValue('number', 'en_GB', undefined, 'd3-5') ?? '';
+      expect(/^\d+$/.test(v)).toBe(true);
+      expect(v.length).toBeGreaterThanOrEqual(3);
+      expect(v.length).toBeLessThanOrEqual(5);
+      expect(v.startsWith('0')).toBe(false); // multi-digit numbers have no leading zero
+    }
+    // A single-digit request stays 0..9 (a leading zero is allowed at length 1).
+    for (let i = 0; i < 20; i += 1) {
+      const v = generateValue('number', 'en_GB', undefined, 'd1-1') ?? '';
+      expect(v.length).toBe(1);
+    }
+  });
+
+  it('still honours a legacy value-range Number genArg (lo-hi)', () => {
+    for (let i = 0; i < 30; i += 1) {
+      const n = Number(generateValue('number', 'en_GB', undefined, '10-20'));
+      expect(n).toBeGreaterThanOrEqual(10);
+      expect(n).toBeLessThanOrEqual(20);
+    }
+  });
+
+  it('syncs the email to a shared person when the genArg asks for it', () => {
+    const person = { firstName: 'Grace', lastName: 'Hopper' };
+    const both = generateValue('email', 'en_GB', undefined, 'fl', person) ?? '';
+    expect(both.startsWith('grace.hopper.')).toBe(true);
+    expect(/^grace\.hopper\.\d+@example\.com$/.test(both)).toBe(true);
+
+    const firstOnly = generateValue('email', 'en_GB', undefined, 'f', person) ?? '';
+    expect(/^grace\.\d+@example\.com$/.test(firstOnly)).toBe(true);
+
+    const lastOnly = generateValue('email', 'en_GB', undefined, 'l', person) ?? '';
+    expect(/^hopper\.\d+@example\.com$/.test(lastOnly)).toBe(true);
+  });
+
+  it('email with no sync arg ignores the person (independent value)', () => {
+    const person = { firstName: 'Grace', lastName: 'Hopper' };
+    const email = generateValue('email', 'en_GB', undefined, undefined, person) ?? '';
+    expect(email).toContain('@');
+    expect(email.toLowerCase()).not.toContain('grace.hopper');
+  });
+
+  it('name generators use the shared person so a flow’s fields agree', () => {
+    const person = { firstName: 'Ada', lastName: 'Byron' };
+    expect(generateValue('firstName', 'en_GB', undefined, undefined, person)).toBe('Ada');
+    expect(generateValue('lastName', 'en_GB', undefined, undefined, person)).toBe('Byron');
+    expect(generateValue('fullName', 'en_GB', undefined, undefined, person)).toBe('Ada Byron');
+  });
 });
 
 function field(overrides: Partial<PickedField>): PickedField {
@@ -84,6 +140,22 @@ describe('buildInstruction', () => {
     expect(
       buildInstruction(field({ fieldType: 'select', generator: 'pickFirst' }), 'en_GB').action
     ).toBe('pickFirst');
+  });
+
+  it('threads genArg + a shared person into the generated value', () => {
+    const person = { firstName: 'Grace', lastName: 'Hopper' };
+    const emailIns = buildInstruction(
+      field({ fieldType: 'email', generator: 'email', genArg: 'fl' }),
+      'en_GB',
+      person
+    );
+    expect(/^grace\.hopper\.\d+@example\.com$/.test(emailIns.value ?? '')).toBe(true);
+
+    const numberIns = buildInstruction(
+      field({ fieldType: 'number', generator: 'number', genArg: 'd4-4' }),
+      'en_GB'
+    );
+    expect((numberIns.value ?? '').length).toBe(4);
   });
 });
 

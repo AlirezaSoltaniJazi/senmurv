@@ -4,6 +4,8 @@ import {
   FONT_SCALE_MAX,
   FONT_SCALE_MIN,
   FONT_SCALE_STEP,
+  HUD_SECONDS_MAX,
+  HUD_SECONDS_MIN,
 } from '@/shared/constants';
 import type { FontSize } from '@/shared/types';
 
@@ -13,6 +15,9 @@ interface Props {
   /** Manual fine-tune zoom, or undefined when on a plain preset. */
   fontScale: number | undefined;
   onFontScaleChange: (scale: number) => void;
+  /** Seconds the Flow run popup lingers before it auto-closes. */
+  hudSeconds: number;
+  onHudSecondsChange: (seconds: number) => void;
 }
 
 const FONT_SIZES: { value: FontSize; label: string }[] = [
@@ -28,6 +33,8 @@ export function SettingsTab({
   onFontSizeChange,
   fontScale,
   onFontScaleChange,
+  hudSeconds,
+  onHudSecondsChange,
 }: Props): ReactElement {
   // The slider sits at the manual scale when set, else the active preset's zoom.
   const sliderValue = fontScale ?? FONT_PRESET_ZOOM[fontSize];
@@ -68,6 +75,30 @@ export function SettingsTab({
       <p className="hint">
         Presets are one click; the slider fine-tunes exact scale. Applies here and in the full-page
         view.
+      </p>
+
+      <h3 className="section-title">Flow</h3>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="hud-seconds">
+          Run popup auto-close (seconds)
+        </label>
+        <input
+          id="hud-seconds"
+          className="hud-seconds"
+          type="number"
+          min={HUD_SECONDS_MIN}
+          max={HUD_SECONDS_MAX}
+          step={1}
+          value={hudSeconds}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const n = Math.round(Number(e.target.value));
+            if (!Number.isFinite(n)) return;
+            onHudSecondsChange(Math.min(HUD_SECONDS_MAX, Math.max(HUD_SECONDS_MIN, n)));
+          }}
+        />
+      </div>
+      <p className="hint">
+        How long the on-page “Senmurv flow” popup stays after a flow finishes, before it disappears.
       </p>
     </div>
   );

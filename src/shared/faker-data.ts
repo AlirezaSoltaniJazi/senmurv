@@ -168,6 +168,30 @@ export function generatePhoneIntl(locale: Locale): string {
   return nationalMobile(locale, getFaker(locale)).replace(/^0/, '');
 }
 
+/**
+ * A region / county name: prefer `county()`, then `state()`, then `city()`. faker
+ * throws for a dataset a locale doesn't define, so each step is guarded and the
+ * always-present `city()` guarantees a non-empty result for every locale.
+ */
+function regionOf(faker: Faker): string {
+  const loc = faker.location as {
+    county?: () => string;
+    state?: () => string;
+    city: () => string;
+  };
+  try {
+    if (typeof loc.county === 'function') return loc.county();
+  } catch {
+    /* locale has no county data — try state */
+  }
+  try {
+    if (typeof loc.state === 'function') return loc.state();
+  } catch {
+    /* locale has no state data — fall back to city */
+  }
+  return loc.city();
+}
+
 /** Options controlling generated data. */
 export interface TestDataOptions {
   phoneWithCode?: boolean;
@@ -189,6 +213,7 @@ export function generateTestData(
     phone: generatePhone(locale, options.phoneWithCode ?? true),
     address: faker.location.streetAddress(),
     postalCode: faker.location.zipCode(),
+    region: regionOf(faker),
     email: faker.internet.email({ firstName, lastName }),
     dateOfBirth: faker.date.birthdate().toLocaleDateString('en-GB'),
   };

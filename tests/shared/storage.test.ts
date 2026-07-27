@@ -290,10 +290,34 @@ describe('prefs storage', () => {
   });
 
   it('round-trips through savePrefs (preset and manual scale)', async () => {
+    // getPrefs always fills a default hudSeconds, so a saved prefs object without
+    // one reads back with the default (3).
     await savePrefs({ fontSize: 'small' });
-    expect(await getPrefs()).toEqual({ fontSize: 'small' });
+    expect(await getPrefs()).toEqual({ fontSize: 'small', hudSeconds: 3 });
 
     await savePrefs({ fontSize: 'large', fontScale: 1.4 });
-    expect(await getPrefs()).toEqual({ fontSize: 'large', fontScale: 1.4 });
+    expect(await getPrefs()).toEqual({ fontSize: 'large', fontScale: 1.4, hudSeconds: 3 });
+  });
+
+  it('reads a stored hudSeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 5 };
+    expect((await getPrefs()).hudSeconds).toBe(5);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 999 };
+    expect((await getPrefs()).hudSeconds).toBe(60); // HUD_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 0 };
+    expect((await getPrefs()).hudSeconds).toBe(1); // HUD_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 4.6 };
+    expect((await getPrefs()).hudSeconds).toBe(5); // rounded
+  });
+
+  it('falls back to the default hudSeconds when absent or non-numeric', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).hudSeconds).toBe(3);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 'soon' };
+    expect((await getPrefs()).hudSeconds).toBe(3);
   });
 });

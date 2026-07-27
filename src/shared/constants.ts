@@ -150,6 +150,11 @@ export const FONT_PRESET_ZOOM = {
   xlarge: 1.3,
 } as const;
 
+/** Flow run-popup (in-page HUD) auto-close delay bounds + default, in seconds. */
+export const HUD_SECONDS_MIN = 1;
+export const HUD_SECONDS_MAX = 60;
+export const HUD_SECONDS_DEFAULT = 3;
+
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;
 

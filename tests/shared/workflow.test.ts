@@ -284,6 +284,82 @@ describe('parseWorkflowScript', () => {
   });
 });
 
+describe('flow run popup (HUD) auto-close', () => {
+  it('bakes the default 3s delay when no option is given', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 10 }]);
+    expect(code).toContain('const HUD_MS = 3000;');
+    // The HUD removes itself on the baked delay (no hardcoded 6000/15000 split).
+    expect(code).toContain('}, HUD_MS);');
+  });
+
+  it('bakes a configured delay (seconds → ms)', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 10 }], { hudSeconds: 1 });
+    expect(code).toContain('const HUD_MS = 1000;');
+    const long = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 10 }], { hudSeconds: 12 });
+    expect(long).toContain('const HUD_MS = 12000;');
+  });
+});
+
+describe('genArg tokens (Number digits / Email name-sync)', () => {
+  it('emits a digit-count Number as {random:number:dMIN-MAX} and round-trips genArg', () => {
+    const code = buildWorkflowScript([
+      { id: 'n', kind: 'fill', selector: '#n', generator: 'number', genArg: 'd3-5' },
+    ]);
+    expect(code).toContain('"value": "{random:number:d3-5}"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'number', genArg: 'd3-5' });
+    expect(parsed![0]!.value).toBeUndefined();
+    // Re-building preserves the bound.
+    expect(buildWorkflowScript(parsed!)).toContain('"value": "{random:number:d3-5}"');
+  });
+
+  it('emits a name-synced Email as {random:email:fl} and round-trips genArg', () => {
+    const code = buildWorkflowScript([
+      { id: 'e', kind: 'fill', selector: '#e', generator: 'email', genArg: 'fl' },
+    ]);
+    expect(code).toContain('"value": "{random:email:fl}"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'email', genArg: 'fl' });
+  });
+
+  it('keeps a legacy value-range {random:number:1-99} token literal (unchanged behaviour)', () => {
+    const code = `const STEPS = [{ kind: 'fill', selector: '#n', value: '{random:number:1-99}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]!.generator).toBeUndefined();
+    expect(parsed![0]!.value).toBe('{random:number:1-99}');
+  });
+
+  it('drops a stale genArg when re-serialized under a non-number/email generator', () => {
+    // A fullName step should never carry a digit/sync arg into its token.
+    const code = buildWorkflowScript([
+      { id: 'g', kind: 'fill', selector: '#f', generator: 'fullName' },
+    ]);
+    expect(code).toContain('"value": "{random:fullName}"');
+  });
+});
+
+describe('region + shared-person runner', () => {
+  it('emits a {random:region} token and the in-page resolver knows it', () => {
+    const code = buildWorkflowScript([
+      { id: 'r', kind: 'fill', selector: '#region', generator: 'region' },
+    ]);
+    expect(code).toContain('"value": "{random:region}"');
+    expect(code).toContain("case 'region'");
+    expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'region' });
+  });
+
+  it('embeds one shared person so name fields and a synced email agree at run time', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#f', generator: 'firstName' },
+      { id: '2', kind: 'fill', selector: '#e', generator: 'email', genArg: 'fl' },
+    ]);
+    // The runner memoizes a single {first,last} and the email builds from it.
+    expect(code).toContain('var person = ()');
+    expect(code).toContain('emailValue');
+    expect(() => new vm.Script(code)).not.toThrow();
+  });
+});
+
 describe('new step kinds', () => {
   it('newStep gives sensible defaults', () => {
     expect(newStep('clickEl').selector).toBe('');
