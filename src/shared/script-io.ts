@@ -115,6 +115,140 @@ export function reorderScripts(scripts: SavedScript[], from: number, to: number)
   return next;
 }
 
+// ---------------------------------------------------------------------------
+// Folders — one-level grouping (folder → scripts)
+// ---------------------------------------------------------------------------
+
+/** A top-level item (a folder or a top-level script) with its child scripts. */
+export interface ScriptGroup {
+  readonly parent: SavedScript;
+  /** Child scripts — only ever non-empty for a folder. */
+  readonly children: SavedScript[];
+}
+
+/** Create a new, empty folder. */
+export function newFolder(name: string, now: number): SavedScript {
+  return { id: newId('fld_'), name, code: '', isFolder: true, createdAt: now, updatedAt: now };
+}
+
+/**
+ * Group a flat list into top-level items with their children. Folders are the
+ * only containers: a script belongs to a folder when its `parentId` points at
+ * one; a `parentId` that is missing or is not a folder makes the script
+ * top-level. Folders are always top-level and never nest (one level deep).
+ */
+export function buildScriptTree(scripts: SavedScript[]): ScriptGroup[] {
+  const byId = new Map(scripts.map((s) => [s.id, s]));
+  const isFolder = (id: string): boolean => byId.get(id)?.isFolder === true;
+  const childrenOf = new Map<string, SavedScript[]>();
+  const topLevel: SavedScript[] = [];
+  for (const s of scripts) {
+    if (!s.isFolder && s.parentId !== undefined && isFolder(s.parentId)) {
+      const list = childrenOf.get(s.parentId) ?? [];
+      list.push(s);
+      childrenOf.set(s.parentId, list);
+    } else {
+      topLevel.push(s);
+    }
+  }
+  return topLevel.map((parent) => ({
+    parent,
+    children: parent.isFolder ? (childrenOf.get(parent.id) ?? []) : [],
+  }));
+}
+
+/** Rewrite the flat array into grouped render order (folder then its scripts). */
+export function normalizeScripts(scripts: SavedScript[]): SavedScript[] {
+  const out: SavedScript[] = [];
+  for (const group of buildScriptTree(scripts)) {
+    out.push(group.parent);
+    for (const child of group.children) out.push(child);
+  }
+  return out;
+}
+
+/** The folder id a drop `targetId` resolves to (the folder itself, or the folder
+ *  a target script lives in), or undefined when the target is not in any folder. */
+function targetFolderId(byId: Map<string, SavedScript>, targetId: string): string | undefined {
+  const target = byId.get(targetId);
+  if (!target) return undefined;
+  if (target.isFolder) return target.id;
+  if (target.parentId !== undefined && byId.get(target.parentId)?.isFolder === true) {
+    return target.parentId;
+  }
+  return undefined;
+}
+
+/**
+ * Move script `movingId` into the folder that `targetId` resolves to (dropping
+ * onto a folder, or onto a script already inside one). Refused when `movingId`
+ * is a folder, the target is not in any folder, or it is already there. The moved
+ * script becomes the folder's last child.
+ */
+export function nestScript(
+  scripts: SavedScript[],
+  movingId: string,
+  targetId: string
+): SavedScript[] {
+  if (movingId === targetId) return scripts;
+  const byId = new Map(scripts.map((s) => [s.id, s]));
+  const moving = byId.get(movingId);
+  if (!moving || moving.isFolder) return scripts;
+  const folderId = targetFolderId(byId, targetId);
+  if (folderId === undefined || moving.parentId === folderId) return scripts;
+  const rest = scripts.filter((s) => s.id !== movingId);
+  rest.push({ ...moving, parentId: folderId });
+  return normalizeScripts(rest);
+}
+
+/** Move script `id` out of its folder, back to the top level (at the end). */
+export function ungroupScript(scripts: SavedScript[], id: string): SavedScript[] {
+  const item = scripts.find((s) => s.id === id);
+  if (!item || item.parentId === undefined) return scripts;
+  const { parentId: _drop, ...rest } = item;
+  return normalizeScripts([...scripts.filter((s) => s.id !== id), rest]);
+}
+
+/** True when `id` has child scripts (used to show a folder's count). */
+export function hasChildren(scripts: SavedScript[], id: string): boolean {
+  return scripts.some((s) => s.parentId === id);
+}
+
+/** Delete a folder, moving its scripts back to the top level. */
+export function deleteFolder(scripts: SavedScript[], folderId: string): SavedScript[] {
+  const folder = scripts.find((s) => s.id === folderId);
+  if (!folder || folder.isFolder !== true) return scripts;
+  const next = scripts
+    .filter((s) => s.id !== folderId)
+    .map((s) => {
+      if (s.parentId !== folderId) return s;
+      const { parentId: _drop, ...rest } = s;
+      return rest;
+    });
+  return normalizeScripts(next);
+}
+
+/**
+ * Reorder `movingId` to just before `targetId` — only when they are at the SAME
+ * level (both top-level, or children of the same parent). A top-level move carries
+ * the group's children with it; a cross-level drop is a no-op.
+ */
+export function moveScriptBefore(
+  scripts: SavedScript[],
+  movingId: string,
+  targetId: string
+): SavedScript[] {
+  if (movingId === targetId) return scripts;
+  const moving = scripts.find((s) => s.id === movingId);
+  const target = scripts.find((s) => s.id === targetId);
+  if (!moving || !target) return scripts;
+  if ((moving.parentId ?? '') !== (target.parentId ?? '')) return scripts;
+  const rest = scripts.filter((s) => s.id !== movingId);
+  const at = rest.findIndex((s) => s.id === targetId);
+  rest.splice(at, 0, moving);
+  return normalizeScripts(rest);
+}
+
 /**
  * `base` if free, else the first `base (n)` (n ≥ 2) not already in `taken`.
  * Matching is case-insensitive (so "login" collides with an existing "Login" and

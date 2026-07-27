@@ -6,6 +6,25 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Track → Clear all** — a one-click button (with a confirm) to delete every
+  tracked time entry at once, instead of removing them one by one.
+- **Scripts → folders** — organise saved scripts into **folders** (one level:
+  folder → scripts). **New folder** creates a folder you can rename inline; drag a
+  script **onto a folder** to file it there, drop **near a row's top edge** to
+  reorder, and use a script's **↥** button to move it back to the top level.
+  Folders show a collapse caret and a script count; deleting a folder frees its
+  scripts back to the top level. Grouping persists, and folders are never exported
+  or run.
+- **Recorder → step names** — an optional **name** on any step, shown in the
+  on-page run popup (HUD) in place of the step kind, so a running flow reads in
+  your words.
+- **Recorder → step numbers & move-to** — each step box shows its **position
+  number** (`#1, #2, …`), and a new **Move** control (⇄) relocates a step to
+  **before/after another step** picked from a dropdown — alongside the existing
+  ▲▼ nudges.
+
 ## [0.5.1] - 2026-07-26
 
 ### Added

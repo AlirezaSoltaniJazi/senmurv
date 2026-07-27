@@ -51,7 +51,9 @@ export function isSavedScript(value: unknown): value is SavedScript {
     typeof v.name === 'string' &&
     typeof v.code === 'string' &&
     typeof v.createdAt === 'number' &&
-    typeof v.updatedAt === 'number'
+    typeof v.updatedAt === 'number' &&
+    (v.parentId === undefined || typeof v.parentId === 'string') &&
+    (v.isFolder === undefined || typeof v.isFolder === 'boolean')
   );
 }
 

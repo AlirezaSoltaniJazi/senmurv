@@ -183,6 +183,22 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
     }
   }
 
+  async function clearAll(): Promise<void> {
+    if (entries.length === 0) return;
+    if (!window.confirm(`Delete all ${entries.length} tracked task(s)? This cannot be undone.`)) {
+      return;
+    }
+    setError(null);
+    const res = await sendRuntimeMessage<Result<TimeEntry[]>>({ type: MESSAGE_TYPES.CLEAR_TASKS });
+    if (res.ok) {
+      setEntries(res.value);
+      setEditingId(null);
+      setStatus('Cleared all tracked tasks.');
+    } else {
+      setError(res.error);
+    }
+  }
+
   async function remove(id: string): Promise<void> {
     const target = entries.find((e) => e.id === id);
     if (target && !window.confirm(`Delete “${target.title}”? This cannot be undone.`)) return;
@@ -293,6 +309,18 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
       )}
 
       <TrackExport entries={entries} />
+
+      <div className="row">
+        <button
+          type="button"
+          className="danger"
+          onClick={() => void clearAll()}
+          disabled={entries.length === 0}
+          title="Delete every tracked task"
+        >
+          Clear all
+        </button>
+      </div>
 
       <div className="chips view-toggle">
         <button

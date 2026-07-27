@@ -34,6 +34,7 @@ export type SelectMode = 'text' | 'first' | 'random';
 export interface WorkflowStep {
   id: string;
   kind: StepKind;
+  name?: string; // optional human label, shown in the run HUD instead of the kind
   text?: string; // click: button text
   ms?: number; // wait: milliseconds; waitEl: timeout
   label?: string; // fill/select/radio/check/clickEl: mat-label text
@@ -136,6 +137,28 @@ export function describeStep(s: WorkflowStep): string {
 }
 
 /**
+ * Move step `id` to just before/after step `targetId`, preserving every other
+ * step's order. A no-op when the ids are equal or either is missing — so the
+ * caller can pass user selections without pre-validating them.
+ */
+export function moveStepRelative(
+  steps: WorkflowStep[],
+  id: string,
+  targetId: string,
+  position: 'before' | 'after'
+): WorkflowStep[] {
+  if (id === targetId) return steps;
+  const from = steps.findIndex((s) => s.id === id);
+  if (from === -1 || !steps.some((s) => s.id === targetId)) return steps;
+  const without = steps.filter((s) => s.id !== id);
+  const targetAt = without.findIndex((s) => s.id === targetId);
+  const insertAt = position === 'before' ? targetAt : targetAt + 1;
+  const moved = steps[from];
+  if (!moved) return steps;
+  return [...without.slice(0, insertAt), moved, ...without.slice(insertAt)];
+}
+
+/**
  * Fill generators that map to an in-page `{random:…}` token (resolved by the
  * PREAMBLE's `randomValue` on every run). Kept in sync with that switch.
  */
@@ -184,7 +207,9 @@ export function randomToken(generator: GeneratorId): string {
 function serializeStep(s: WorkflowStep): Record<string, unknown> {
   const o: Record<string, unknown> = { kind: s.kind };
   // Set before the per-kind branches (which each mutate and return this same `o`)
-  // so a disabled step round-trips regardless of kind; the interpreter skips it.
+  // so these round-trip regardless of kind; the interpreter reads `name` for the
+  // HUD label and skips a `disabled` step.
+  if (s.name) o.name = s.name;
   if (s.disabled) o.disabled = true;
   if (s.kind === 'click') {
     o.text = s.text ?? '';
@@ -525,7 +550,7 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         var li = document.createElement('li'); li.className = s.disabled ? 'r off' : 'r dim';
         var icon = document.createElement('span'); icon.className = 'i'; icon.textContent = s.disabled ? '\\u2298' : '\\u25cb';
         var body = document.createElement('div'); body.className = 'b';
-        var txt = document.createElement('div'); txt.className = 't'; txt.textContent = (i + 1) + '. ' + s.kind + ' ' + label + (s.disabled ? ' (disabled)' : '');
+        var txt = document.createElement('div'); txt.className = 't'; txt.textContent = (i + 1) + '. ' + (s.name ? s.name : s.kind + ' ' + label) + (s.disabled ? ' (disabled)' : '');
         body.appendChild(txt); li.appendChild(icon); li.appendChild(body);
         list.appendChild(li); rows.push({ li: li, icon: icon, body: body });
       }
@@ -599,6 +624,7 @@ function toStep(item: unknown): WorkflowStep | null {
   const o = item as Record<string, unknown>;
   if (!STEP_KINDS.includes(o.kind as StepKind)) return null;
   const step: WorkflowStep = { id: newId('stp_'), kind: o.kind as StepKind };
+  if (typeof o.name === 'string') step.name = o.name;
   if (typeof o.text === 'string') step.text = o.text;
   if (typeof o.ms === 'number') step.ms = o.ms;
   if (typeof o.label === 'string') step.label = o.label;

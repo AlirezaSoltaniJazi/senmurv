@@ -30,6 +30,10 @@ export interface SavedScript {
   code: string;
   createdAt: number;
   updatedAt: number;
+  /** The id of the folder this script is grouped under (one level deep). */
+  parentId?: string;
+  /** When true, this is a folder (a named container), not a runnable script. */
+  isFolder?: boolean;
 }
 
 /** One work interval of a logged task; `end === null` while it is running. */

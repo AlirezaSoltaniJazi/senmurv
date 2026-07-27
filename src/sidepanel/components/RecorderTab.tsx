@@ -24,6 +24,7 @@ import {
   buildWorkflowScript,
   describeStep,
   fieldToStep,
+  moveStepRelative,
   newStep,
   STEP_KIND_LABELS,
   STEP_KINDS,
@@ -72,6 +73,10 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   const [flowName, setFlowName] = useState('');
   // Id of a just-added/duplicated step — scrolled into view and briefly flashed.
   const [flashId, setFlashId] = useState<string | null>(null);
+  // "Move to…" inline control: which step's mover is open, and its selections.
+  const [moveOpenId, setMoveOpenId] = useState<string | null>(null);
+  const [movePos, setMovePos] = useState<'before' | 'after'>('after');
+  const [moveTarget, setMoveTarget] = useState('');
   // "Export as spec" panel state.
   const [showSpec, setShowSpec] = useState(false);
   const [specFramework, setSpecFramework] = useState<Framework>('playwright');
@@ -254,6 +259,17 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
       [next[i], next[j]] = [next[j]!, next[i]!];
       return next;
     });
+  }
+  /** Open the inline "Move to…" control for `id`, defaulting the target sensibly. */
+  function openMover(id: string): void {
+    const firstOther = steps.find((s) => s.id !== id);
+    setMovePos('after');
+    setMoveTarget(firstOther?.id ?? '');
+    setMoveOpenId(id);
+  }
+  function applyMove(id: string): void {
+    if (moveTarget) setSteps((prev) => moveStepRelative(prev, id, moveTarget, movePos));
+    setMoveOpenId(null);
   }
   function removeStep(id: string): void {
     setSteps((prev) => prev.filter((s) => s.id !== id));
@@ -542,6 +558,9 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
             }
           >
             <div className="step-head">
+              <span className="step-num" title="Step position">
+                #{i + 1}
+              </span>
               <span className="step-kind">{STEP_KIND_LABELS[s.kind]}</span>
               <span className="step-desc" title={s.selector ?? ''}>
                 {describeStep(s)}
@@ -581,6 +600,15 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                 </button>
                 <button
                   type="button"
+                  disabled={steps.length < 2}
+                  title="Move before/after another step"
+                  aria-label="Move to another position"
+                  onClick={() => openMover(s.id)}
+                >
+                  ⇄
+                </button>
+                <button
+                  type="button"
                   title="Duplicate step"
                   aria-label="Duplicate step"
                   onClick={() => duplicateStep(s.id)}
@@ -592,6 +620,51 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                 </button>
               </span>
             </div>
+
+            {moveOpenId === s.id && (
+              <div className="row step-move">
+                <span className="field-label">Move</span>
+                <select
+                  aria-label="Move position"
+                  value={movePos}
+                  onChange={(e) => setMovePos(e.target.value === 'before' ? 'before' : 'after')}
+                >
+                  <option value="before">before</option>
+                  <option value="after">after</option>
+                </select>
+                <select
+                  aria-label="Move target step"
+                  value={moveTarget}
+                  onChange={(e) => setMoveTarget(e.target.value)}
+                >
+                  {steps
+                    .filter((t) => t.id !== s.id)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        #{steps.findIndex((x) => x.id === t.id) + 1} — {describeStep(t)}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!moveTarget}
+                  onClick={() => applyMove(s.id)}
+                >
+                  Go
+                </button>
+                <button type="button" onClick={() => setMoveOpenId(null)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            <input
+              className="name-input step-name"
+              placeholder="Name (optional) — shown in the run popup"
+              value={s.name ?? ''}
+              onChange={(e) => updateStep(s.id, { name: e.target.value })}
+            />
 
             {s.kind === 'click' && (
               <input

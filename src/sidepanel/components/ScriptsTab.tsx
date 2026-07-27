@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ChangeEvent, DragEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
@@ -6,10 +6,15 @@ import { decodeBookmarklet } from '@/shared/bookmarklet';
 import { isFillScript, parseFillScript } from '@/shared/generators';
 import {
   applyScriptImport,
+  buildScriptTree,
+  deleteFolder,
   importConflicts,
+  moveScriptBefore,
+  nestScript,
+  newFolder,
   parseScriptsImport,
-  reorderScripts,
   serializeScripts,
+  ungroupScript,
 } from '@/shared/script-io';
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
 import { fieldToStep, isWorkflowScript, parseWorkflowScript } from '@/shared/workflow';
@@ -48,8 +53,17 @@ export function ScriptsTab({
   const [pending, setPending] = useState<ImportedScript[] | null>(null);
   const [pendingSel, setPendingSel] = useState<boolean[]>([]);
   const [importMode, setImportMode] = useState<ImportMode>('overwrite');
-  const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const [overIndex, setOverIndex] = useState<number | null>(null);
+  // Drag-to-group/reorder: which row is being dragged, which it's over, and whether
+  // dropping would nest under it (pointer in the row body) or reorder before it
+  // (pointer near the top edge).
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [overId, setOverId] = useState<string | null>(null);
+  const [dropIntent, setDropIntent] = useState<'nest' | 'before'>('nest');
+  // Collapsed folders (expanded by default).
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  // Inline folder rename.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -215,48 +229,99 @@ export function ScriptsTab({
     });
   }
 
-  // ── Drag-to-reorder ─────────────────────────────────────────────────────────
-  function onRowDragStart(e: DragEvent, index: number): void {
-    setDragIndex(index);
+  // ── Drag to group (nest) or reorder ─────────────────────────────────────────
+  function onRowDragStart(e: DragEvent, id: string): void {
+    setDragId(id);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', String(index)); // Firefox requires data
+    e.dataTransfer.setData('text/plain', id); // Firefox requires data
   }
-  function onRowDragOver(e: DragEvent, index: number): void {
-    if (dragIndex === null) return;
+  function onRowDragOver(e: DragEvent, id: string): void {
+    if (dragId === null) return;
     e.preventDefault(); // allow the drop
     e.dataTransfer.dropEffect = 'move';
-    if (overIndex !== index) setOverIndex(index);
+    const rect = e.currentTarget.getBoundingClientRect();
+    const intent: 'nest' | 'before' = e.clientY < rect.top + rect.height * 0.35 ? 'before' : 'nest';
+    if (overId !== id || dropIntent !== intent) {
+      setOverId(id);
+      setDropIntent(intent);
+    }
   }
   function endDrag(): void {
-    setDragIndex(null);
-    setOverIndex(null);
+    setDragId(null);
+    setOverId(null);
   }
-  async function onRowDrop(e: DragEvent, index: number): Promise<void> {
-    e.preventDefault();
-    const from = dragIndex;
-    endDrag();
-    if (from === null) return;
+  /** Optimistically apply `next`, persist it, and roll back if the write fails. */
+  async function persistScripts(next: SavedScript[], msg: string): Promise<void> {
     const prev = scripts;
-    const next = reorderScripts(prev, from, index);
     if (next === prev) return;
-    setScripts(next); // optimistic — reflect the new order immediately
+    setScripts(next);
     const res = await sendRuntimeMessage<Result<SavedScript[]>>({
       type: MESSAGE_TYPES.SET_SCRIPTS,
       payload: { scripts: next },
     });
     if (res.ok) {
       setScripts(res.value);
-      setStatus('Reordered scripts.');
+      setStatus(msg);
     } else {
-      setScripts(prev); // roll back the optimistic reorder — the write did not land
+      setScripts(prev);
       setError(res.error);
     }
+  }
+  async function onRowDrop(e: DragEvent, id: string): Promise<void> {
+    e.preventDefault();
+    const from = dragId;
+    const intent = dropIntent;
+    endDrag();
+    if (from === null || from === id) return;
+    const next =
+      intent === 'nest' ? nestScript(scripts, from, id) : moveScriptBefore(scripts, from, id);
+    await persistScripts(next, intent === 'nest' ? 'Grouped scripts.' : 'Reordered scripts.');
+  }
+  function toggleCollapse(id: string): void {
+    setCollapsed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  // ── Folders ─────────────────────────────────────────────────────────────────
+  async function createFolder(): Promise<void> {
+    const folder = newFolder('New folder', Date.now());
+    await persistScripts([...scripts, folder], 'Folder created.');
+    setRenamingId(folder.id); // open it for renaming straight away
+    setRenameValue(folder.name);
+  }
+  function startRename(folder: SavedScript): void {
+    setRenamingId(folder.id);
+    setRenameValue(folder.name);
+  }
+  async function saveRename(id: string): Promise<void> {
+    const name = renameValue.trim();
+    setRenamingId(null);
+    if (!name) return;
+    await persistScripts(
+      scripts.map((s) => (s.id === id ? { ...s, name, updatedAt: Date.now() } : s)),
+      'Renamed folder.'
+    );
+  }
+  async function removeFolder(id: string): Promise<void> {
+    const folder = scripts.find((s) => s.id === id);
+    const count = scripts.filter((s) => s.parentId === id).length;
+    const msg =
+      count > 0
+        ? `Delete folder “${folder?.name}”? Its ${count} script(s) move back to the top level.`
+        : `Delete folder “${folder?.name}”?`;
+    if (!window.confirm(msg)) return;
+    await persistScripts(deleteFolder(scripts, id), 'Folder deleted.');
   }
 
   function exportScripts(): void {
     setError(null);
     const picked = scripts.filter((s) => selected.has(s.id));
-    const chosen = picked.length ? picked : scripts;
+    // Folders are organisation, not scripts — never exported.
+    const chosen = (picked.length ? picked : scripts).filter((s) => !s.isFolder);
     const blob = new Blob([serializeScripts(chosen)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -312,12 +377,150 @@ export function ScriptsTab({
     setStatus(`Imported ${chosen.length} script(s) (${importMode}).`);
   }
 
+  /** Row className string; `canNest` gates the nest-drop highlight. */
+  function rowClass(id: string, extra: string, canNest: boolean): string {
+    return (
+      'script-row' +
+      extra +
+      (dragId === id ? ' dragging' : '') +
+      (canNest && overId === id && dragId !== id && dropIntent === 'nest'
+        ? ' drag-nest-over'
+        : '') +
+      (overId === id && dragId !== id && dropIntent === 'before' ? ' drag-over' : '')
+    );
+  }
+  function handle(id: string, label: string): ReactElement {
+    return (
+      <span
+        className="drag-handle"
+        draggable
+        onDragStart={(e) => onRowDragStart(e, id)}
+        onDragEnd={endDrag}
+        title={label}
+        aria-label={label}
+      >
+        ⠿
+      </span>
+    );
+  }
+
+  /** A folder header row: caret, 📁, name (rename inline), child count, actions. */
+  function renderFolder(folder: SavedScript, childCount: number): ReactElement {
+    const isCollapsed = collapsed.has(folder.id);
+    return (
+      <li
+        key={folder.id}
+        data-script-id={folder.id}
+        className={rowClass(folder.id, ' folder-row', true)}
+        onDragOver={(e) => onRowDragOver(e, folder.id)}
+        onDrop={(e) => void onRowDrop(e, folder.id)}
+      >
+        {handle(folder.id, 'Drag to reorder')}
+        {childCount > 0 ? (
+          <button
+            type="button"
+            className="tree-caret"
+            onClick={() => toggleCollapse(folder.id)}
+            aria-label={isCollapsed ? 'Expand folder' : 'Collapse folder'}
+          >
+            {isCollapsed ? '▸' : '▾'}
+          </button>
+        ) : (
+          <span className="tree-caret-spacer" aria-hidden="true" />
+        )}
+        <span className="folder-icon" aria-hidden="true">
+          📁
+        </span>
+        {renamingId === folder.id ? (
+          <input
+            className="name-input folder-rename"
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={() => void saveRename(folder.id)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void saveRename(folder.id);
+              else if (e.key === 'Escape') setRenamingId(null);
+            }}
+          />
+        ) : (
+          <span className="script-name folder-name">
+            {folder.name}
+            <span className="dim"> ({childCount})</span>
+          </span>
+        )}
+        <span className="script-actions">
+          <button type="button" onClick={() => startRename(folder)}>
+            Rename
+          </button>
+          <button type="button" className="danger" onClick={() => void removeFolder(folder.id)}>
+            Delete
+          </button>
+        </span>
+      </li>
+    );
+  }
+
+  /** A script row (top-level or inside a folder). */
+  function renderScript(s: SavedScript, isChild: boolean): ReactElement {
+    return (
+      <li
+        key={s.id}
+        data-script-id={s.id}
+        className={rowClass(s.id, isChild ? ' script-child' : '', isChild)}
+        onDragOver={(e) => onRowDragOver(e, s.id)}
+        onDrop={(e) => void onRowDrop(e, s.id)}
+      >
+        {handle(s.id, isChild ? 'Drag to reorder or out' : 'Drag onto a folder to group it')}
+        <span className="tree-caret-spacer" aria-hidden="true" />
+        <input
+          type="checkbox"
+          checked={selected.has(s.id)}
+          onChange={() => toggleSelect(s.id)}
+          title="Select for export"
+        />
+        <span className="script-name">{s.name}</span>
+        <span className="script-actions">
+          {isChild && (
+            <button
+              type="button"
+              title="Move out of the folder (to the top level)"
+              aria-label="Ungroup"
+              onClick={() =>
+                void persistScripts(ungroupScript(scripts, s.id), 'Moved to top level.')
+              }
+            >
+              ↥
+            </button>
+          )}
+          <button type="button" className="primary" onClick={() => void run(s)}>
+            Run
+          </button>
+          <button type="button" onClick={() => editScript(s)}>
+            Edit
+          </button>
+          {customizable(s.code) && (
+            <button type="button" onClick={() => customizeScript(s)}>
+              Customize
+            </button>
+          )}
+          <button type="button" className="danger" onClick={() => void remove(s.id)}>
+            Delete
+          </button>
+        </span>
+      </li>
+    );
+  }
+
   const selectedCount = scripts.filter((s) => selected.has(s.id)).length;
   const hasConflicts = pending?.some((imp) => importConflicts(scripts, imp)) ?? false;
 
   return (
     <div className="tab">
       <div className="row">
+        <button type="button" className="primary" onClick={() => void createFolder()}>
+          + New folder
+        </button>
         <button type="button" onClick={exportScripts} disabled={scripts.length === 0}>
           Export{selectedCount ? ` (${selectedCount})` : ''}
         </button>
@@ -393,51 +596,15 @@ export function ScriptsTab({
 
       <ul className="script-list">
         {scripts.length === 0 && <li className="hint">No saved scripts yet.</li>}
-        {scripts.map((s, i) => (
-          <li
-            key={s.id}
-            className={
-              'script-row' +
-              (dragIndex === i ? ' dragging' : '') +
-              (overIndex === i && dragIndex !== i ? ' drag-over' : '')
-            }
-            onDragOver={(e) => onRowDragOver(e, i)}
-            onDrop={(e) => void onRowDrop(e, i)}
-          >
-            <span
-              className="drag-handle"
-              draggable
-              onDragStart={(e) => onRowDragStart(e, i)}
-              onDragEnd={endDrag}
-              title="Drag to reorder"
-              aria-label="Drag to reorder"
-            >
-              ⠿
-            </span>
-            <input
-              type="checkbox"
-              checked={selected.has(s.id)}
-              onChange={() => toggleSelect(s.id)}
-              title="Select for export"
-            />
-            <span className="script-name">{s.name}</span>
-            <span className="script-actions">
-              <button type="button" className="primary" onClick={() => void run(s)}>
-                Run
-              </button>
-              <button type="button" onClick={() => editScript(s)}>
-                Edit
-              </button>
-              {customizable(s.code) && (
-                <button type="button" onClick={() => customizeScript(s)}>
-                  Customize
-                </button>
-              )}
-              <button type="button" className="danger" onClick={() => void remove(s.id)}>
-                Delete
-              </button>
-            </span>
-          </li>
+        {buildScriptTree(scripts).map((g) => (
+          <Fragment key={g.parent.id}>
+            {g.parent.isFolder
+              ? renderFolder(g.parent, g.children.length)
+              : renderScript(g.parent, false)}
+            {g.parent.isFolder &&
+              !collapsed.has(g.parent.id) &&
+              g.children.map((c) => renderScript(c, true))}
+          </Fragment>
         ))}
       </ul>
 

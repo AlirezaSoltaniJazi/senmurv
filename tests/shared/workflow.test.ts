@@ -4,6 +4,7 @@ import {
   buildWorkflowScript,
   fieldToStep,
   isWorkflowScript,
+  moveStepRelative,
   newStep,
   parseWorkflowScript,
 } from '@/shared/workflow';
@@ -87,6 +88,53 @@ describe('buildWorkflowScript', () => {
     // Compile-only (no execution) — catches any syntax error in the generated
     // interpreter / HUD string.
     expect(() => new vm.Script(code)).not.toThrow();
+  });
+});
+
+describe('step name round-trip', () => {
+  it('serializes an optional name and parses it back', () => {
+    const named: WorkflowStep[] = [
+      { id: 'x', kind: 'click', text: 'Save', name: 'Submit the form' },
+    ];
+    const code = buildWorkflowScript(named);
+    expect(code).toContain('"name": "Submit the form"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed?.[0]?.name).toBe('Submit the form');
+  });
+
+  it('omits an empty name', () => {
+    const code = buildWorkflowScript([{ id: 'x', kind: 'wait', ms: 10, name: '' }]);
+    expect(code).not.toContain('"name"');
+  });
+});
+
+describe('moveStepRelative', () => {
+  const ids = (list: WorkflowStep[]): string[] => list.map((s) => s.id);
+
+  it('moves a step after a target', () => {
+    expect(ids(moveStepRelative(steps, 'a', 'c', 'after'))).toEqual(['b', 'c', 'a', 'd', 'e', 'f']);
+  });
+
+  it('moves a step before a target', () => {
+    expect(ids(moveStepRelative(steps, 'f', 'b', 'before'))).toEqual([
+      'a',
+      'f',
+      'b',
+      'c',
+      'd',
+      'e',
+    ]);
+  });
+
+  it('handles moving forward vs backward consistently', () => {
+    // 'c' after 'e' (forward): b/d shift left, c lands right after e.
+    expect(ids(moveStepRelative(steps, 'c', 'e', 'after'))).toEqual(['a', 'b', 'd', 'e', 'c', 'f']);
+  });
+
+  it('is a no-op for equal, missing, or unknown ids', () => {
+    expect(moveStepRelative(steps, 'a', 'a', 'after')).toBe(steps);
+    expect(moveStepRelative(steps, 'zzz', 'a', 'after')).toBe(steps);
+    expect(moveStepRelative(steps, 'a', 'zzz', 'before')).toBe(steps);
   });
 });
 

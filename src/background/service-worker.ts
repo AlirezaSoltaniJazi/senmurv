@@ -12,6 +12,7 @@ import {
   getScripts,
   getTasks,
   saveScripts,
+  saveTasks,
   savePrefs,
   upsertChecklist,
   upsertNote,
@@ -1092,6 +1093,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.DELETE_TASK:
         deleteTask(message.payload.id)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.CLEAR_TASKS:
+        saveTasks([])
+          .then(() => sendResponse({ ok: true, value: [] }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
