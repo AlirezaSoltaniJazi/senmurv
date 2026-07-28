@@ -1,4 +1,4 @@
-import { HUD_SECONDS_DEFAULT } from '@/shared/constants';
+import { FIND_TIMEOUT_SECONDS_DEFAULT, HUD_SECONDS_DEFAULT } from '@/shared/constants';
 import type { GeneratorId, PickedField } from '@/shared/types';
 import { newId } from '@/utils/id';
 
@@ -257,18 +257,31 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
 
 // Self-contained interpreter helpers, embedded into the generated script. Uses
 // string concatenation (no nested template literals) so nothing needs escaping.
-const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const PREAMBLE = `const stopRequested = () => !!window.__senmurvFlowStop;
+  // Abort-aware sleep: resolves at \`ms\`, or early the moment a Stop is requested,
+  // so a long \`wait\` step (or an inter-step pause) can't outlive a Stop click.
+  const sleep = (ms) => new Promise((resolve) => {
+    if (!(ms > 0)) return resolve();
+    var start = Date.now();
+    (function tick() {
+      if (stopRequested()) return resolve();
+      var left = ms - (Date.now() - start);
+      if (left <= 0) return resolve();
+      setTimeout(tick, left < 150 ? left : 150);
+    })();
+  });
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
   const isVisible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   // Scroll a resolved target into view before acting on it, so off-screen fields
   // become interactable and the page visibly follows the running flow.
   const reveal = (el) => { try { if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {} };
   const queryNth = (sel, i) => (typeof i === 'number' ? (document.querySelectorAll(sel)[i] || null) : document.querySelector(sel));
-  function waitFor(fn, desc, timeout = 15000, interval = 200) {
+  function waitFor(fn, desc, timeout = FIND_MS, interval = 200) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
       var lastScan = 0, scanStep = 0;
       (function poll() {
+        if (stopRequested()) return reject(new Error('stopped'));
         let v = null; try { v = fn(); } catch (e) { v = null; }
         if (v) return resolve(v);
         var now = Date.now();
@@ -554,7 +567,7 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(150);
   }
   async function waitForVisible(step) {
-    const timeout = typeof step.ms === 'number' && step.ms > 0 ? step.ms : 15000;
+    const timeout = typeof step.ms === 'number' && step.ms > 0 ? step.ms : FIND_MS;
     const el = await waitFor(() => { const e = queryNth(step.selector, step.index); return e && isVisible(e) ? e : null; }, 'element ' + step.selector, timeout);
     reveal(el);
   }
@@ -599,7 +612,7 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       setRunning: function (i) { var r = rows[i]; if (r) { r.li.className = 'r run'; r.icon.textContent = '\\u25b6'; try { r.li.scrollIntoView({ block: 'nearest' }); } catch (e) {} } },
       setOk: function (i) { var r = rows[i]; if (r) { r.li.className = 'r ok'; r.icon.textContent = '\\u2713'; } done += 1; count(); },
       setFail: function (i, msg) { var r = rows[i]; if (r) { r.li.className = 'r fail'; r.icon.textContent = '\\u2717'; var e = document.createElement('div'); e.className = 'e'; e.textContent = msg || 'failed'; r.body.appendChild(e); } done += 1; count(); },
-      finish: function (ok, fail) { if (header) { header.textContent = 'Flow done \\u2014 ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''); header.style.background = fail ? '#e5534b' : '#3fb950'; } if (host) { var h = host; setTimeout(function () { try { h.remove(); } catch (e) {} }, HUD_MS); } }
+      finish: function (ok, fail, stopped) { if (header) { header.textContent = (stopped ? 'Flow stopped \\u2014 ' : 'Flow done \\u2014 ') + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''); header.style.background = stopped ? '#d29922' : (fail ? '#e5534b' : '#3fb950'); } if (host) { var h = host; setTimeout(function () { try { h.remove(); } catch (e) {} }, HUD_MS); } }
     };
   }`;
 
@@ -607,6 +620,8 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export interface WorkflowScriptOptions {
   /** Seconds the run HUD lingers before it auto-closes (baked into the script). */
   hudSeconds?: number;
+  /** Seconds a step waits for its element before giving up (waitFor default). */
+  findTimeoutSeconds?: number;
 }
 
 /**
@@ -617,16 +632,26 @@ export interface WorkflowScriptOptions {
 export function buildWorkflowScript(steps: WorkflowStep[], opts?: WorkflowScriptOptions): string {
   const data = JSON.stringify(steps.map(serializeStep), null, 2);
   const hudMs = Math.max(0, Math.round((opts?.hudSeconds ?? HUD_SECONDS_DEFAULT) * 1000));
+  const findMs = Math.max(
+    1000,
+    Math.round((opts?.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000)
+  );
   return `(async () => {
   const STEPS = ${data};
   const HUD_MS = ${hudMs};
+  const FIND_MS = ${findMs};
   ${PREAMBLE}
+  // Reset the cross-realm Stop flag at the start of every run, so a Stop click
+  // from a PREVIOUS run can never abort this fresh one. A separate MAIN-world
+  // injection (STOP_SCRIPT) sets it true; sleep/waitFor and the loop honour it.
+  window.__senmurvFlowStop = false;
   const hud = createHud(STEPS);
   const skipped = [];
   let okCount = 0;
   for (let i = 0; i < STEPS.length; i += 1) {
     const step = STEPS[i];
     if (step.disabled) continue; // kept in the flow for editing, but not executed
+    if (stopRequested()) break; // user pressed Stop between steps
     const tag = step.label || step.text || step.selector || step.key || (step.code ? 'js' : step.ms + 'ms');
     hud.setRunning(i);
     try {
@@ -644,13 +669,15 @@ export function buildWorkflowScript(steps: WorkflowStep[], opts?: WorkflowScript
       hud.setOk(i);
       console.info('[flow] ok:', step.kind, tag);
     } catch (e) {
+      if (stopRequested()) break; // aborted mid-step by Stop — leave cleanly, no red mark
       skipped.push(step.kind + ' ' + tag + ' (' + e.message + ')');
       hud.setFail(i, e.message);
       console.warn('[flow] SKIPPED:', step.kind, tag, '-', e.message);
     }
   }
-  hud.finish(okCount, skipped.length);
-  console.info('[flow] done. ok=' + okCount + ', skipped=' + skipped.length);
+  const stopped = stopRequested();
+  hud.finish(okCount, skipped.length, stopped);
+  console.info('[flow] ' + (stopped ? 'stopped' : 'done') + '. ok=' + okCount + ', skipped=' + skipped.length);
   if (skipped.length) {
     const labels = [...document.querySelectorAll('mat-label')].filter(isVisible).map((l) => l.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean);
     console.warn('[flow] skipped steps:', skipped);

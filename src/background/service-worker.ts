@@ -19,6 +19,7 @@ import {
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
+import { clearTagInEntries, renameTagInEntries } from '@/shared/tasks';
 import { buildClearPlan } from '@/shared/tools/site-data';
 import type {
   ClearOutcome,
@@ -30,6 +31,7 @@ import type {
   RegionConfig,
   Result,
   StorageProbe,
+  TimeEntry,
   XrmReport,
 } from '@/shared/types';
 
@@ -151,6 +153,41 @@ async function runScriptInPage(tabId: number, code: string): Promise<Result<void
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
+}
+
+/**
+ * Ask a running Flow to abort by raising the cross-realm stop flag its interpreter
+ * polls (`window.__senmurvFlowStop`). Injected as a real `func` (never a code
+ * string) into the MAIN world — the same shape as the Region/Xrm shims, so it does
+ * NOT widen the sanctioned `new Function` runner. A no-op when no flow is running.
+ */
+async function stopFlowInPage(tabId: number): Promise<Result<void>> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        (window as unknown as { __senmurvFlowStop?: boolean }).__senmurvFlowStop = true;
+      },
+    });
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** Rename tag `from` → `to` across every entry (one atomic write); returns the new list. */
+async function renameTagAcross(from: string, to: string): Promise<TimeEntry[]> {
+  const next = renameTagInEntries(await getTasks(), from, to);
+  await saveTasks(next);
+  return next;
+}
+
+/** Un-tag every entry carrying `tag` (entries kept); returns the new list. */
+async function clearTagAcross(tag: string): Promise<TimeEntry[]> {
+  const next = clearTagInEntries(await getTasks(), tag);
+  await saveTasks(next);
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -1102,6 +1139,18 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
+      case MESSAGE_TYPES.RENAME_TAG:
+        renameTagAcross(message.payload.from, message.payload.to)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_TAG:
+        clearTagAcross(message.payload.tag)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
       case MESSAGE_TYPES.GET_CHECKLISTS:
         getChecklists()
           .then((value) => sendResponse({ ok: true, value }))
@@ -1154,6 +1203,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         withActiveRunnableTab((tabId) => runScriptInPage(tabId, message.payload.code)).then(
           sendResponse
         );
+        return true;
+
+      case MESSAGE_TYPES.STOP_SCRIPT:
+        withActiveRunnableTab((tabId) => stopFlowInPage(tabId)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.TEST_LOCATOR:

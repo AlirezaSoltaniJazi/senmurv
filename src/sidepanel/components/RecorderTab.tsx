@@ -52,6 +52,8 @@ interface Props {
   setSteps: Dispatch<SetStateAction<WorkflowStep[]>>;
   /** Seconds the run popup lingers before auto-closing (baked into built flows). */
   hudSeconds: number;
+  /** Seconds a step waits for its element before giving up (baked into built flows). */
+  findTimeoutSeconds: number;
 }
 
 type PickTarget = { mode: 'step'; id: string } | { mode: 'adhoc' } | null;
@@ -140,9 +142,13 @@ export function RecorderTab({
   steps,
   setSteps,
   hudSeconds,
+  findTimeoutSeconds,
 }: Props): ReactElement {
   const [picking, setPicking] = useState(false);
   const [recording, setRecording] = useState(false);
+  // A flow run is fire-and-forget (RUN_SCRIPT returns before the flow finishes),
+  // so this just gates the Stop button; the user clears it via Stop.
+  const [running, setRunning] = useState(false);
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -383,7 +389,7 @@ export function RecorderTab({
   // Fill generators are emitted as in-page `{random:…}` tokens (see workflow.ts),
   // so a saved/copied flow re-randomizes on every run — no faker needed in the page.
   function buildScriptFor(list: WorkflowStep[]): string {
-    return buildWorkflowScript(list, { hudSeconds });
+    return buildWorkflowScript(list, { hudSeconds, findTimeoutSeconds });
   }
   function buildFlow(): string {
     return buildScriptFor(steps);
@@ -395,12 +401,23 @@ export function RecorderTab({
       setError('Add or record some steps first.');
       return;
     }
+    setRunning(true);
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code: buildScriptFor(list) },
     });
     if (res.ok) setStatus(done);
-    else setError(res.error);
+    else {
+      setError(res.error);
+      setRunning(false);
+    }
+  }
+  // Ask the running flow to abort. The flow polls a MAIN-world flag between steps
+  // and inside its waits, so it stops within a step / one poll interval.
+  async function stopFlow(): Promise<void> {
+    setRunning(false);
+    await sendRuntimeMessage({ type: MESSAGE_TYPES.STOP_SCRIPT });
+    setStatus('Stop requested — the flow halts at the next step or wait.');
   }
   async function runFlow(): Promise<void> {
     await runSteps(steps, `Ran ${steps.length} step(s). Check the page (console has details).`);
@@ -964,6 +981,16 @@ export function RecorderTab({
             <button type="button" className="primary" onClick={() => void runFlow()}>
               Run flow
             </button>
+            {running && (
+              <button
+                type="button"
+                className="danger"
+                title="Stop the running flow (halts at the next step or wait)"
+                onClick={() => void stopFlow()}
+              >
+                ■ Stop
+              </button>
+            )}
             <button type="button" onClick={() => void copyFlow()}>
               Copy as script
             </button>

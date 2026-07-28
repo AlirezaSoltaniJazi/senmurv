@@ -21,6 +21,7 @@ describe('TOOLS registry', () => {
       'harden',
       'jwt',
       'json',
+      'autorefresh',
     ] satisfies ToolKey[]);
   });
 

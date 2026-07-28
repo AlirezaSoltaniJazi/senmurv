@@ -666,6 +666,16 @@ export interface Prefs {
    * Baked into a saved/run flow at build time. Omitted → the default applies.
    */
   hudSeconds?: number;
+  /**
+   * Seconds a Flow waits for an element before giving up (the interpreter's
+   * `waitFor` default). Baked into the built flow script. Omitted → default.
+   */
+  findTimeoutSeconds?: number;
+  /**
+   * Per-tag colour overrides for Track tags: tag → palette index (0…7). A tag
+   * absent from the map falls back to its hashed colour. Managed in Settings.
+   */
+  tagColors?: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------

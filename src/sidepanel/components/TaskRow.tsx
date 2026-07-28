@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useContext, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   entryDurationMs,
@@ -12,6 +12,7 @@ import {
 } from '@/shared/tasks';
 import type { TimeEntry, TimeInterval } from '@/shared/types';
 import { AutocompleteInput } from './AutocompleteInput';
+import { TagColorsContext } from './TagColorsContext';
 
 interface TaskRowProps {
   entry: TimeEntry;
@@ -192,6 +193,7 @@ export function TaskRow({
   runLabel,
   onRerun,
 }: TaskRowProps): ReactElement {
+  const tagColors = useContext(TagColorsContext);
   if (isEditing) {
     return (
       <div className="task-row task-row-editing">
@@ -214,7 +216,9 @@ export function TaskRow({
         <span className="run-time">{runLabel}</span>
       ) : (
         <>
-          <span className={`task-tag ${tagColorClass(entry.tag)}`}>{entry.tag || 'untagged'}</span>
+          <span className={`task-tag ${tagColorClass(entry.tag, tagColors)}`}>
+            {entry.tag || 'untagged'}
+          </span>
           <span className="task-title">{entry.title}</span>
         </>
       )}

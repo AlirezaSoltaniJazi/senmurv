@@ -409,15 +409,50 @@ export const TAG_COLOR_COUNT = 8;
 
 /**
  * Map a tag to a stable CSS class so colors stay consistent across views
- * without inline styles. Empty tag → the neutral `tag-none` class.
+ * without inline styles. Empty tag → the neutral `tag-none` class. A user
+ * `overrides` map (tag → palette index) wins over the hashed default.
  */
-export function tagColorClass(tag: string): string {
-  if (tag.trim() === '') return 'tag-none';
+export function tagColorClass(tag: string, overrides?: Record<string, number>): string {
+  const key = tag.trim();
+  if (key === '') return 'tag-none';
+  const override = overrides?.[key];
+  if (typeof override === 'number' && override >= 0 && override < TAG_COLOR_COUNT) {
+    return `tag-c${override}`;
+  }
   let hash = 0;
   for (let i = 0; i < tag.length; i += 1) {
     hash = (hash * 31 + tag.charCodeAt(i)) | 0;
   }
   return `tag-c${Math.abs(hash) % TAG_COLOR_COUNT}`;
+}
+
+/**
+ * Rename tag `from` → `to` on every entry that carries it (trimmed, exact match).
+ * A no-op for an empty or unchanged name. Pure — leaves `updatedAt` untouched
+ * (a tag tidy-up is not a work event).
+ */
+export function renameTagInEntries(entries: TimeEntry[], from: string, to: string): TimeEntry[] {
+  const f = from.trim();
+  const t = to.trim();
+  if (f === '' || t === '' || f === t) return entries;
+  return entries.map((e) => (e.tag.trim() === f ? { ...e, tag: t } : e));
+}
+
+/** Un-tag every entry carrying `tag` (sets its tag to ''), keeping the entries. */
+export function clearTagInEntries(entries: TimeEntry[], tag: string): TimeEntry[] {
+  const g = tag.trim();
+  if (g === '') return entries;
+  return entries.map((e) => (e.tag.trim() === g ? { ...e, tag: '' } : e));
+}
+
+/** How many entries use each distinct (non-empty, trimmed) tag. */
+export function tagUsageCounts(entries: TimeEntry[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const e of entries) {
+    const tag = e.tag.trim();
+    if (tag) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+  }
+  return counts;
 }
 
 // ---------------------------------------------------------------------------

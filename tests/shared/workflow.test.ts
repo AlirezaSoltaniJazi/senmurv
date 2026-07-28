@@ -47,7 +47,7 @@ describe('buildWorkflowScript', () => {
     expect(code).toContain('hud.setRunning(i)');
     expect(code).toContain('hud.setOk(i)');
     expect(code).toContain('hud.setFail(i, e.message)');
-    expect(code).toContain('hud.finish(okCount, skipped.length)');
+    expect(code).toContain('hud.finish(okCount, skipped.length, stopped)');
     expect(code).not.toContain('alert(');
   });
 
@@ -297,6 +297,38 @@ describe('flow run popup (HUD) auto-close', () => {
     expect(code).toContain('const HUD_MS = 1000;');
     const long = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 10 }], { hudSeconds: 12 });
     expect(long).toContain('const HUD_MS = 12000;');
+  });
+});
+
+describe('element-find timeout (FIND_MS)', () => {
+  it('bakes the default 10s and uses it as the waitFor default', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'fill', selector: '#x', value: 'v' }]);
+    expect(code).toContain('const FIND_MS = 10000;');
+    expect(code).toContain('function waitFor(fn, desc, timeout = FIND_MS');
+    expect(code).not.toContain('timeout = 15000'); // no lingering hard-coded default
+    expect(code).not.toContain(': 15000'); // waitForVisible fallback also uses FIND_MS
+  });
+
+  it('bakes a configured find timeout (seconds → ms)', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }], { findTimeoutSeconds: 2 });
+    expect(code).toContain('const FIND_MS = 2000;');
+  });
+});
+
+describe('stoppable flow runner', () => {
+  it('resets the stop flag at run start and checks it between steps', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(code).toContain('window.__senmurvFlowStop = false;'); // reset per run
+    expect(code).toContain('const stopRequested = ()');
+    expect(code).toContain('if (stopRequested()) break;'); // loop honours it
+    expect(code).toContain('hud.finish(okCount, skipped.length, stopped)');
+  });
+
+  it('makes sleep and waitFor abort-aware, and stays valid JS', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(code).toContain('if (stopRequested()) return resolve();'); // sleep bails early
+    expect(code).toContain("if (stopRequested()) return reject(new Error('stopped'));"); // waitFor bails
+    expect(() => new vm.Script(code)).not.toThrow();
   });
 });
 

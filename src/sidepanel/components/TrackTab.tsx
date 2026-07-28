@@ -19,6 +19,7 @@ import {
 import type { Result, TimeEntry } from '@/shared/types';
 import { newId } from '@/utils/id';
 import { AutocompleteInput } from './AutocompleteInput';
+import { TagColorsContext } from './TagColorsContext';
 import { TaskCalendarView } from './TaskCalendarView';
 import { TaskListView } from './TaskListView';
 import { TrackExport } from './TrackExport';
@@ -44,9 +45,11 @@ function closeOpenInterval(entry: TimeEntry, at: number): TimeEntry['intervals']
 interface Props {
   /** Bumped by the header refresh button to re-pull data from storage. */
   reloadNonce: number;
+  /** Tag → palette-index overrides (from Settings), shared via context. */
+  tagColors: Record<string, number>;
 }
 
-export function TrackTab({ reloadNonce }: Props): ReactElement {
+export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
   const [entries, setEntries] = useState<TimeEntry[]>([]);
   const [title, setTitle] = useState('');
   const [tag, setTag] = useState('');
@@ -246,140 +249,142 @@ export function TrackTab({ reloadNonce }: Props): ReactElement {
   const titles = distinctTitles(entries);
 
   return (
-    <div className="tab">
-      <AutocompleteInput
-        className="name-input"
-        placeholder="Task title (e.g. Write Test Case)"
-        ariaLabel="Task title"
-        value={title}
-        onChange={setTitle}
-        options={titles}
-        onEnter={() => void start()}
-      />
-      <div className="row">
+    <TagColorsContext.Provider value={tagColors}>
+      <div className="tab">
         <AutocompleteInput
           className="name-input"
-          wrapperClassName="tag-autocomplete"
-          placeholder="Tag (e.g. My Company)"
-          ariaLabel="Tag"
-          value={tag}
-          onChange={setTag}
-          options={tags}
+          placeholder="Task title (e.g. Write Test Case)"
+          ariaLabel="Task title"
+          value={title}
+          onChange={setTitle}
+          options={titles}
           onEnter={() => void start()}
         />
-        <button type="button" className="primary" onClick={() => void start()}>
-          ▶ Start
-        </button>
-      </div>
+        <div className="row">
+          <AutocompleteInput
+            className="name-input"
+            wrapperClassName="tag-autocomplete"
+            placeholder="Tag (e.g. My Company)"
+            ariaLabel="Tag"
+            value={tag}
+            onChange={setTag}
+            options={tags}
+            onEnter={() => void start()}
+          />
+          <button type="button" className="primary" onClick={() => void start()}>
+            ▶ Start
+          </button>
+        </div>
 
-      {activeEntries.length > 0 && (
-        <>
-          <h3 className="section-title">Active</h3>
-          <ul className="running-list">
-            {activeEntries.map((entry) => (
-              <li
-                key={entry.id}
-                className={`running-row ${isRunning(entry) ? 'is-running' : 'is-paused'}`}
-              >
-                <span className={`task-tag ${tagColorClass(entry.tag)}`}>
-                  {entry.tag || 'untagged'}
-                </span>
-                <span className="running-title">{entry.title}</span>
-                <span className="running-elapsed">
-                  {formatDuration(entryDurationMs(entry, now))}
-                </span>
-                <span className="running-actions">
-                  {isRunning(entry) ? (
-                    <button type="button" onClick={() => void pause(entry)}>
-                      ❚❚ Pause
+        {activeEntries.length > 0 && (
+          <>
+            <h3 className="section-title">Active</h3>
+            <ul className="running-list">
+              {activeEntries.map((entry) => (
+                <li
+                  key={entry.id}
+                  className={`running-row ${isRunning(entry) ? 'is-running' : 'is-paused'}`}
+                >
+                  <span className={`task-tag ${tagColorClass(entry.tag, tagColors)}`}>
+                    {entry.tag || 'untagged'}
+                  </span>
+                  <span className="running-title">{entry.title}</span>
+                  <span className="running-elapsed">
+                    {formatDuration(entryDurationMs(entry, now))}
+                  </span>
+                  <span className="running-actions">
+                    {isRunning(entry) ? (
+                      <button type="button" onClick={() => void pause(entry)}>
+                        ❚❚ Pause
+                      </button>
+                    ) : (
+                      <button type="button" className="primary" onClick={() => void resume(entry)}>
+                        ▶ Resume
+                      </button>
+                    )}
+                    <button type="button" className="danger" onClick={() => void stop(entry)}>
+                      ■ Stop
                     </button>
-                  ) : (
-                    <button type="button" className="primary" onClick={() => void resume(entry)}>
-                      ▶ Resume
-                    </button>
-                  )}
-                  <button type="button" className="danger" onClick={() => void stop(entry)}>
-                    ■ Stop
-                  </button>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </>
-      )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
 
-      <TrackExport entries={entries} />
+        <TrackExport entries={entries} />
 
-      <div className="row">
-        <button
-          type="button"
-          className="danger"
-          onClick={() => void clearAll()}
-          disabled={entries.length === 0}
-          title="Delete every tracked task"
-        >
-          Clear all
-        </button>
+        <div className="row">
+          <button
+            type="button"
+            className="danger"
+            onClick={() => void clearAll()}
+            disabled={entries.length === 0}
+            title="Delete every tracked task"
+          >
+            Clear all
+          </button>
+        </div>
+
+        <div className="chips view-toggle">
+          <button
+            type="button"
+            className={view === 'list' ? 'chip active' : 'chip'}
+            onClick={() => setView('list')}
+          >
+            List
+          </button>
+          <button
+            type="button"
+            className={view === 'calendar' ? 'chip active' : 'chip'}
+            onClick={() => setView('calendar')}
+          >
+            Calendar
+          </button>
+        </div>
+
+        {view === 'list' ? (
+          <TaskListView
+            days={dayBlocks}
+            now={now}
+            expanded={expanded}
+            editingId={editingId}
+            titleOptions={titles}
+            tagOptions={tags}
+            onToggleExpand={toggleExpand}
+            onRerun={(entry) => void rerun(entry)}
+            onStartEdit={(id) => setEditingId(id)}
+            onCancelEdit={() => setEditingId(null)}
+            onSave={(entry) => void saveEdit(entry)}
+            onDelete={(id) => void remove(id)}
+          />
+        ) : (
+          <TaskCalendarView
+            tagsPerDay={tagsPerDay}
+            dayBlocks={dayBlocks}
+            grid={grid}
+            totals={totals}
+            now={now}
+            selectedDay={selectedDay}
+            expanded={expanded}
+            editingId={editingId}
+            titleOptions={titles}
+            tagOptions={tags}
+            onSelectDay={selectDay}
+            onPrevMonth={() => shiftMonth(-1)}
+            onNextMonth={() => shiftMonth(1)}
+            onToggleExpand={toggleExpand}
+            onRerun={(entry) => void rerun(entry)}
+            onStartEdit={(id) => setEditingId(id)}
+            onCancelEdit={() => setEditingId(null)}
+            onSave={(entry) => void saveEdit(entry)}
+            onDelete={(id) => void remove(id)}
+          />
+        )}
+
+        {status && <p className="status">{status}</p>}
+        {error && <p className="error">{error}</p>}
       </div>
-
-      <div className="chips view-toggle">
-        <button
-          type="button"
-          className={view === 'list' ? 'chip active' : 'chip'}
-          onClick={() => setView('list')}
-        >
-          List
-        </button>
-        <button
-          type="button"
-          className={view === 'calendar' ? 'chip active' : 'chip'}
-          onClick={() => setView('calendar')}
-        >
-          Calendar
-        </button>
-      </div>
-
-      {view === 'list' ? (
-        <TaskListView
-          days={dayBlocks}
-          now={now}
-          expanded={expanded}
-          editingId={editingId}
-          titleOptions={titles}
-          tagOptions={tags}
-          onToggleExpand={toggleExpand}
-          onRerun={(entry) => void rerun(entry)}
-          onStartEdit={(id) => setEditingId(id)}
-          onCancelEdit={() => setEditingId(null)}
-          onSave={(entry) => void saveEdit(entry)}
-          onDelete={(id) => void remove(id)}
-        />
-      ) : (
-        <TaskCalendarView
-          tagsPerDay={tagsPerDay}
-          dayBlocks={dayBlocks}
-          grid={grid}
-          totals={totals}
-          now={now}
-          selectedDay={selectedDay}
-          expanded={expanded}
-          editingId={editingId}
-          titleOptions={titles}
-          tagOptions={tags}
-          onSelectDay={selectDay}
-          onPrevMonth={() => shiftMonth(-1)}
-          onNextMonth={() => shiftMonth(1)}
-          onToggleExpand={toggleExpand}
-          onRerun={(entry) => void rerun(entry)}
-          onStartEdit={(id) => setEditingId(id)}
-          onCancelEdit={() => setEditingId(null)}
-          onSave={(entry) => void saveEdit(entry)}
-          onDelete={(id) => void remove(id)}
-        />
-      )}
-
-      {status && <p className="status">{status}</p>}
-      {error && <p className="error">{error}</p>}
-    </div>
+    </TagColorsContext.Provider>
   );
 }

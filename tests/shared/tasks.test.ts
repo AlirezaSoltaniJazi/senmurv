@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildDayBlocks,
   buildMonthGrid,
+  clearTagInEntries,
   dayKey,
   dayLabel,
   dayTags,
@@ -20,9 +21,11 @@ import {
   isRunning,
   mergedDurationMs,
   monthLabel,
+  renameTagInEntries,
   rootId,
   runTimeRange,
   tagColorClass,
+  tagUsageCounts,
   tagsByDay,
   toLocalInputValue,
   totalsByDay,
@@ -464,6 +467,49 @@ describe('tagColorClass', () => {
   it('is deterministic and within the palette range', () => {
     expect(tagColorClass('My Company')).toBe(tagColorClass('My Company'));
     expect(tagColorClass('Client X')).toMatch(/^tag-c[0-7]$/);
+  });
+
+  it('lets an overrides map win over the hashed colour', () => {
+    expect(tagColorClass('Acme', { Acme: 5 })).toBe('tag-c5');
+    expect(tagColorClass('  Acme  ', { Acme: 2 })).toBe('tag-c2'); // trimmed key match
+    // Out-of-range / absent overrides fall back to the hash.
+    expect(tagColorClass('Acme', { Acme: 99 })).toBe(tagColorClass('Acme'));
+    expect(tagColorClass('Acme', { Other: 1 })).toBe(tagColorClass('Acme'));
+  });
+});
+
+describe('tag management helpers', () => {
+  it('renameTagInEntries renames matching entries only, leaving others intact', () => {
+    const entries = [
+      makeEntry({ id: 'a', tag: 'Old' }),
+      makeEntry({ id: 'b', tag: 'Old' }),
+      makeEntry({ id: 'c', tag: 'Keep' }),
+    ];
+    const next = renameTagInEntries(entries, 'Old', 'New');
+    expect(next.map((e) => e.tag)).toEqual(['New', 'New', 'Keep']);
+    // No-ops: empty names or unchanged name return the same array reference.
+    expect(renameTagInEntries(entries, 'Old', 'Old')).toBe(entries);
+    expect(renameTagInEntries(entries, '', 'X')).toBe(entries);
+  });
+
+  it('clearTagInEntries un-tags matching entries (keeps them)', () => {
+    const entries = [makeEntry({ id: 'a', tag: 'Gone' }), makeEntry({ id: 'b', tag: 'Stay' })];
+    const next = clearTagInEntries(entries, 'Gone');
+    expect(next.map((e) => e.tag)).toEqual(['', 'Stay']);
+    expect(next).toHaveLength(2); // entries survive
+    expect(clearTagInEntries(entries, '')).toBe(entries);
+  });
+
+  it('tagUsageCounts counts entries per non-empty tag', () => {
+    const counts = tagUsageCounts([
+      makeEntry({ tag: 'A' }),
+      makeEntry({ tag: 'A' }),
+      makeEntry({ tag: 'B' }),
+      makeEntry({ tag: '' }),
+    ]);
+    expect(counts.get('A')).toBe(2);
+    expect(counts.get('B')).toBe(1);
+    expect(counts.has('')).toBe(false);
   });
 });
 

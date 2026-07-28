@@ -1,4 +1,7 @@
 import {
+  FIND_TIMEOUT_SECONDS_DEFAULT,
+  FIND_TIMEOUT_SECONDS_MAX,
+  FIND_TIMEOUT_SECONDS_MIN,
   FONT_SCALE_MAX,
   FONT_SCALE_MIN,
   HUD_SECONDS_DEFAULT,
@@ -6,6 +9,7 @@ import {
   HUD_SECONDS_MIN,
   STORAGE_KEYS,
 } from '@/shared/constants';
+import { TAG_COLOR_COUNT } from '@/shared/tasks';
 import type {
   Checklist,
   FontSize,
@@ -288,10 +292,26 @@ export async function deleteNote(id: string): Promise<Note[]> {
 // User preferences (single object, not a list)
 // ---------------------------------------------------------------------------
 
-export const DEFAULT_PREFS: Prefs = { fontSize: 'medium', hudSeconds: HUD_SECONDS_DEFAULT };
+export const DEFAULT_PREFS: Prefs = {
+  fontSize: 'medium',
+  hudSeconds: HUD_SECONDS_DEFAULT,
+  findTimeoutSeconds: FIND_TIMEOUT_SECONDS_DEFAULT,
+};
 
 function isFontSize(value: unknown): value is FontSize {
   return value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge';
+}
+
+/** Validate a stored tag→palette-index map, keeping only well-formed entries. */
+function readTagColors(value: unknown): Record<string, number> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined;
+  const out: Record<string, number> = {};
+  for (const [tag, idx] of Object.entries(value as Record<string, unknown>)) {
+    if (typeof idx === 'number' && Number.isInteger(idx) && idx >= 0 && idx < TAG_COLOR_COUNT) {
+      out[tag] = idx;
+    }
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
 }
 
 /** Read prefs, merging stored valid fields over the defaults. */
@@ -303,6 +323,7 @@ export async function getPrefs(): Promise<Prefs> {
   const prefs: Prefs = {
     fontSize: isFontSize(v.fontSize) ? v.fontSize : DEFAULT_PREFS.fontSize,
     hudSeconds: HUD_SECONDS_DEFAULT,
+    findTimeoutSeconds: FIND_TIMEOUT_SECONDS_DEFAULT,
   };
   if (typeof v.fontScale === 'number' && Number.isFinite(v.fontScale)) {
     prefs.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, v.fontScale));
@@ -313,6 +334,14 @@ export async function getPrefs(): Promise<Prefs> {
       Math.max(HUD_SECONDS_MIN, Math.round(v.hudSeconds))
     );
   }
+  if (typeof v.findTimeoutSeconds === 'number' && Number.isFinite(v.findTimeoutSeconds)) {
+    prefs.findTimeoutSeconds = Math.min(
+      FIND_TIMEOUT_SECONDS_MAX,
+      Math.max(FIND_TIMEOUT_SECONDS_MIN, Math.round(v.findTimeoutSeconds))
+    );
+  }
+  const tagColors = readTagColors(v.tagColors);
+  if (tagColors) prefs.tagColors = tagColors;
   return prefs;
 }
 

@@ -37,6 +37,7 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.STOP_RECORD }
   | { type: typeof MESSAGE_TYPES.ACTION_RECORDED; payload: { step: RecordedStep } }
   | { type: typeof MESSAGE_TYPES.RUN_SCRIPT; payload: { code: string } }
+  | { type: typeof MESSAGE_TYPES.STOP_SCRIPT }
   | { type: typeof MESSAGE_TYPES.GET_SCRIPTS }
   | { type: typeof MESSAGE_TYPES.SAVE_SCRIPT; payload: { script: SavedScript } }
   | { type: typeof MESSAGE_TYPES.SET_SCRIPTS; payload: { scripts: SavedScript[] } }
@@ -46,6 +47,8 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.SAVE_TASK; payload: { entry: TimeEntry } }
   | { type: typeof MESSAGE_TYPES.DELETE_TASK; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.CLEAR_TASKS }
+  | { type: typeof MESSAGE_TYPES.RENAME_TAG; payload: { from: string; to: string } }
+  | { type: typeof MESSAGE_TYPES.DELETE_TAG; payload: { tag: string } }
   | { type: typeof MESSAGE_TYPES.GET_CHECKLISTS }
   | { type: typeof MESSAGE_TYPES.SAVE_CHECKLIST; payload: { checklist: Checklist } }
   | { type: typeof MESSAGE_TYPES.DELETE_CHECKLIST; payload: { id: string } }

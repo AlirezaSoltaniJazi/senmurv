@@ -198,6 +198,18 @@ export function ScriptsTab({
     else setError(res.error);
   }
 
+  // A raw JS script can't be interrupted mid-run (a synchronous new Function(code)()
+  // blocks the page's thread), so Stop hard-reloads the active tab — which halts
+  // anything the script started (timers/intervals) and also stops a running Flow.
+  function stopScript(): void {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) return;
+      const id = tabs[0]?.id;
+      if (typeof id === 'number') void chrome.tabs.reload(id).catch(() => undefined);
+    });
+    setStatus('Reloaded the page to stop any running script.');
+  }
+
   function decode(): void {
     if (!code.trim()) {
       setError('Paste a javascript: bookmarklet into the editor first.');
@@ -634,6 +646,14 @@ export function ScriptsTab({
         </button>
         <button type="button" onClick={decode}>
           Decode bookmarklet
+        </button>
+        <button
+          type="button"
+          className="danger"
+          title="Stop a running script by reloading the current page"
+          onClick={stopScript}
+        >
+          Stop (reloads page)
         </button>
       </div>
 
