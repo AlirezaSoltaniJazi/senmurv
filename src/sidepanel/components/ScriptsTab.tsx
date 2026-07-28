@@ -64,6 +64,9 @@ export function ScriptsTab({
   // Inline folder rename.
   const [renamingId, setRenamingId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
+  // The script whose Run button is currently toggled to Stop. Runs are fire-and-
+  // forget (no completion signal), so this clears only on Stop or a new Run.
+  const [runningId, setRunningId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -190,18 +193,23 @@ export function ScriptsTab({
   async function run(script: SavedScript): Promise<void> {
     setError(null);
     setStatus(null);
+    setRunningId(script.id); // toggle this row's Run → Stop
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code: script.code },
     });
     if (res.ok) setStatus(`Ran “${script.name}” in the page.`);
-    else setError(res.error);
+    else {
+      setError(res.error);
+      setRunningId(null);
+    }
   }
 
   // A raw JS script can't be interrupted mid-run (a synchronous new Function(code)()
   // blocks the page's thread), so Stop hard-reloads the active tab — which halts
   // anything the script started (timers/intervals) and also stops a running Flow.
   function stopScript(): void {
+    setRunningId(null);
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
       if (chrome.runtime.lastError) return;
       const id = tabs[0]?.id;
@@ -462,11 +470,28 @@ export function ScriptsTab({
           </span>
         )}
         <span className="script-actions">
-          <button type="button" onClick={() => startRename(folder)}>
-            Rename
+          <button
+            type="button"
+            title="Rename folder"
+            aria-label="Rename folder"
+            onClick={() => startRename(folder)}
+          >
+            <span className="ico" aria-hidden="true">
+              ✎
+            </span>
+            <span className="lbl">Rename</span>
           </button>
-          <button type="button" className="danger" onClick={() => void removeFolder(folder.id)}>
-            Delete
+          <button
+            type="button"
+            className="danger"
+            title="Delete folder"
+            aria-label="Delete folder"
+            onClick={() => void removeFolder(folder.id)}
+          >
+            <span className="ico" aria-hidden="true">
+              ✕
+            </span>
+            <span className="lbl">Delete</span>
           </button>
         </span>
       </li>
@@ -484,7 +509,9 @@ export function ScriptsTab({
         onDrop={(e) => void onRowDrop(e, s.id)}
       >
         {handle(s.id, isChild ? 'Drag to reorder or out' : 'Drag onto a folder to group it')}
-        <span className="tree-caret-spacer" aria-hidden="true" />
+        {/* Top-level scripts get the caret-column spacer to align under a folder;
+            children are already indented, so they skip it (no wasted lead-in gap). */}
+        {!isChild && <span className="tree-caret-spacer" aria-hidden="true" />}
         <input
           type="checkbox"
           checked={selected.has(s.id)}
@@ -505,19 +532,59 @@ export function ScriptsTab({
               ↥
             </button>
           )}
-          <button type="button" className="primary" onClick={() => void run(s)}>
-            Run
-          </button>
-          <button type="button" onClick={() => editScript(s)}>
-            Edit
-          </button>
-          {customizable(s.code) && (
-            <button type="button" onClick={() => customizeScript(s)}>
-              Customize
+          {runningId === s.id ? (
+            <button
+              type="button"
+              className="danger"
+              title="Stop (reloads the page)"
+              aria-label="Stop"
+              onClick={() => stopScript()}
+            >
+              <span className="ico ico-stop" aria-hidden="true" />
+              <span className="lbl">Stop</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="primary"
+              title="Run"
+              aria-label="Run"
+              onClick={() => void run(s)}
+            >
+              <span className="ico ico-play" aria-hidden="true" />
+              <span className="lbl">Run</span>
             </button>
           )}
-          <button type="button" className="danger" onClick={() => void remove(s.id)}>
-            Delete
+          <button type="button" title="Edit" aria-label="Edit" onClick={() => editScript(s)}>
+            <span className="ico" aria-hidden="true">
+              ✎
+            </span>
+            <span className="lbl">Edit</span>
+          </button>
+          {customizable(s.code) && (
+            <button
+              type="button"
+              title="Customize in the Recorder"
+              aria-label="Customize"
+              onClick={() => customizeScript(s)}
+            >
+              <span className="ico" aria-hidden="true">
+                ⚙
+              </span>
+              <span className="lbl">Customize</span>
+            </button>
+          )}
+          <button
+            type="button"
+            className="danger"
+            title="Delete"
+            aria-label="Delete"
+            onClick={() => void remove(s.id)}
+          >
+            <span className="ico" aria-hidden="true">
+              ✕
+            </span>
+            <span className="lbl">Delete</span>
           </button>
         </span>
       </li>

@@ -250,6 +250,8 @@ select,
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* Query context: row action buttons collapse to icons when the list is narrow. */
+  container: scriptlist / inline-size;
 }
 
 .data-row {
@@ -435,7 +437,12 @@ select,
 
 /* Script grouping: nested children, caret, nest-drop target, top-level drop bar */
 .script-row.script-child {
-  margin-left: 22px;
+  margin-left: 16px;
+}
+/* Trim the checkbox's default lead-in so nothing sits far from the handle. */
+.script-row input[type='checkbox'] {
+  margin: 0;
+  flex: 0 0 auto;
 }
 .script-row.drag-nest-over {
   border-color: var(--accent);
@@ -480,6 +487,45 @@ select,
 .script-actions {
   display: flex;
   gap: 4px;
+}
+/* Each action button carries both an icon and a text label; the label shows when
+   there is room, the icon takes over when the list is narrow (container query). */
+.script-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.script-actions .ico {
+  display: none;
+  line-height: 1;
+}
+/* Play/stop are CSS-drawn (not Unicode ▶/■, which render off-centre and at
+   different sizes): a right-pointing triangle and a square, matched in size and
+   inheriting the button's text colour (white on Run, red on Stop). */
+.ico-play {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 5px 0 5px 9px;
+  border-color: transparent transparent transparent currentColor;
+}
+.ico-stop {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  background: currentColor;
+}
+@container scriptlist (max-width: 520px) {
+  .script-actions .lbl {
+    display: none;
+  }
+  .script-actions .ico {
+    display: inline-block;
+  }
+  .script-actions button {
+    min-width: 30px;
+  }
 }
 
 .hidden-file {
