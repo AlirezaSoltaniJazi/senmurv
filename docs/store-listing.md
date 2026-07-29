@@ -44,25 +44,3 @@ Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 All data and settings stay in your browser. Senmurv does not collect or transmit any data.
 
 ---
-
-## Previous listing (archived)
-
-Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
-
-• Generate Random Data — locale-aware test data (name, phone, address, postal code, email, date of birth) with one-click copy and a country-code toggle.
-
-• Find Element Locator — pick any element and get ranked, copy-ready locators (data-testid, formControlName, id, aria-label, CSS, XPath) with a live match-count / uniqueness check, plus snippets for Playwright, WebdriverIO, Cypress, Selenium, and Robot Framework. A "Test a locator" box checks any selector instantly.
-
-• Execute JS Script — save, import (javascript: bookmarklets), and run your own JavaScript on the current page.
-
-• Recorder — record a flow of clicks, inputs, and selects on the page (or build it by hand), then replay it or save it as a script. Steps include click, fill, select, wait, press key, and run JS; a live on-page HUD shows each step pass or fail.
-
-• Track — a stopwatch for your work: start / pause / resume / stop tagged tasks, run several at once, and review time by day in a list or calendar.
-
-• My Tasks — checklists with subtasks, completion %, and deadlines (with days remaining) — and start a Track timer on any task from here.
-
-• Notes — quick free-form notes.
-
-• Settings — panel font size; plus Refresh and Open-in-full-page from the toolbar.
-
-All data and settings stay in your browser. Senmurv does not collect or transmit any data.
