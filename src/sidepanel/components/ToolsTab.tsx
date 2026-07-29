@@ -5,9 +5,11 @@ import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
 import { A11yTool } from './tools/A11yTool';
 import { AssertTool } from './tools/AssertTool';
+import { AutoRefreshTool } from './tools/AutoRefreshTool';
 import { ColorTool } from './tools/ColorTool';
 import { FontTool } from './tools/FontTool';
 import { HardenTool } from './tools/HardenTool';
+import { JsonFormatterTool } from './tools/JsonFormatterTool';
 import { JwtTool } from './tools/JwtTool';
 import { RegionTool } from './tools/RegionTool';
 import { MeasureTool } from './tools/MeasureTool';
@@ -23,6 +25,10 @@ interface Props {
   setTool: (tool: ToolKey | null) => void;
   /** Hand a generated script to the Scripts tab. */
   onSaveScript: (name: string, code: string) => void;
+  /** Auto-refresh state (lifted to App so it survives tool switches) + controls. */
+  autoRefresh: { tabId: number; seconds: number } | null;
+  onStartAutoRefresh: (seconds: number) => void;
+  onStopAutoRefresh: () => void;
 }
 
 /**
@@ -30,7 +36,14 @@ interface Props {
  * long findings lists (tab order, accessibility) need — a persistent chip row
  * would eat two lines of it at side-panel widths.
  */
-export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
+export function ToolsTab({
+  tool,
+  setTool,
+  onSaveScript,
+  autoRefresh,
+  onStartAutoRefresh,
+  onStopAutoRefresh,
+}: Props): ReactElement {
   // Opening a tool, switching tools, or going back to the launcher should start
   // at the top — the panel otherwise keeps the previous scroll position.
   useEffect(() => {
@@ -73,6 +86,14 @@ export function ToolsTab({ tool, setTool, onSaveScript }: Props): ReactElement {
         {tool === 'region' && <RegionTool />}
         {tool === 'harden' && <HardenTool />}
         {tool === 'jwt' && <JwtTool />}
+        {tool === 'json' && <JsonFormatterTool />}
+        {tool === 'autorefresh' && (
+          <AutoRefreshTool
+            active={autoRefresh}
+            onStart={onStartAutoRefresh}
+            onStop={onStopAutoRefresh}
+          />
+        )}
       </ToolShell>
     </div>
   );

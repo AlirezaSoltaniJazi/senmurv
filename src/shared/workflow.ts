@@ -1,3 +1,4 @@
+import { FIND_TIMEOUT_SECONDS_DEFAULT, HUD_SECONDS_DEFAULT } from '@/shared/constants';
 import type { GeneratorId, PickedField } from '@/shared/types';
 import { newId } from '@/utils/id';
 
@@ -34,6 +35,7 @@ export type SelectMode = 'text' | 'first' | 'random';
 export interface WorkflowStep {
   id: string;
   kind: StepKind;
+  name?: string; // optional human label, shown in the run HUD instead of the kind
   text?: string; // click: button text
   ms?: number; // wait: milliseconds; waitEl: timeout
   label?: string; // fill/select/radio/check/clickEl: mat-label text
@@ -43,6 +45,7 @@ export interface WorkflowStep {
   checked?: boolean; // check
   index?: number; // target-by-selector kinds: pick the Nth match (0-based)
   generator?: GeneratorId; // fill: random-value generator; falls back to the static `value`
+  genArg?: string; // fill: generator argument baked into the {random:KIND:ARG} token (number digits / email name-sync)
   key?: string; // press: key name (e.g. "Enter")
   code?: string; // runjs: JS source to run
   disabled?: boolean; // when true the step is kept in the flow but skipped at run time
@@ -136,6 +139,28 @@ export function describeStep(s: WorkflowStep): string {
 }
 
 /**
+ * Move step `id` to just before/after step `targetId`, preserving every other
+ * step's order. A no-op when the ids are equal or either is missing — so the
+ * caller can pass user selections without pre-validating them.
+ */
+export function moveStepRelative(
+  steps: WorkflowStep[],
+  id: string,
+  targetId: string,
+  position: 'before' | 'after'
+): WorkflowStep[] {
+  if (id === targetId) return steps;
+  const from = steps.findIndex((s) => s.id === id);
+  if (from === -1 || !steps.some((s) => s.id === targetId)) return steps;
+  const without = steps.filter((s) => s.id !== id);
+  const targetAt = without.findIndex((s) => s.id === targetId);
+  const insertAt = position === 'before' ? targetAt : targetAt + 1;
+  const moved = steps[from];
+  if (!moved) return steps;
+  return [...without.slice(0, insertAt), moved, ...without.slice(insertAt)];
+}
+
+/**
  * Fill generators that map to an in-page `{random:…}` token (resolved by the
  * PREAMBLE's `randomValue` on every run). Kept in sync with that switch.
  */
@@ -150,6 +175,7 @@ const RANDOM_TOKEN_GENERATORS = new Set<GeneratorId>([
   'streetAddress',
   'city',
   'postalCode',
+  'region',
   'country',
   'company',
   'word',
@@ -177,14 +203,16 @@ const GENERATOR_IDS = new Set<GeneratorId>([
 ]);
 
 /** The `{random:KIND}` (or `{random:KIND:ARG}`) token for a generator id. */
-export function randomToken(generator: GeneratorId): string {
-  return `{random:${generator}}`;
+export function randomToken(generator: GeneratorId, arg?: string): string {
+  return arg ? `{random:${generator}:${arg}}` : `{random:${generator}}`;
 }
 
 function serializeStep(s: WorkflowStep): Record<string, unknown> {
   const o: Record<string, unknown> = { kind: s.kind };
   // Set before the per-kind branches (which each mutate and return this same `o`)
-  // so a disabled step round-trips regardless of kind; the interpreter skips it.
+  // so these round-trip regardless of kind; the interpreter reads `name` for the
+  // HUD label and skips a `disabled` step.
+  if (s.name) o.name = s.name;
   if (s.disabled) o.disabled = true;
   if (s.kind === 'click') {
     o.text = s.text ?? '';
@@ -212,9 +240,10 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
   if (s.kind === 'fill') {
     // A random generator becomes an in-page `{random:…}` token so a SAVED script
     // re-randomizes on every run; a static ("custom") field keeps its literal value.
+    // A `genArg` (number digit-count / email name-sync) rides along in the token.
     o.value =
       s.generator && RANDOM_TOKEN_GENERATORS.has(s.generator)
-        ? randomToken(s.generator)
+        ? randomToken(s.generator, s.genArg)
         : (s.value ?? '');
   }
   if (s.kind === 'select') {
@@ -228,18 +257,31 @@ function serializeStep(s: WorkflowStep): Record<string, unknown> {
 
 // Self-contained interpreter helpers, embedded into the generated script. Uses
 // string concatenation (no nested template literals) so nothing needs escaping.
-const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const PREAMBLE = `const stopRequested = () => !!window.__senmurvFlowStop;
+  // Abort-aware sleep: resolves at \`ms\`, or early the moment a Stop is requested,
+  // so a long \`wait\` step (or an inter-step pause) can't outlive a Stop click.
+  const sleep = (ms) => new Promise((resolve) => {
+    if (!(ms > 0)) return resolve();
+    var start = Date.now();
+    (function tick() {
+      if (stopRequested()) return resolve();
+      var left = ms - (Date.now() - start);
+      if (left <= 0) return resolve();
+      setTimeout(tick, left < 150 ? left : 150);
+    })();
+  });
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim().toLowerCase();
   const isVisible = (el) => { if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
   // Scroll a resolved target into view before acting on it, so off-screen fields
   // become interactable and the page visibly follows the running flow.
   const reveal = (el) => { try { if (el && el.scrollIntoView) el.scrollIntoView({ block: 'center', inline: 'nearest' }); } catch (e) {} };
   const queryNth = (sel, i) => (typeof i === 'number' ? (document.querySelectorAll(sel)[i] || null) : document.querySelector(sel));
-  function waitFor(fn, desc, timeout = 15000, interval = 200) {
+  function waitFor(fn, desc, timeout = FIND_MS, interval = 200) {
     return new Promise((resolve, reject) => {
       const start = Date.now();
       var lastScan = 0, scanStep = 0;
       (function poll() {
+        if (stopRequested()) return reject(new Error('stopped'));
         let v = null; try { v = fn(); } catch (e) { v = null; }
         if (v) return resolve(v);
         var now = Date.now();
@@ -314,6 +356,7 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     last: ['Smith', 'Jones', 'Taylor', 'Brown', 'Williams', 'Wilson', 'Johnson', 'Davies', 'Patel', 'Robinson', 'Wright', 'Thompson', 'Evans', 'Walker', 'White', 'Green', 'Hall', 'Wood', 'Harris', 'Martin', 'Khan', 'Nguyen', 'Rossi', 'Muller', 'Silva'],
     words: ['lorem', 'ipsum', 'dolor', 'sit', 'amet', 'consectetur', 'adipiscing', 'elit', 'sed', 'tempor', 'labore', 'magna', 'aliqua', 'veniam', 'nostrud', 'ullamco', 'laboris', 'aliquip', 'commodo', 'dignissim'],
     cities: ['London', 'Manchester', 'Bristol', 'Leeds', 'Liverpool', 'Sheffield', 'Edinburgh', 'Cardiff', 'Glasgow', 'Oxford', 'Cambridge', 'York', 'Bath', 'Newcastle', 'Nottingham'],
+    regions: ['Greater London', 'Kent', 'Surrey', 'Essex', 'Hampshire', 'West Yorkshire', 'Lancashire', 'Merseyside', 'West Midlands', 'Devon', 'Cornwall', 'Norfolk', 'Cheshire', 'Cumbria', 'Dorset', 'Somerset', 'Suffolk', 'Derbyshire'],
     streets: ['High Street', 'Station Road', 'Church Lane', 'Victoria Road', 'Green Lane', 'Manor Road', 'Kings Road', 'Queens Road', 'Park Avenue', 'Mill Lane', 'The Grove', 'New Road'],
     countries: ['United Kingdom', 'Ireland', 'France', 'Germany', 'Spain', 'Italy', 'Netherlands', 'Belgium', 'Portugal', 'Sweden', 'Norway', 'Denmark', 'Austria', 'Switzerland'],
     companies: ['Acme', 'Globex', 'Initech', 'Umbrella', 'Soylent', 'Stark', 'Wayne', 'Wonka', 'Hooli', 'Vandelay', 'Northwind', 'Contoso'],
@@ -325,13 +368,44 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   var rDigits = (n) => { var s = ''; for (var i = 0; i < n; i += 1) s += rint(0, 9); return s; };
   var rLetters = (n, upper) => { var s = '', base = upper ? 65 : 97; for (var i = 0; i < n; i += 1) s += String.fromCharCode(base + rint(0, 25)); return s; };
   var rDate = (minY, maxY) => { var p = (n) => String(n).padStart(2, '0'); return p(rint(1, 28)) + '/' + p(rint(1, 12)) + '/' + rint(minY, maxY); };
+  // One person per run: firstName / lastName / fullName / a name-synced email all
+  // draw from this same {first,last}, so every name field in the flow matches.
+  var __person = null;
+  var person = () => { if (!__person) __person = { first: pick(RND.first), last: pick(RND.last) }; return __person; };
+  // Build an email. arg holds which name parts to sync: 'f' / 'l' / 'fl'. Synced
+  // parts come from person() (so the email matches the filled name); with no arg
+  // it is a fresh random first.last (independent of the name fields).
+  var emailValue = (arg) => {
+    var parts = [];
+    if (arg && arg.indexOf('f') !== -1) parts.push(person().first.toLowerCase());
+    if (arg && arg.indexOf('l') !== -1) parts.push(person().last.toLowerCase());
+    if (!parts.length) { parts.push(pick(RND.first).toLowerCase()); parts.push(pick(RND.last).toLowerCase()); }
+    return parts.join('.') + '.' + rint(1, 999) + '@example.com';
+  };
+  // A number with a digit count in [min,max] (arg 'dMIN-MAX'); else a value in the
+  // legacy 'lo-hi' range, else the default 1..99999.
+  var numberValue = (arg) => {
+    if (arg && arg.charAt(0) === 'd') {
+      var dp = arg.slice(1).split('-');
+      var dmin = parseInt(dp[0], 10) || 1; var dmax = parseInt(dp[1], 10) || dmin;
+      if (dmin < 1) dmin = 1; if (dmax < dmin) dmax = dmin;
+      var L = rint(dmin, dmax);
+      if (L <= 1) return String(rint(0, 9));
+      var out = String(rint(1, 9));
+      for (var di = 1; di < L; di += 1) out += rint(0, 9);
+      return out;
+    }
+    var lo = 1, hi = 99999;
+    if (arg) { var parts = arg.split('-'); lo = parseInt(parts[0], 10) || 0; hi = parseInt(parts[1], 10) || lo; }
+    return String(rint(lo, hi));
+  };
   function randomValue(kind, arg) {
     var y = new Date().getFullYear();
     switch (kind) {
-      case 'firstName': return pick(RND.first);
-      case 'lastName': return pick(RND.last);
-      case 'fullName': return pick(RND.first) + ' ' + pick(RND.last);
-      case 'email': return pick(RND.first).toLowerCase() + '.' + pick(RND.last).toLowerCase() + rint(1, 999) + '@example.com';
+      case 'firstName': return person().first;
+      case 'lastName': return person().last;
+      case 'fullName': return person().first + ' ' + person().last;
+      case 'email': return emailValue(arg);
       case 'phone': return '+44 7' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
       case 'phoneNational': return '07' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
       // International NSN (no trunk 0) for a +code field: a valid, assignable UK
@@ -341,11 +415,12 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       case 'streetAddress': return rint(1, 199) + ' ' + pick(RND.streets);
       case 'city': return pick(RND.cities);
       case 'postalCode': return rLetters(rint(1, 2), true) + rint(1, 9) + ' ' + rint(1, 9) + rLetters(2, true);
+      case 'region': return pick(RND.regions);
       case 'country': return pick(RND.countries);
       case 'company': return pick(RND.companies) + ' ' + pick(RND.suffix);
       case 'word': return pick(RND.words);
       case 'sentence': { var n = rint(4, 8), w = []; for (var i = 0; i < n; i += 1) w.push(pick(RND.words)); var s = w.join(' '); return s.charAt(0).toUpperCase() + s.slice(1) + '.'; }
-      case 'number': { var lo = 1, hi = 99999; if (arg) { var parts = arg.split('-'); lo = parseInt(parts[0], 10) || 0; hi = parseInt(parts[1], 10) || lo; } return String(rint(lo, hi)); }
+      case 'number': return numberValue(arg);
       case 'uuid': return rHex(8) + '-' + rHex(4) + '-4' + rHex(3) + '-' + '89ab'.charAt(rint(0, 3)) + rHex(3) + '-' + rHex(12);
       case 'date': return rDate(y - 80, y - 18);
       case 'pastDate': return rDate(y - 5, y - 1);
@@ -492,7 +567,7 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
     await sleep(150);
   }
   async function waitForVisible(step) {
-    const timeout = typeof step.ms === 'number' && step.ms > 0 ? step.ms : 15000;
+    const timeout = typeof step.ms === 'number' && step.ms > 0 ? step.ms : FIND_MS;
     const el = await waitFor(() => { const e = queryNth(step.selector, step.index); return e && isVisible(e) ? e : null; }, 'element ' + step.selector, timeout);
     reveal(el);
   }
@@ -525,7 +600,7 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
         var li = document.createElement('li'); li.className = s.disabled ? 'r off' : 'r dim';
         var icon = document.createElement('span'); icon.className = 'i'; icon.textContent = s.disabled ? '\\u2298' : '\\u25cb';
         var body = document.createElement('div'); body.className = 'b';
-        var txt = document.createElement('div'); txt.className = 't'; txt.textContent = (i + 1) + '. ' + s.kind + ' ' + label + (s.disabled ? ' (disabled)' : '');
+        var txt = document.createElement('div'); txt.className = 't'; txt.textContent = (i + 1) + '. ' + (s.name ? s.name : s.kind + ' ' + label) + (s.disabled ? ' (disabled)' : '');
         body.appendChild(txt); li.appendChild(icon); li.appendChild(body);
         list.appendChild(li); rows.push({ li: li, icon: icon, body: body });
       }
@@ -537,26 +612,50 @@ const PREAMBLE = `const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
       setRunning: function (i) { var r = rows[i]; if (r) { r.li.className = 'r run'; r.icon.textContent = '\\u25b6'; try { r.li.scrollIntoView({ block: 'nearest' }); } catch (e) {} } },
       setOk: function (i) { var r = rows[i]; if (r) { r.li.className = 'r ok'; r.icon.textContent = '\\u2713'; } done += 1; count(); },
       setFail: function (i, msg) { var r = rows[i]; if (r) { r.li.className = 'r fail'; r.icon.textContent = '\\u2717'; var e = document.createElement('div'); e.className = 'e'; e.textContent = msg || 'failed'; r.body.appendChild(e); } done += 1; count(); },
-      finish: function (ok, fail) { if (header) { header.textContent = 'Flow done \\u2014 ' + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''); header.style.background = fail ? '#e5534b' : '#3fb950'; } if (host) { var h = host; setTimeout(function () { try { h.remove(); } catch (e) {} }, fail ? 15000 : 6000); } }
+      finish: function (ok, fail, stopped) { if (header) { header.textContent = (stopped ? 'Flow stopped \\u2014 ' : 'Flow done \\u2014 ') + ok + ' ok' + (fail ? ', ' + fail + ' failed' : ''); header.style.background = stopped ? '#d29922' : (fail ? '#e5534b' : '#3fb950'); } if (host) { var h = host; setTimeout(function () { try { h.remove(); } catch (e) {} }, HUD_MS); } }
     };
   }`;
+
+/** Build-time options for {@link buildWorkflowScript}. */
+export interface WorkflowScriptOptions {
+  /** Seconds the run HUD lingers before it auto-closes (baked into the script). */
+  hudSeconds?: number;
+  /** Seconds a step waits for its element before giving up (waitFor default). */
+  findTimeoutSeconds?: number;
+}
 
 /**
  * Emit a runnable workflow script that interprets the embedded `STEPS` array.
  * Shared by Flow's Run / Copy / Save, and round-trippable via
  * {@link parseWorkflowScript}.
  */
-export function buildWorkflowScript(steps: WorkflowStep[]): string {
+export function buildWorkflowScript(steps: WorkflowStep[], opts?: WorkflowScriptOptions): string {
   const data = JSON.stringify(steps.map(serializeStep), null, 2);
-  return `(async () => {
+  const hudMs = Math.max(0, Math.round((opts?.hudSeconds ?? HUD_SECONDS_DEFAULT) * 1000));
+  const findMs = Math.max(
+    1000,
+    Math.round((opts?.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000)
+  );
+  // The IIFE's promise is published on a global so the MAIN-world runner can AWAIT
+  // it — that way RUN_SCRIPT settles when the flow FINISHES (not when it starts),
+  // letting the Scripts tab revert its Run/Stop toggle. Assigning a global is a
+  // plain statement, so a copied/exported script stays valid to paste anywhere.
+  return `window.__SENMURV_FLOW__ = (async () => {
   const STEPS = ${data};
+  const HUD_MS = ${hudMs};
+  const FIND_MS = ${findMs};
   ${PREAMBLE}
+  // Reset the cross-realm Stop flag at the start of every run, so a Stop click
+  // from a PREVIOUS run can never abort this fresh one. A separate MAIN-world
+  // injection (STOP_SCRIPT) sets it true; sleep/waitFor and the loop honour it.
+  window.__senmurvFlowStop = false;
   const hud = createHud(STEPS);
   const skipped = [];
   let okCount = 0;
   for (let i = 0; i < STEPS.length; i += 1) {
     const step = STEPS[i];
     if (step.disabled) continue; // kept in the flow for editing, but not executed
+    if (stopRequested()) break; // user pressed Stop between steps
     const tag = step.label || step.text || step.selector || step.key || (step.code ? 'js' : step.ms + 'ms');
     hud.setRunning(i);
     try {
@@ -574,19 +673,34 @@ export function buildWorkflowScript(steps: WorkflowStep[]): string {
       hud.setOk(i);
       console.info('[flow] ok:', step.kind, tag);
     } catch (e) {
+      if (stopRequested()) break; // aborted mid-step by Stop — leave cleanly, no red mark
       skipped.push(step.kind + ' ' + tag + ' (' + e.message + ')');
       hud.setFail(i, e.message);
       console.warn('[flow] SKIPPED:', step.kind, tag, '-', e.message);
     }
   }
-  hud.finish(okCount, skipped.length);
-  console.info('[flow] done. ok=' + okCount + ', skipped=' + skipped.length);
+  const stopped = stopRequested();
+  hud.finish(okCount, skipped.length, stopped);
+  console.info('[flow] ' + (stopped ? 'stopped' : 'done') + '. ok=' + okCount + ', skipped=' + skipped.length);
   if (skipped.length) {
     const labels = [...document.querySelectorAll('mat-label')].filter(isVisible).map((l) => l.textContent.replace(/\\s+/g, ' ').trim()).filter(Boolean);
     console.warn('[flow] skipped steps:', skipped);
     console.warn('[flow] labels on page:', labels);
   }
 })();`;
+}
+
+/**
+ * Publish a script's leading `(async …)()` IIFE promise on the global the MAIN-
+ * world runner awaits, so RUN_SCRIPT settles when the script FINISHES (letting a
+ * Run/Stop toggle revert on completion). {@link buildWorkflowScript} already
+ * embeds this; use it to upgrade OLDER saved flows and Fill scripts (bare IIFEs)
+ * at run time. A no-op when the code already publishes it or isn't a leading
+ * async IIFE (a plain multi-statement script is left untouched).
+ */
+export function toAwaitableScript(code: string): string {
+  if (code.includes('__SENMURV_FLOW__')) return code;
+  return /^\s*\(async\b/.test(code) ? `window.__SENMURV_FLOW__ = ${code}` : code;
 }
 
 /** Was this script produced by the Flow builder (has a STEPS array)? */
@@ -599,6 +713,7 @@ function toStep(item: unknown): WorkflowStep | null {
   const o = item as Record<string, unknown>;
   if (!STEP_KINDS.includes(o.kind as StepKind)) return null;
   const step: WorkflowStep = { id: newId('stp_'), kind: o.kind as StepKind };
+  if (typeof o.name === 'string') step.name = o.name;
   if (typeof o.text === 'string') step.text = o.text;
   if (typeof o.ms === 'number') step.ms = o.ms;
   if (typeof o.label === 'string') step.label = o.label;
@@ -606,18 +721,24 @@ function toStep(item: unknown): WorkflowStep | null {
   if (typeof o.value === 'string') {
     // A BARE `{random:KIND}` token round-trips back to a random generator (so the
     // Recorder shows the dropdown, not a literal token). A token WITH an argument
-    // (e.g. `{random:number:1-99}`) is kept as a literal value instead: the generator
-    // dropdown has nowhere to hold the arg, so collapsing it would silently drop the
-    // bound — `resolveValue` still re-randomizes the literal on every run. Anything
-    // else is a plain value.
+    // collapses too — but ONLY for the args the Recorder UI itself produces: a
+    // digit-count Number (`{random:number:d3-5}`) and a name-synced Email
+    // (`{random:email:fl}`), whose args are held in `genArg`. Any OTHER arg — e.g.
+    // a hand-written value-range `{random:number:1-99}` — is kept as a literal
+    // value (the UI has nowhere to hold it); `resolveValue` still re-randomizes it.
     const rm = /^\{random:([a-zA-Z]+)(?::([^}]*))?\}$/.exec(o.value);
-    if (
+    const kind = rm ? (rm[1] as GeneratorId) : null;
+    const arg = rm ? rm[2] : undefined;
+    const collapsible =
       step.kind === 'fill' &&
-      rm &&
-      rm[2] === undefined &&
-      RANDOM_TOKEN_GENERATORS.has(rm[1] as GeneratorId)
-    ) {
-      step.generator = rm[1] as GeneratorId;
+      kind !== null &&
+      RANDOM_TOKEN_GENERATORS.has(kind) &&
+      (arg === undefined ||
+        (kind === 'number' && /^d\d+-\d+$/.test(arg)) ||
+        (kind === 'email' && /^[fl]{1,2}$/.test(arg)));
+    if (collapsible && kind !== null) {
+      step.generator = kind;
+      if (arg !== undefined) step.genArg = arg;
     } else {
       step.value = o.value;
     }
@@ -832,6 +953,7 @@ export function fieldToStep(f: PickedField): WorkflowStep {
         kind: 'fill',
         generator: f.generator,
         value: f.generator === 'custom' ? (f.customValue ?? '') : '',
+        ...(f.genArg ? { genArg: f.genArg } : {}),
       };
   }
 }

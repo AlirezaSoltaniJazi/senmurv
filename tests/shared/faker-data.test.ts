@@ -20,6 +20,7 @@ const REQUIRED_FIELDS: (keyof GeneratedData)[] = [
   'phone',
   'address',
   'postalCode',
+  'region',
   'email',
   'dateOfBirth',
 ];

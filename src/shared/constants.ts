@@ -19,6 +19,7 @@ export const MESSAGE_TYPES = {
   STOP_RECORD: 'STOP_RECORD',
   ACTION_RECORDED: 'ACTION_RECORDED',
   RUN_SCRIPT: 'RUN_SCRIPT',
+  STOP_SCRIPT: 'STOP_SCRIPT',
   GET_SCRIPTS: 'GET_SCRIPTS',
   SAVE_SCRIPT: 'SAVE_SCRIPT',
   SET_SCRIPTS: 'SET_SCRIPTS',
@@ -27,6 +28,9 @@ export const MESSAGE_TYPES = {
   GET_TASKS: 'GET_TASKS',
   SAVE_TASK: 'SAVE_TASK',
   DELETE_TASK: 'DELETE_TASK',
+  CLEAR_TASKS: 'CLEAR_TASKS',
+  RENAME_TAG: 'RENAME_TAG',
+  DELETE_TAG: 'DELETE_TAG',
   GET_CHECKLISTS: 'GET_CHECKLISTS',
   SAVE_CHECKLIST: 'SAVE_CHECKLIST',
   DELETE_CHECKLIST: 'DELETE_CHECKLIST',
@@ -148,6 +152,16 @@ export const FONT_PRESET_ZOOM = {
   large: 1.15,
   xlarge: 1.3,
 } as const;
+
+/** Flow run-popup (in-page HUD) auto-close delay bounds + default, in seconds. */
+export const HUD_SECONDS_MIN = 1;
+export const HUD_SECONDS_MAX = 60;
+export const HUD_SECONDS_DEFAULT = 3;
+
+/** Flow element-find timeout bounds + default, in seconds (waitFor's per-step wait). */
+export const FIND_TIMEOUT_SECONDS_MIN = 1;
+export const FIND_TIMEOUT_SECONDS_MAX = 120;
+export const FIND_TIMEOUT_SECONDS_DEFAULT = 10;
 
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;

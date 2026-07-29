@@ -4,8 +4,10 @@ import {
   buildWorkflowScript,
   fieldToStep,
   isWorkflowScript,
+  moveStepRelative,
   newStep,
   parseWorkflowScript,
+  toAwaitableScript,
 } from '@/shared/workflow';
 import type { WorkflowStep } from '@/shared/workflow';
 import type { PickedField } from '@/shared/types';
@@ -31,7 +33,8 @@ describe('newStep', () => {
 describe('buildWorkflowScript', () => {
   it('emits a runnable IIFE with a STEPS array and the interpreter', () => {
     const code = buildWorkflowScript(steps);
-    expect(code.trim().startsWith('(async () =>')).toBe(true);
+    // The IIFE is published on a global so the runner can await the flow to completion.
+    expect(code.trim().startsWith('window.__SENMURV_FLOW__ = (async () =>')).toBe(true);
     expect(code).toContain('const STEPS =');
     expect(code).toContain('clickButton(step.text)');
     expect(code).toContain('setSelect(step)');
@@ -46,7 +49,7 @@ describe('buildWorkflowScript', () => {
     expect(code).toContain('hud.setRunning(i)');
     expect(code).toContain('hud.setOk(i)');
     expect(code).toContain('hud.setFail(i, e.message)');
-    expect(code).toContain('hud.finish(okCount, skipped.length)');
+    expect(code).toContain('hud.finish(okCount, skipped.length, stopped)');
     expect(code).not.toContain('alert(');
   });
 
@@ -87,6 +90,53 @@ describe('buildWorkflowScript', () => {
     // Compile-only (no execution) — catches any syntax error in the generated
     // interpreter / HUD string.
     expect(() => new vm.Script(code)).not.toThrow();
+  });
+});
+
+describe('step name round-trip', () => {
+  it('serializes an optional name and parses it back', () => {
+    const named: WorkflowStep[] = [
+      { id: 'x', kind: 'click', text: 'Save', name: 'Submit the form' },
+    ];
+    const code = buildWorkflowScript(named);
+    expect(code).toContain('"name": "Submit the form"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed?.[0]?.name).toBe('Submit the form');
+  });
+
+  it('omits an empty name', () => {
+    const code = buildWorkflowScript([{ id: 'x', kind: 'wait', ms: 10, name: '' }]);
+    expect(code).not.toContain('"name"');
+  });
+});
+
+describe('moveStepRelative', () => {
+  const ids = (list: WorkflowStep[]): string[] => list.map((s) => s.id);
+
+  it('moves a step after a target', () => {
+    expect(ids(moveStepRelative(steps, 'a', 'c', 'after'))).toEqual(['b', 'c', 'a', 'd', 'e', 'f']);
+  });
+
+  it('moves a step before a target', () => {
+    expect(ids(moveStepRelative(steps, 'f', 'b', 'before'))).toEqual([
+      'a',
+      'f',
+      'b',
+      'c',
+      'd',
+      'e',
+    ]);
+  });
+
+  it('handles moving forward vs backward consistently', () => {
+    // 'c' after 'e' (forward): b/d shift left, c lands right after e.
+    expect(ids(moveStepRelative(steps, 'c', 'e', 'after'))).toEqual(['a', 'b', 'd', 'e', 'c', 'f']);
+  });
+
+  it('is a no-op for equal, missing, or unknown ids', () => {
+    expect(moveStepRelative(steps, 'a', 'a', 'after')).toBe(steps);
+    expect(moveStepRelative(steps, 'zzz', 'a', 'after')).toBe(steps);
+    expect(moveStepRelative(steps, 'a', 'zzz', 'before')).toBe(steps);
   });
 });
 
@@ -233,6 +283,136 @@ describe('parseWorkflowScript', () => {
     expect(code).toContain('"value": "{random:email}"');
     expect(code).toContain('function randomValue');
     expect(code).toContain('random:([a-zA-Z]+)');
+  });
+});
+
+describe('flow run popup (HUD) auto-close', () => {
+  it('bakes the default 3s delay when no option is given', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 10 }]);
+    expect(code).toContain('const HUD_MS = 3000;');
+    // The HUD removes itself on the baked delay (no hardcoded 6000/15000 split).
+    expect(code).toContain('}, HUD_MS);');
+  });
+
+  it('bakes a configured delay (seconds → ms)', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 10 }], { hudSeconds: 1 });
+    expect(code).toContain('const HUD_MS = 1000;');
+    const long = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 10 }], { hudSeconds: 12 });
+    expect(long).toContain('const HUD_MS = 12000;');
+  });
+});
+
+describe('element-find timeout (FIND_MS)', () => {
+  it('bakes the default 10s and uses it as the waitFor default', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'fill', selector: '#x', value: 'v' }]);
+    expect(code).toContain('const FIND_MS = 10000;');
+    expect(code).toContain('function waitFor(fn, desc, timeout = FIND_MS');
+    expect(code).not.toContain('timeout = 15000'); // no lingering hard-coded default
+    expect(code).not.toContain(': 15000'); // waitForVisible fallback also uses FIND_MS
+  });
+
+  it('bakes a configured find timeout (seconds → ms)', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }], { findTimeoutSeconds: 2 });
+    expect(code).toContain('const FIND_MS = 2000;');
+  });
+});
+
+describe('stoppable flow runner', () => {
+  it('resets the stop flag at run start and checks it between steps', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(code).toContain('window.__senmurvFlowStop = false;'); // reset per run
+    expect(code).toContain('const stopRequested = ()');
+    expect(code).toContain('if (stopRequested()) break;'); // loop honours it
+    expect(code).toContain('hud.finish(okCount, skipped.length, stopped)');
+  });
+
+  it('makes sleep and waitFor abort-aware, and stays valid JS', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(code).toContain('if (stopRequested()) return resolve();'); // sleep bails early
+    expect(code).toContain("if (stopRequested()) return reject(new Error('stopped'));"); // waitFor bails
+    expect(() => new vm.Script(code)).not.toThrow();
+  });
+});
+
+describe('awaitable flow', () => {
+  it('publishes the flow promise on a global so a run can be awaited to completion', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(code).toContain('window.__SENMURV_FLOW__ = (async () =>');
+    expect(() => new vm.Script(code)).not.toThrow();
+  });
+
+  it('toAwaitableScript upgrades an OLD bare-IIFE flow at run time', () => {
+    const old = '(async () => {\n  const STEPS = [];\n})();';
+    const upgraded = toAwaitableScript(old);
+    expect(upgraded).toBe(`window.__SENMURV_FLOW__ = ${old}`);
+    expect(() => new vm.Script(upgraded)).not.toThrow();
+  });
+
+  it('toAwaitableScript is a no-op for already-published or non-IIFE scripts', () => {
+    const already = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(toAwaitableScript(already)).toBe(already); // already publishes the global
+    const plain = "console.log('hi'); doThing();";
+    expect(toAwaitableScript(plain)).toBe(plain); // not a leading async IIFE
+  });
+});
+
+describe('genArg tokens (Number digits / Email name-sync)', () => {
+  it('emits a digit-count Number as {random:number:dMIN-MAX} and round-trips genArg', () => {
+    const code = buildWorkflowScript([
+      { id: 'n', kind: 'fill', selector: '#n', generator: 'number', genArg: 'd3-5' },
+    ]);
+    expect(code).toContain('"value": "{random:number:d3-5}"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'number', genArg: 'd3-5' });
+    expect(parsed![0]!.value).toBeUndefined();
+    // Re-building preserves the bound.
+    expect(buildWorkflowScript(parsed!)).toContain('"value": "{random:number:d3-5}"');
+  });
+
+  it('emits a name-synced Email as {random:email:fl} and round-trips genArg', () => {
+    const code = buildWorkflowScript([
+      { id: 'e', kind: 'fill', selector: '#e', generator: 'email', genArg: 'fl' },
+    ]);
+    expect(code).toContain('"value": "{random:email:fl}"');
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]).toMatchObject({ kind: 'fill', generator: 'email', genArg: 'fl' });
+  });
+
+  it('keeps a legacy value-range {random:number:1-99} token literal (unchanged behaviour)', () => {
+    const code = `const STEPS = [{ kind: 'fill', selector: '#n', value: '{random:number:1-99}' }];`;
+    const parsed = parseWorkflowScript(code);
+    expect(parsed![0]!.generator).toBeUndefined();
+    expect(parsed![0]!.value).toBe('{random:number:1-99}');
+  });
+
+  it('drops a stale genArg when re-serialized under a non-number/email generator', () => {
+    // A fullName step should never carry a digit/sync arg into its token.
+    const code = buildWorkflowScript([
+      { id: 'g', kind: 'fill', selector: '#f', generator: 'fullName' },
+    ]);
+    expect(code).toContain('"value": "{random:fullName}"');
+  });
+});
+
+describe('region + shared-person runner', () => {
+  it('emits a {random:region} token and the in-page resolver knows it', () => {
+    const code = buildWorkflowScript([
+      { id: 'r', kind: 'fill', selector: '#region', generator: 'region' },
+    ]);
+    expect(code).toContain('"value": "{random:region}"');
+    expect(code).toContain("case 'region'");
+    expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'region' });
+  });
+
+  it('embeds one shared person so name fields and a synced email agree at run time', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#f', generator: 'firstName' },
+      { id: '2', kind: 'fill', selector: '#e', generator: 'email', genArg: 'fl' },
+    ]);
+    // The runner memoizes a single {first,last} and the email builds from it.
+    expect(code).toContain('var person = ()');
+    expect(code).toContain('emailValue');
+    expect(() => new vm.Script(code)).not.toThrow();
   });
 });
 

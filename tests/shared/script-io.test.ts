@@ -1,13 +1,30 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyScriptImport,
+  buildScriptTree,
+  deleteFolder,
+  hasChildren,
   importConflicts,
+  moveScriptBefore,
+  nestScript,
+  newFolder,
+  normalizeScripts,
   parseScriptsImport,
   reorderScripts,
   serializeScripts,
+  ungroupScript,
   uniqueName,
 } from '@/shared/script-io';
 import type { SavedScript } from '@/shared/types';
+
+/** Compact factories for grouping tests. */
+function mk(id: string, parentId?: string): SavedScript {
+  return { id, name: id, code: '', createdAt: 0, updatedAt: 0, ...(parentId ? { parentId } : {}) };
+}
+function fld(id: string): SavedScript {
+  return { id, name: id, code: '', createdAt: 0, updatedAt: 0, isFolder: true };
+}
+const ids = (list: SavedScript[]): string[] => list.map((s) => s.id);
 
 const sample: SavedScript[] = [
   { id: 'scr_1', name: 'A', code: 'console.log(1)', createdAt: 1, updatedAt: 2 },
@@ -58,6 +75,74 @@ describe('script-io', () => {
   it('rejects bad JSON and content without a scripts array', () => {
     expect(parseScriptsImport('{not json').ok).toBe(false);
     expect(parseScriptsImport(JSON.stringify({ foo: 1 })).ok).toBe(false);
+  });
+});
+
+describe('folder grouping', () => {
+  it('newFolder makes a folder', () => {
+    const f = newFolder('Auth', 100);
+    expect(f.isFolder).toBe(true);
+    expect(f.name).toBe('Auth');
+    expect(f.code).toBe('');
+  });
+
+  it('buildScriptTree groups scripts under a folder; plain scripts stay top-level', () => {
+    const list = [fld('F'), mk('a', 'F'), mk('b', 'F'), mk('c')];
+    const tree = buildScriptTree(list);
+    expect(tree.map((g) => g.parent.id)).toEqual(['F', 'c']);
+    expect(ids(tree[0]!.children)).toEqual(['a', 'b']);
+    expect(tree[1]!.children).toEqual([]); // a top-level script never has children
+  });
+
+  it('treats a parentId that is missing or not a folder as top-level', () => {
+    expect(buildScriptTree([mk('x', 'gone')]).map((g) => g.parent.id)).toEqual(['x']);
+    // parentId pointing at a normal script (not a folder) → x is top-level.
+    expect(buildScriptTree([mk('p'), mk('x', 'p')]).map((g) => g.parent.id)).toEqual(['p', 'x']);
+  });
+
+  it('nestScript moves a script into a folder (drop on the folder or a script inside it)', () => {
+    const onFolder = nestScript([fld('F'), mk('a')], 'a', 'F');
+    expect(onFolder.find((s) => s.id === 'a')?.parentId).toBe('F');
+    expect(ids(onFolder)).toEqual(['F', 'a']);
+    // Dropping onto a script already inside F nests into F too.
+    const onChild = nestScript([fld('F'), mk('a', 'F'), mk('b')], 'b', 'a');
+    expect(onChild.find((s) => s.id === 'b')?.parentId).toBe('F');
+  });
+
+  it('nestScript refuses to nest a folder, or to nest onto a top-level script', () => {
+    const list = [fld('F'), fld('G'), mk('a')];
+    expect(nestScript(list, 'F', 'G')).toBe(list); // a folder can't be nested
+    expect(nestScript([mk('a'), mk('b')], 'a', 'b')).toEqual([mk('a'), mk('b')]); // no folder → no-op
+  });
+
+  it('ungroupScript moves a script out of its folder', () => {
+    const next = ungroupScript([fld('F'), mk('a', 'F')], 'a');
+    expect(next.find((s) => s.id === 'a')?.parentId).toBeUndefined();
+    expect(buildScriptTree(next).map((g) => g.parent.id)).toEqual(['F', 'a']);
+  });
+
+  it('deleteFolder removes the folder and frees its scripts to the top level', () => {
+    const next = deleteFolder([fld('F'), mk('a', 'F'), mk('b', 'F'), mk('c')], 'F');
+    expect(next.some((s) => s.id === 'F')).toBe(false);
+    expect(next.every((s) => s.parentId === undefined)).toBe(true);
+    expect(ids(next)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('moveScriptBefore reorders same-level items and no-ops across levels', () => {
+    const list = [fld('F'), mk('a', 'F'), mk('c')];
+    // Reorder top-level: folder F before top-level script c → move c before F.
+    expect(ids(moveScriptBefore(list, 'c', 'F'))).toEqual(['c', 'F', 'a']);
+    // Reorder children within a folder.
+    const kids = [fld('F'), mk('a', 'F'), mk('b', 'F')];
+    expect(ids(moveScriptBefore(kids, 'b', 'a'))).toEqual(['F', 'b', 'a']);
+    // Cross-level (child vs top-level) is a no-op.
+    expect(moveScriptBefore(list, 'a', 'c')).toBe(list);
+  });
+
+  it('normalizeScripts and hasChildren', () => {
+    expect(ids(normalizeScripts([fld('F'), mk('c'), mk('a', 'F')]))).toEqual(['F', 'a', 'c']);
+    expect(hasChildren([fld('F'), mk('a', 'F')], 'F')).toBe(true);
+    expect(hasChildren([fld('F')], 'F')).toBe(false);
   });
 });
 

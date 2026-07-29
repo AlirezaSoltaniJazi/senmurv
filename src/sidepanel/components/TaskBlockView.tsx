@@ -1,7 +1,9 @@
+import { useContext } from 'react';
 import type { ReactElement } from 'react';
 import { formatDuration, runTimeRange, tagColorClass } from '@/shared/tasks';
 import type { TaskBlock } from '@/shared/tasks';
 import type { TimeEntry } from '@/shared/types';
+import { TagColorsContext } from './TagColorsContext';
 import { TaskRow } from './TaskRow';
 
 interface TaskBlockViewProps {
@@ -40,6 +42,7 @@ export function TaskBlockView({
   onSave,
   onDelete,
 }: TaskBlockViewProps): ReactElement {
+  const tagColors = useContext(TagColorsContext);
   if (!block.multiRun) {
     const entry = block.runs[0]!;
     return (
@@ -72,7 +75,9 @@ export function TaskBlockView({
         >
           {isOpen ? '▾' : '▸'}
         </button>
-        <span className={`task-tag ${tagColorClass(block.tag)}`}>{block.tag || 'untagged'}</span>
+        <span className={`task-tag ${tagColorClass(block.tag, tagColors)}`}>
+          {block.tag || 'untagged'}
+        </span>
         <span className="task-title">{block.title}</span>
         <span className="task-runcount">{block.runs.length}×</span>
         <span className="task-duration">{formatDuration(block.totalMs)}</span>

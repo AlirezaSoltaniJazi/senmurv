@@ -1,7 +1,9 @@
+import { useContext } from 'react';
 import type { ReactElement } from 'react';
 import { dayKey, dayLabel, formatDurationShort, monthLabel, tagColorClass } from '@/shared/tasks';
 import type { DayBlocks, MonthGrid } from '@/shared/tasks';
 import type { TimeEntry } from '@/shared/types';
+import { TagColorsContext } from './TagColorsContext';
 import { TaskBlockView } from './TaskBlockView';
 
 interface TaskCalendarViewProps {
@@ -53,6 +55,7 @@ export function TaskCalendarView({
   onSave,
   onDelete,
 }: TaskCalendarViewProps): ReactElement {
+  const tagColors = useContext(TagColorsContext);
   const todayKey = dayKey(now);
   const cells = grid.weeks.flat();
   const selected = selectedDay ? dayBlocks.find((d) => d.key === selectedDay) : undefined;
@@ -97,7 +100,7 @@ export function TaskCalendarView({
               {cellTags.length > 0 && (
                 <span className="calendar-dots">
                   {cellTags.slice(0, MAX_CELL_DOTS).map((t) => (
-                    <span key={t} className={`tag-dot ${tagColorClass(t)}`} />
+                    <span key={t} className={`tag-dot ${tagColorClass(t, tagColors)}`} />
                   ))}
                 </span>
               )}

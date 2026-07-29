@@ -1,3 +1,4 @@
+import type { Faker } from '@faker-js/faker';
 import { generatePhone, generatePhoneIntl, getFaker } from '@/shared/faker-data';
 import type { FieldType, FillInstruction, GeneratorId, Locale, PickedField } from '@/shared/types';
 import { newId } from '@/utils/id';
@@ -13,6 +14,7 @@ export const GENERATOR_LABELS: Record<GeneratorId, string> = {
   streetAddress: 'Street address',
   city: 'City',
   postalCode: 'Postal code',
+  region: 'Region / County',
   country: 'Country',
   company: 'Company',
   word: 'Word',
@@ -68,6 +70,7 @@ const TEXT_GENERATORS: GeneratorId[] = [
   'streetAddress',
   'city',
   'postalCode',
+  'region',
   'country',
   'company',
   'word',
@@ -134,6 +137,7 @@ export function defaultGenerator(type: FieldType, hint: string): GeneratorId {
   if (/phone|mobile|\btel\b/.test(hint)) return 'phone';
   if (/post.?code|zip/.test(hint)) return 'postalCode';
   if (/city|town/.test(hint)) return 'city';
+  if (/region|county|province|\bstate\b/.test(hint)) return 'region';
   if (/country/.test(hint)) return 'country';
   if (/address|street|line ?[12]/.test(hint)) return 'streetAddress';
   if (/company|organi/.test(hint)) return 'company';
@@ -147,23 +151,120 @@ function ddmmyyyy(d: Date): string {
   return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
+/**
+ * One person shared across a flow's name-synced fields (First name / Last name /
+ * Full name / a name-synced Email), so the values all match. Passed into
+ * {@link generateValue} / {@link buildInstruction} by a caller filling a batch.
+ */
+export interface PersonName {
+  firstName: string;
+  lastName: string;
+}
+
+/**
+ * An email local-part fragment: NFD-decompose so accented letters split into a
+ * base letter + combining mark, then keep only `[a-z0-9]` — which drops the marks
+ * (and spaces / apostrophes) and lowercases. "O'Brien" → "obrien", "José" → "jose".
+ */
+function emailSlug(s: string): string {
+  return s
+    .normalize('NFD')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '');
+}
+
+/** Parse a digit-count arg `"dMIN-MAX"` (e.g. `"d3-5"`) into bounds, else null. */
+function parseDigitArg(genArg?: string): { min: number; max: number } | null {
+  if (!genArg) return null;
+  const m = /^d(\d+)-(\d+)$/.exec(genArg);
+  if (!m) return null;
+  let min = parseInt(m[1]!, 10);
+  let max = parseInt(m[2]!, 10);
+  if (!Number.isFinite(min) || min < 1) min = 1;
+  if (!Number.isFinite(max) || max < min) max = min;
+  return { min, max };
+}
+
+/**
+ * A number for the Number generator. A `"dMIN-MAX"` genArg yields a value with a
+ * digit count in that range (first digit non-zero); a legacy `"lo-hi"` value
+ * range still works; otherwise the default 1..99999.
+ */
+function numberValue(faker: Faker, genArg?: string): string {
+  const digits = parseDigitArg(genArg);
+  if (digits) {
+    const len = faker.number.int({ min: digits.min, max: digits.max });
+    if (len <= 1) return String(faker.number.int({ min: 0, max: 9 }));
+    let out = String(faker.number.int({ min: 1, max: 9 }));
+    for (let k = 1; k < len; k += 1) out += faker.number.int({ min: 0, max: 9 });
+    return out;
+  }
+  if (genArg && /^\d+-\d+$/.test(genArg)) {
+    const [loStr, hiStr] = genArg.split('-');
+    const lo = parseInt(loStr!, 10) || 0;
+    const hi = parseInt(hiStr!, 10) || lo;
+    return String(faker.number.int({ min: Math.min(lo, hi), max: Math.max(lo, hi) }));
+  }
+  return String(faker.number.int({ min: 1, max: 99999 }));
+}
+
+/**
+ * An email. A `genArg` of `f`/`l`/`fl` syncs those name parts to `person` (so the
+ * email matches the flow's name fields): `first.last.NNN@example.com`. With no
+ * arg it is an independent faker email.
+ */
+function emailValue(faker: Faker, genArg?: string, person?: PersonName): string {
+  const sync = genArg ?? '';
+  const parts: string[] = [];
+  if (sync.includes('f')) parts.push(emailSlug(person?.firstName ?? faker.person.firstName()));
+  if (sync.includes('l')) parts.push(emailSlug(person?.lastName ?? faker.person.lastName()));
+  if (parts.length === 0) return faker.internet.email();
+  return `${parts.join('.')}.${faker.number.int({ min: 1, max: 999 })}@example.com`;
+}
+
+/**
+ * A region / county name: prefer `county()`, then `state()`, then `city()`. faker
+ * throws for a dataset a locale doesn't define, so each step is guarded and the
+ * always-present `city()` guarantees a non-empty result for every locale.
+ */
+function regionValue(faker: Faker): string {
+  const loc = faker.location as {
+    county?: () => string;
+    state?: () => string;
+    city: () => string;
+  };
+  try {
+    if (typeof loc.county === 'function') return loc.county();
+  } catch {
+    /* locale has no county data — try state */
+  }
+  try {
+    if (typeof loc.state === 'function') return loc.state();
+  } catch {
+    /* locale has no state data — fall back to city */
+  }
+  return loc.city();
+}
+
 /** Produce a concrete string value for a text-like generator (null for action generators). */
 export function generateValue(
   generator: GeneratorId,
   locale: Locale,
-  custom?: string
+  custom?: string,
+  genArg?: string,
+  person?: PersonName
 ): string | null {
   if (generator === 'custom') return custom ?? '';
   const faker = getFaker(locale);
   switch (generator) {
     case 'firstName':
-      return faker.person.firstName();
+      return person?.firstName ?? faker.person.firstName();
     case 'lastName':
-      return faker.person.lastName();
+      return person?.lastName ?? faker.person.lastName();
     case 'fullName':
-      return faker.person.fullName();
+      return person ? `${person.firstName} ${person.lastName}` : faker.person.fullName();
     case 'email':
-      return faker.internet.email();
+      return emailValue(faker, genArg, person);
     case 'phone':
       return generatePhone(locale, true);
     case 'phoneNational':
@@ -176,6 +277,8 @@ export function generateValue(
       return faker.location.city();
     case 'postalCode':
       return faker.location.zipCode();
+    case 'region':
+      return regionValue(faker);
     case 'country':
       return faker.location.country();
     case 'company':
@@ -185,7 +288,7 @@ export function generateValue(
     case 'sentence':
       return faker.lorem.sentence();
     case 'number':
-      return String(faker.number.int({ min: 1, max: 99999 }));
+      return numberValue(faker, genArg);
     case 'uuid':
       return faker.string.uuid();
     case 'date':
@@ -197,8 +300,15 @@ export function generateValue(
   }
 }
 
-/** Turn a configured field + locale into one concrete fill instruction. */
-export function buildInstruction(field: PickedField, locale: Locale): FillInstruction {
+/**
+ * Turn a configured field + locale into one concrete fill instruction. A shared
+ * `person` (see {@link PersonName}) keeps a batch's name-synced fields consistent.
+ */
+export function buildInstruction(
+  field: PickedField,
+  locale: Locale,
+  person?: PersonName
+): FillInstruction {
   const base = { selector: field.selector, fieldType: field.fieldType };
   switch (field.generator) {
     case 'check':
@@ -212,7 +322,11 @@ export function buildInstruction(field: PickedField, locale: Locale): FillInstru
     case 'pickRandom':
       return { ...base, action: 'pickRandom' };
     default:
-      return { ...base, value: generateValue(field.generator, locale, field.customValue) ?? '' };
+      return {
+        ...base,
+        value:
+          generateValue(field.generator, locale, field.customValue, field.genArg, person) ?? '',
+      };
   }
 }
 

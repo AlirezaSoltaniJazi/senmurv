@@ -7,6 +7,7 @@ describe('isRuntimeMessage', () => {
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.START_PICK })).toBe(true);
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.RUN_SCRIPT, payload: { code: 'x' } })).toBe(true);
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.ELEMENT_PICKED, payload: {} })).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.CLEAR_TASKS })).toBe(true);
   });
 
   it('accepts the Tools transport types', () => {

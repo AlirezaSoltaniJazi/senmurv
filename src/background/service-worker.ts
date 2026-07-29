@@ -12,12 +12,14 @@ import {
   getScripts,
   getTasks,
   saveScripts,
+  saveTasks,
   savePrefs,
   upsertChecklist,
   upsertNote,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
+import { clearTagInEntries, renameTagInEntries } from '@/shared/tasks';
 import { buildClearPlan } from '@/shared/tools/site-data';
 import type {
   ClearOutcome,
@@ -29,6 +31,7 @@ import type {
   RegionConfig,
   Result,
   StorageProbe,
+  TimeEntry,
   XrmReport,
 } from '@/shared/types';
 
@@ -123,15 +126,37 @@ async function withActiveRunnableTab<T>(
  * code via `new Function` — this is the extension's purpose and runs under the
  * PAGE's CSP, exactly like a `javascript:` bookmarklet, never the extension's.
  * See agents.md → Security for the sanctioned-exception rationale.
+ *
+ * A recorded Flow publishes its async IIFE's promise on `window.__SENMURV_FLOW__`;
+ * this runner AWAITS that promise (does NOT add any eval — the sanctioned
+ * `new Function` line is unchanged) so the injection settles when the flow
+ * FINISHES, letting RUN_SCRIPT's caller know it is done. A plain script sets
+ * nothing there and resolves as soon as its synchronous body has run.
  */
-function runUserScript(code: string): { ok: boolean; error?: string } {
+function runUserScript(
+  code: string
+): { ok: boolean; error?: string } | Promise<{ ok: boolean; error?: string }> {
+  // A widened (string) key so TS reads the global back as `unknown` rather than
+  // narrowing it to `undefined` after the reset — the injected code, opaque to
+  // TS, is what actually populates it.
+  const KEY: string = '__SENMURV_FLOW__';
+  const g = window as unknown as Record<string, unknown>;
+  g[KEY] = undefined; // drop any promise a previous run left behind
   try {
     // eslint-disable-next-line no-new-func -- sanctioned: page-CSP-governed MAIN-world runner; do not widen
     new Function(code)();
-    return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };
   }
+  const flow = g[KEY];
+  g[KEY] = undefined;
+  if (flow && typeof (flow as { then?: unknown }).then === 'function') {
+    return (flow as Promise<unknown>).then(
+      () => ({ ok: true }),
+      (err: unknown) => ({ ok: false, error: err instanceof Error ? err.message : String(err) })
+    );
+  }
+  return { ok: true };
 }
 
 async function runScriptInPage(tabId: number, code: string): Promise<Result<void>> {
@@ -150,6 +175,41 @@ async function runScriptInPage(tabId: number, code: string): Promise<Result<void
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
+}
+
+/**
+ * Ask a running Flow to abort by raising the cross-realm stop flag its interpreter
+ * polls (`window.__senmurvFlowStop`). Injected as a real `func` (never a code
+ * string) into the MAIN world — the same shape as the Region/Xrm shims, so it does
+ * NOT widen the sanctioned `new Function` runner. A no-op when no flow is running.
+ */
+async function stopFlowInPage(tabId: number): Promise<Result<void>> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: () => {
+        (window as unknown as { __senmurvFlowStop?: boolean }).__senmurvFlowStop = true;
+      },
+    });
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** Rename tag `from` → `to` across every entry (one atomic write); returns the new list. */
+async function renameTagAcross(from: string, to: string): Promise<TimeEntry[]> {
+  const next = renameTagInEntries(await getTasks(), from, to);
+  await saveTasks(next);
+  return next;
+}
+
+/** Un-tag every entry carrying `tag` (entries kept); returns the new list. */
+async function clearTagAcross(tag: string): Promise<TimeEntry[]> {
+  const next = clearTagInEntries(await getTasks(), tag);
+  await saveTasks(next);
+  return next;
 }
 
 // ---------------------------------------------------------------------------
@@ -1095,6 +1155,24 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
+      case MESSAGE_TYPES.CLEAR_TASKS:
+        saveTasks([])
+          .then(() => sendResponse({ ok: true, value: [] }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.RENAME_TAG:
+        renameTagAcross(message.payload.from, message.payload.to)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_TAG:
+        clearTagAcross(message.payload.tag)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
       case MESSAGE_TYPES.GET_CHECKLISTS:
         getChecklists()
           .then((value) => sendResponse({ ok: true, value }))
@@ -1147,6 +1225,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         withActiveRunnableTab((tabId) => runScriptInPage(tabId, message.payload.code)).then(
           sendResponse
         );
+        return true;
+
+      case MESSAGE_TYPES.STOP_SCRIPT:
+        withActiveRunnableTab((tabId) => stopFlowInPage(tabId)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.TEST_LOCATOR:

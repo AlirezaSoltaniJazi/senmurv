@@ -250,6 +250,8 @@ select,
   display: flex;
   flex-direction: column;
   gap: 6px;
+  /* Query context: row action buttons collapse to icons when the list is narrow. */
+  container: scriptlist / inline-size;
 }
 
 .data-row {
@@ -281,6 +283,13 @@ select,
 .copy-btn {
   padding: 3px 8px;
   font-size: 11px;
+}
+
+/* Full-size variant: matches a standard action button when placed in a row
+   alongside them (e.g. the JSON Formatter's Format / Minify / Copy row). */
+.copy-btn.copy-btn-lg {
+  padding: 6px 10px;
+  font-size: 12px;
 }
 
 /* Locator */
@@ -426,6 +435,48 @@ select,
   box-shadow: inset 0 2px 0 var(--accent);
 }
 
+/* Script grouping: nested children, caret, nest-drop target, top-level drop bar */
+.script-row.script-child {
+  margin-left: 16px;
+}
+/* Trim the checkbox's default lead-in so nothing sits far from the handle. */
+.script-row input[type='checkbox'] {
+  margin: 0;
+  flex: 0 0 auto;
+}
+.script-row.drag-nest-over {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+  background: rgba(45, 127, 249, 0.12);
+}
+.tree-caret {
+  flex: 0 0 auto;
+  width: 18px;
+  padding: 0 2px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  line-height: 1;
+}
+.tree-caret-spacer {
+  flex: 0 0 auto;
+  width: 18px;
+}
+.folder-row {
+  border-left: 3px solid var(--accent);
+}
+.folder-icon {
+  flex: 0 0 auto;
+  line-height: 1;
+}
+.folder-name {
+  font-weight: 600;
+}
+.folder-rename {
+  flex: 1;
+}
+
 .script-name {
   flex: 1;
   overflow: hidden;
@@ -436,6 +487,45 @@ select,
 .script-actions {
   display: flex;
   gap: 4px;
+}
+/* Each action button carries both an icon and a text label; the label shows when
+   there is room, the icon takes over when the list is narrow (container query). */
+.script-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.script-actions .ico {
+  display: none;
+  line-height: 1;
+}
+/* Play/stop are CSS-drawn (not Unicode ▶/■, which render off-centre and at
+   different sizes): a right-pointing triangle and a square, matched in size and
+   inheriting the button's text colour (white on Run, red on Stop). */
+.ico-play {
+  width: 0;
+  height: 0;
+  border-style: solid;
+  border-width: 5px 0 5px 9px;
+  border-color: transparent transparent transparent currentColor;
+}
+.ico-stop {
+  width: 9px;
+  height: 9px;
+  border-radius: 1px;
+  background: currentColor;
+}
+@container scriptlist (max-width: 520px) {
+  .script-actions .lbl {
+    display: none;
+  }
+  .script-actions .ico {
+    display: inline-block;
+  }
+  .script-actions button {
+    min-width: 30px;
+  }
 }
 
 .hidden-file {
@@ -677,6 +767,19 @@ select,
   font-size: 11px;
   text-transform: uppercase;
   color: var(--accent);
+}
+
+/* Recorder: step position number, optional name, and the "Move to…" row */
+.step-num {
+  font: 600 11px ui-monospace, Menlo, monospace;
+  color: var(--muted);
+  flex: 0 0 auto;
+}
+.step-name {
+  margin-top: 6px;
+}
+.step-move {
+  gap: 6px;
 }
 
 .step-desc {
@@ -1513,4 +1616,138 @@ input[type='checkbox'] {
 .contrast-ratio {
   font-size: 22px;
   font-weight: 600;
+}
+
+/* Settings — Flow popup auto-close */
+.hud-seconds {
+  width: 5rem;
+}
+
+/* Recorder — per-field generator argument (Number digits / Email name-sync) */
+.genarg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.genarg-num {
+  width: 3.5rem;
+}
+.genarg-sync {
+  gap: 12px;
+}
+.genarg-sync .checkbox-inline {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+/* JSON Formatter */
+.json-formatted {
+  display: block;
+  white-space: pre;
+  overflow-x: auto;
+  max-height: 60vh;
+}
+.json-tree {
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 6px 8px;
+  max-height: 60vh;
+  overflow: auto;
+}
+.json-branch {
+  display: flex;
+  flex-direction: column;
+}
+.json-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 1px 2px;
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+}
+.json-toggle:hover {
+  background: var(--panel);
+}
+.json-caret {
+  width: 12px;
+  flex: 0 0 auto;
+  color: var(--muted);
+}
+.json-node {
+  display: flex;
+  gap: 6px;
+  padding: 1px 2px 1px 20px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.json-key {
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+.json-summary {
+  color: var(--muted);
+}
+.json-leaf.json-string {
+  color: var(--good);
+}
+.json-leaf.json-number {
+  color: var(--warn);
+}
+.json-leaf.json-boolean {
+  color: #c586c0;
+}
+.json-leaf.json-null {
+  color: var(--muted);
+}
+
+/* Settings — Track tag manager */
+.tag-manager {
+  list-style: none;
+  margin: 6px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tag-manager-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.tag-swatch {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  padding: 0;
+  cursor: pointer;
+}
+.tag-manager-name {
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  background: transparent;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+}
+.tag-rename {
+  flex: 1;
+}
+.tag-manager-count {
+  color: var(--muted);
+  font-size: 11px;
+  min-width: 1.5rem;
+  text-align: right;
 }

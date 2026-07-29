@@ -13,6 +13,7 @@ export interface GeneratedData {
   phone: string;
   address: string;
   postalCode: string;
+  region: string;
   email: string;
   dateOfBirth: string;
 }
@@ -30,6 +31,10 @@ export interface SavedScript {
   code: string;
   createdAt: number;
   updatedAt: number;
+  /** The id of the folder this script is grouped under (one level deep). */
+  parentId?: string;
+  /** When true, this is a folder (a named container), not a runnable script. */
+  isFolder?: boolean;
 }
 
 /** One work interval of a logged task; `end === null` while it is running. */
@@ -656,6 +661,21 @@ export interface Prefs {
    * preset; omitted when the user is on a plain preset.
    */
   fontScale?: number;
+  /**
+   * Seconds the Flow run popup (the in-page HUD) lingers before it auto-closes.
+   * Baked into a saved/run flow at build time. Omitted → the default applies.
+   */
+  hudSeconds?: number;
+  /**
+   * Seconds a Flow waits for an element before giving up (the interpreter's
+   * `waitFor` default). Baked into the built flow script. Omitted → default.
+   */
+  findTimeoutSeconds?: number;
+  /**
+   * Per-tag colour overrides for Track tags: tag → palette index (0…7). A tag
+   * absent from the map falls back to its hashed colour. Managed in Settings.
+   */
+  tagColors?: Record<string, number>;
 }
 
 // ---------------------------------------------------------------------------
@@ -688,6 +708,7 @@ export type GeneratorId =
   | 'streetAddress'
   | 'city'
   | 'postalCode'
+  | 'region'
   | 'country'
   | 'company'
   | 'word'
@@ -721,6 +742,12 @@ export interface PickedField {
   hint: string;
   generator: GeneratorId;
   customValue?: string;
+  /**
+   * Per-field generator argument, mirroring the in-page `{random:KIND:ARG}`
+   * token: `"d{min}-{max}"` for a digit-count Number, `f`/`l`/`fl` for an
+   * Email synced to the flow's name fields. Omitted for argument-free generators.
+   */
+  genArg?: string;
   preview?: string;
 }
 

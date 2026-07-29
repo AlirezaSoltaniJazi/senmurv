@@ -11,6 +11,7 @@ const FIELDS: { key: keyof GeneratedData; label: string }[] = [
   { key: 'phone', label: 'Phone' },
   { key: 'address', label: 'Address' },
   { key: 'postalCode', label: 'Postal code' },
+  { key: 'region', label: 'Region / County' },
   { key: 'email', label: 'Email' },
   { key: 'dateOfBirth', label: 'Date of birth' },
 ];

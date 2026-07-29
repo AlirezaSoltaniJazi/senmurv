@@ -8,7 +8,7 @@ import {
   MESSAGE_TYPES,
   SUPPORTED_LOCALES,
 } from '@/shared/constants';
-import { ensureFaker } from '@/shared/faker-data';
+import { ensureFaker, getFaker } from '@/shared/faker-data';
 import {
   buildInstruction,
   buildScript,
@@ -18,12 +18,14 @@ import {
   GENERATOR_LABELS,
   generatorsFor,
 } from '@/shared/generators';
+import type { PersonName } from '@/shared/generators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
 import {
   buildWorkflowScript,
   describeStep,
   fieldToStep,
+  moveStepRelative,
   newStep,
   STEP_KIND_LABELS,
   STEP_KINDS,
@@ -48,20 +50,105 @@ interface Props {
   /** Steps are held in App so they survive switching tabs (this tab unmounts). */
   steps: WorkflowStep[];
   setSteps: Dispatch<SetStateAction<WorkflowStep[]>>;
+  /** Seconds the run popup lingers before auto-closing (baked into built flows). */
+  hudSeconds: number;
+  /** Seconds a step waits for its element before giving up (baked into built flows). */
+  findTimeoutSeconds: number;
 }
 
 type PickTarget = { mode: 'step'; id: string } | { mode: 'adhoc' } | null;
 
 const TARGET_KINDS: StepKind[] = ['fill', 'select', 'check', 'radio', 'clickEl', 'waitEl'];
 
+/** Parse a Number field's digit-count genArg (`"dMIN-MAX"`), else sensible defaults. */
+function parseDigits(genArg: string | undefined): { min: number; max: number } {
+  const m = /^d(\d+)-(\d+)$/.exec(genArg ?? '');
+  return m ? { min: Number(m[1]), max: Number(m[2]) } : { min: 1, max: 5 };
+}
+
+/**
+ * Per-field generator argument controls: digit-count inputs for Number, and
+ * "Sync FName / Sync LName" toggles for Email (which make the email match the
+ * flow's name fields). Shared by the step editor and the Ad-hoc field editor.
+ */
+function GenArgControls({
+  generator,
+  genArg,
+  onChange,
+}: {
+  generator: GeneratorId;
+  genArg: string | undefined;
+  onChange: (genArg: string) => void;
+}): ReactElement | null {
+  if (generator === 'number') {
+    const { min, max } = parseDigits(genArg);
+    const set = (nextMin: number, nextMax: number): void => {
+      const lo = Math.max(1, Math.round(nextMin) || 1);
+      const hi = Math.max(lo, Math.round(nextMax) || lo);
+      onChange(`d${lo}-${hi}`);
+    };
+    return (
+      <span className="genarg" title="Number of digits (min–max)">
+        <span className="field-label">digits</span>
+        <input
+          type="number"
+          min={1}
+          aria-label="Minimum digits"
+          className="genarg-num"
+          value={min}
+          onChange={(e) => set(Number(e.target.value), max)}
+        />
+        <span className="dim">–</span>
+        <input
+          type="number"
+          min={1}
+          aria-label="Maximum digits"
+          className="genarg-num"
+          value={max}
+          onChange={(e) => set(min, Number(e.target.value))}
+        />
+      </span>
+    );
+  }
+  if (generator === 'email') {
+    const arg = genArg ?? '';
+    const hasF = arg.includes('f');
+    const hasL = arg.includes('l');
+    const set = (f: boolean, l: boolean): void => onChange(`${f ? 'f' : ''}${l ? 'l' : ''}`);
+    return (
+      <span className="genarg genarg-sync">
+        <label className="checkbox-inline" title="Use the flow's first name in the email">
+          <input type="checkbox" checked={hasF} onChange={(e) => set(e.target.checked, hasL)} />
+          👤 Sync FName
+        </label>
+        <label className="checkbox-inline" title="Use the flow's last name in the email">
+          <input type="checkbox" checked={hasL} onChange={(e) => set(hasF, e.target.checked)} />
+          🧑 Sync LName
+        </label>
+      </span>
+    );
+  }
+  return null;
+}
+
 /** Current epoch ms — wrapped so clock reads stay outside render-purity analysis. */
 function nowMs(): number {
   return Date.now();
 }
 
-export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): ReactElement {
+export function RecorderTab({
+  seed,
+  onSeedConsumed,
+  steps,
+  setSteps,
+  hudSeconds,
+  findTimeoutSeconds,
+}: Props): ReactElement {
   const [picking, setPicking] = useState(false);
   const [recording, setRecording] = useState(false);
+  // A flow run is fire-and-forget (RUN_SCRIPT returns before the flow finishes),
+  // so this just gates the Stop button; the user clears it via Stop.
+  const [running, setRunning] = useState(false);
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -72,6 +159,10 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   const [flowName, setFlowName] = useState('');
   // Id of a just-added/duplicated step — scrolled into view and briefly flashed.
   const [flashId, setFlashId] = useState<string | null>(null);
+  // "Move to…" inline control: which step's mover is open, and its selections.
+  const [moveOpenId, setMoveOpenId] = useState<string | null>(null);
+  const [movePos, setMovePos] = useState<'before' | 'after'>('after');
+  const [moveTarget, setMoveTarget] = useState('');
   // "Export as spec" panel state.
   const [showSpec, setShowSpec] = useState(false);
   const [specFramework, setSpecFramework] = useState<Framework>('playwright');
@@ -234,6 +325,18 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   function updateStep(id: string, patch: Partial<WorkflowStep>): void {
     setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
   }
+  // Switching a fill step's generator drops any stale `genArg` — a number's
+  // digit-count / an email's name-sync makes no sense on a different generator.
+  function changeStepGenerator(id: string, generator: GeneratorId): void {
+    setSteps((prev) =>
+      prev.map((s) => {
+        if (s.id !== id) return s;
+        const next: WorkflowStep = { ...s, generator };
+        delete next.genArg;
+        return next;
+      })
+    );
+  }
   function setStepIndex(id: string, value: string): void {
     setSteps((prev) =>
       prev.map((s) => {
@@ -255,6 +358,17 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
       return next;
     });
   }
+  /** Open the inline "Move to…" control for `id`, defaulting the target sensibly. */
+  function openMover(id: string): void {
+    const firstOther = steps.find((s) => s.id !== id);
+    setMovePos('after');
+    setMoveTarget(firstOther?.id ?? '');
+    setMoveOpenId(id);
+  }
+  function applyMove(id: string): void {
+    if (moveTarget) setSteps((prev) => moveStepRelative(prev, id, moveTarget, movePos));
+    setMoveOpenId(null);
+  }
   function removeStep(id: string): void {
     setSteps((prev) => prev.filter((s) => s.id !== id));
   }
@@ -275,7 +389,7 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   // Fill generators are emitted as in-page `{random:…}` tokens (see workflow.ts),
   // so a saved/copied flow re-randomizes on every run — no faker needed in the page.
   function buildScriptFor(list: WorkflowStep[]): string {
-    return buildWorkflowScript(list);
+    return buildWorkflowScript(list, { hudSeconds, findTimeoutSeconds });
   }
   function buildFlow(): string {
     return buildScriptFor(steps);
@@ -287,12 +401,23 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
       setError('Add or record some steps first.');
       return;
     }
+    setRunning(true);
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code: buildScriptFor(list) },
     });
     if (res.ok) setStatus(done);
-    else setError(res.error);
+    else {
+      setError(res.error);
+      setRunning(false);
+    }
+  }
+  // Ask the running flow to abort. The flow polls a MAIN-world flag between steps
+  // and inside its waits, so it stops within a step / one poll interval.
+  async function stopFlow(): Promise<void> {
+    setRunning(false);
+    await sendRuntimeMessage({ type: MESSAGE_TYPES.STOP_SCRIPT });
+    setStatus('Stop requested — the flow halts at the next step or wait.');
   }
   async function runFlow(): Promise<void> {
     await runSteps(steps, `Ran ${steps.length} step(s). Check the page (console has details).`);
@@ -361,9 +486,27 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
   }
   function changeAdhocType(id: string, fieldType: FieldType): void {
     setAdhocFields((prev) =>
-      prev.map((f) =>
-        f.id === id ? { ...f, fieldType, generator: defaultGenerator(fieldType, f.hint) } : f
-      )
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const next: PickedField = {
+          ...f,
+          fieldType,
+          generator: defaultGenerator(fieldType, f.hint),
+        };
+        delete next.genArg;
+        return next;
+      })
+    );
+  }
+  // As with steps: a new generator invalidates any prior genArg.
+  function changeAdhocGenerator(id: string, generator: GeneratorId): void {
+    setAdhocFields((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        const next: PickedField = { ...f, generator };
+        delete next.genArg;
+        return next;
+      })
     );
   }
   function removeAdhoc(id: string): void {
@@ -376,7 +519,14 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
       return;
     }
     await ensureFaker(locale);
-    const code = buildScript(adhocFields.map((f) => buildInstruction(f, locale)));
+    // One person for the whole batch so name-synced fields (First/Last/Full/Email)
+    // agree with each other.
+    const faker = getFaker(locale);
+    const person: PersonName = {
+      firstName: faker.person.firstName(),
+      lastName: faker.person.lastName(),
+    };
+    const code = buildScript(adhocFields.map((f) => buildInstruction(f, locale, person)));
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code },
@@ -480,7 +630,7 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                   </select>
                   <select
                     value={f.generator}
-                    onChange={(e) => patchAdhoc(f.id, { generator: e.target.value as GeneratorId })}
+                    onChange={(e) => changeAdhocGenerator(f.id, e.target.value as GeneratorId)}
                     title="Value generator"
                   >
                     {generatorsFor(f.fieldType).map((g) => (
@@ -489,6 +639,11 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                       </option>
                     ))}
                   </select>
+                  <GenArgControls
+                    generator={f.generator}
+                    genArg={f.genArg}
+                    onChange={(genArg) => patchAdhoc(f.id, { genArg })}
+                  />
                 </div>
                 {f.generator === 'custom' && (
                   <input
@@ -542,6 +697,9 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
             }
           >
             <div className="step-head">
+              <span className="step-num" title="Step position">
+                #{i + 1}
+              </span>
               <span className="step-kind">{STEP_KIND_LABELS[s.kind]}</span>
               <span className="step-desc" title={s.selector ?? ''}>
                 {describeStep(s)}
@@ -581,6 +739,15 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                 </button>
                 <button
                   type="button"
+                  disabled={steps.length < 2}
+                  title="Move before/after another step"
+                  aria-label="Move to another position"
+                  onClick={() => openMover(s.id)}
+                >
+                  ⇄
+                </button>
+                <button
+                  type="button"
                   title="Duplicate step"
                   aria-label="Duplicate step"
                   onClick={() => duplicateStep(s.id)}
@@ -592,6 +759,51 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                 </button>
               </span>
             </div>
+
+            {moveOpenId === s.id && (
+              <div className="row step-move">
+                <span className="field-label">Move</span>
+                <select
+                  aria-label="Move position"
+                  value={movePos}
+                  onChange={(e) => setMovePos(e.target.value === 'before' ? 'before' : 'after')}
+                >
+                  <option value="before">before</option>
+                  <option value="after">after</option>
+                </select>
+                <select
+                  aria-label="Move target step"
+                  value={moveTarget}
+                  onChange={(e) => setMoveTarget(e.target.value)}
+                >
+                  {steps
+                    .filter((t) => t.id !== s.id)
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        #{steps.findIndex((x) => x.id === t.id) + 1} — {describeStep(t)}
+                      </option>
+                    ))}
+                </select>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={!moveTarget}
+                  onClick={() => applyMove(s.id)}
+                >
+                  Go
+                </button>
+                <button type="button" onClick={() => setMoveOpenId(null)}>
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            <input
+              className="name-input step-name"
+              placeholder="Name (optional) — shown in the run popup"
+              value={s.name ?? ''}
+              onChange={(e) => updateStep(s.id, { name: e.target.value })}
+            />
 
             {s.kind === 'click' && (
               <input
@@ -683,7 +895,7 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
               <div className="step-target">
                 <select
                   value={s.generator ?? 'custom'}
-                  onChange={(e) => updateStep(s.id, { generator: e.target.value as GeneratorId })}
+                  onChange={(e) => changeStepGenerator(s.id, e.target.value as GeneratorId)}
                   title="Value source"
                 >
                   {generatorsFor('text').map((g) => (
@@ -699,6 +911,12 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
                     title="Tokens resolve at run time: {today}, {today+1}, {random:email}, {random:number:1-99}"
                     value={s.value ?? ''}
                     onChange={(e) => updateStep(s.id, { value: e.target.value })}
+                  />
+                ) : s.generator === 'number' || s.generator === 'email' ? (
+                  <GenArgControls
+                    generator={s.generator}
+                    genArg={s.genArg}
+                    onChange={(genArg) => updateStep(s.id, { genArg })}
                   />
                 ) : (
                   <span className="hint" style={{ flex: 1, alignSelf: 'center' }}>
@@ -763,6 +981,16 @@ export function RecorderTab({ seed, onSeedConsumed, steps, setSteps }: Props): R
             <button type="button" className="primary" onClick={() => void runFlow()}>
               Run flow
             </button>
+            {running && (
+              <button
+                type="button"
+                className="danger"
+                title="Stop the running flow (halts at the next step or wait)"
+                onClick={() => void stopFlow()}
+              >
+                ■ Stop
+              </button>
+            )}
             <button type="button" onClick={() => void copyFlow()}>
               Copy as script
             </button>

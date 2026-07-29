@@ -290,10 +290,64 @@ describe('prefs storage', () => {
   });
 
   it('round-trips through savePrefs (preset and manual scale)', async () => {
+    // getPrefs always fills the default hudSeconds + findTimeoutSeconds, so a saved
+    // prefs object without them reads back with those defaults (3 / 10).
     await savePrefs({ fontSize: 'small' });
-    expect(await getPrefs()).toEqual({ fontSize: 'small' });
+    expect(await getPrefs()).toEqual({ fontSize: 'small', hudSeconds: 3, findTimeoutSeconds: 10 });
 
     await savePrefs({ fontSize: 'large', fontScale: 1.4 });
-    expect(await getPrefs()).toEqual({ fontSize: 'large', fontScale: 1.4 });
+    expect(await getPrefs()).toEqual({
+      fontSize: 'large',
+      fontScale: 1.4,
+      hudSeconds: 3,
+      findTimeoutSeconds: 10,
+    });
+  });
+
+  it('reads a stored findTimeoutSeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', findTimeoutSeconds: 25 };
+    expect((await getPrefs()).findTimeoutSeconds).toBe(25);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', findTimeoutSeconds: 9999 };
+    expect((await getPrefs()).findTimeoutSeconds).toBe(120); // FIND_TIMEOUT_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', findTimeoutSeconds: 0 };
+    expect((await getPrefs()).findTimeoutSeconds).toBe(1); // FIND_TIMEOUT_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).findTimeoutSeconds).toBe(10); // default
+  });
+
+  it('reads valid tagColors and drops malformed / out-of-range entries', async () => {
+    store[STORAGE_KEYS.PREFS] = {
+      fontSize: 'medium',
+      tagColors: { Work: 3, Home: 0, Bad: 99, Neg: -1, NaNy: 'x' },
+    };
+    expect((await getPrefs()).tagColors).toEqual({ Work: 3, Home: 0 });
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).tagColors).toBeUndefined();
+  });
+
+  it('reads a stored hudSeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 5 };
+    expect((await getPrefs()).hudSeconds).toBe(5);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 999 };
+    expect((await getPrefs()).hudSeconds).toBe(60); // HUD_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 0 };
+    expect((await getPrefs()).hudSeconds).toBe(1); // HUD_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 4.6 };
+    expect((await getPrefs()).hudSeconds).toBe(5); // rounded
+  });
+
+  it('falls back to the default hudSeconds when absent or non-numeric', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).hudSeconds).toBe(3);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 'soon' };
+    expect((await getPrefs()).hudSeconds).toBe(3);
   });
 });

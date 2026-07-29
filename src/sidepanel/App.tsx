@@ -1,6 +1,10 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { MESSAGE_TYPES } from '@/shared/constants';
+import {
+  FIND_TIMEOUT_SECONDS_DEFAULT,
+  HUD_SECONDS_DEFAULT,
+  MESSAGE_TYPES,
+} from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { ToolKey } from '@/shared/tools';
 import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
@@ -71,6 +75,18 @@ export function App(): ReactElement {
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
   const [fontScale, setFontScale] = useState<number | undefined>(undefined);
+  // Seconds the Flow run popup lingers before auto-closing; baked into built flows.
+  const [hudSeconds, setHudSeconds] = useState<number>(HUD_SECONDS_DEFAULT);
+  // Seconds a Flow step waits for its element before giving up; baked into flows.
+  const [findTimeoutSeconds, setFindTimeoutSeconds] = useState<number>(
+    FIND_TIMEOUT_SECONDS_DEFAULT
+  );
+  // Track-tag colour overrides (tag → palette index), persisted in prefs.
+  const [tagColors, setTagColors] = useState<Record<string, number>>({});
+  // Auto-refresh (Tools): the tab being reloaded + its interval, or null when off.
+  // Lifted here so it survives switching Tools sub-tools / panel tabs; stops on
+  // Stop or when the panel closes (this component unmounts).
+  const [autoRefresh, setAutoRefresh] = useState<{ tabId: number; seconds: number } | null>(null);
 
   const customizeInRecorder = useCallback((s: RecorderSeed) => {
     setRecorderSeed(s);
@@ -100,6 +116,9 @@ export function App(): ReactElement {
       if (!cancelled && res.ok) {
         setFontSize(res.value.fontSize);
         setFontScale(res.value.fontScale);
+        setHudSeconds(res.value.hudSeconds ?? HUD_SECONDS_DEFAULT);
+        setFindTimeoutSeconds(res.value.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT);
+        setTagColors(res.value.tagColors ?? {});
       }
     })();
     return () => {
@@ -107,28 +126,74 @@ export function App(): ReactElement {
     };
   }, []);
 
+  // savePrefs OVERWRITES the whole object, so every SAVE_PREFS must carry the full
+  // set. Build it from current state, then apply the one field being changed —
+  // otherwise changing one preference would wipe the others.
+  function currentPrefs(): Prefs {
+    const prefs: Prefs = { fontSize, hudSeconds, findTimeoutSeconds };
+    if (fontScale !== undefined) prefs.fontScale = fontScale;
+    if (Object.keys(tagColors).length > 0) prefs.tagColors = tagColors;
+    return prefs;
+  }
+  function persistPrefs(prefs: Prefs): void {
+    void sendRuntimeMessage({ type: MESSAGE_TYPES.SAVE_PREFS, payload: { prefs } });
+  }
+
   // Choosing a preset clears any manual fine-tune so the preset's zoom applies.
-  const changeFontSize = useCallback((size: FontSize) => {
+  function changeFontSize(size: FontSize): void {
     setFontSize(size);
     setFontScale(undefined);
-    void sendRuntimeMessage({
-      type: MESSAGE_TYPES.SAVE_PREFS,
-      payload: { prefs: { fontSize: size } },
-    });
-  }, []);
+    const prefs = currentPrefs();
+    prefs.fontSize = size;
+    delete prefs.fontScale;
+    persistPrefs(prefs);
+  }
 
   // The slider overrides the preset with an exact zoom (kept alongside fontSize
   // so the nearest preset chip can still show as active).
-  const changeFontScale = useCallback(
-    (scale: number) => {
-      setFontScale(scale);
-      void sendRuntimeMessage({
-        type: MESSAGE_TYPES.SAVE_PREFS,
-        payload: { prefs: { fontSize, fontScale: scale } },
-      });
-    },
-    [fontSize]
-  );
+  function changeFontScale(scale: number): void {
+    setFontScale(scale);
+    persistPrefs({ ...currentPrefs(), fontScale: scale });
+  }
+
+  function changeHudSeconds(seconds: number): void {
+    setHudSeconds(seconds);
+    persistPrefs({ ...currentPrefs(), hudSeconds: seconds });
+  }
+
+  function changeFindTimeout(seconds: number): void {
+    setFindTimeoutSeconds(seconds);
+    persistPrefs({ ...currentPrefs(), findTimeoutSeconds: seconds });
+  }
+
+  function changeTagColors(next: Record<string, number>): void {
+    setTagColors(next);
+    const prefs = currentPrefs();
+    if (Object.keys(next).length > 0) prefs.tagColors = next;
+    else delete prefs.tagColors;
+    persistPrefs(prefs);
+  }
+
+  // Auto-refresh: start reloads the tab that's active right now, every N seconds.
+  const startAutoRefresh = useCallback((seconds: number) => {
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
+      if (chrome.runtime.lastError) return;
+      const id = tabs[0]?.id;
+      if (typeof id === 'number') setAutoRefresh({ tabId: id, seconds });
+    });
+  }, []);
+  const stopAutoRefresh = useCallback(() => setAutoRefresh(null), []);
+
+  // The ticking engine — reloads the captured tab on a timer while auto-refresh is
+  // on. A reload of the target tab does not touch the panel, so this keeps firing
+  // across panel-tool switches; it stops on Stop or when the panel (App) unmounts.
+  useEffect(() => {
+    if (!autoRefresh) return undefined;
+    const id = setInterval(() => {
+      void chrome.tabs.reload(autoRefresh.tabId).catch(() => setAutoRefresh(null));
+    }, autoRefresh.seconds * 1000);
+    return () => clearInterval(id);
+  }, [autoRefresh]);
 
   return (
     <div
@@ -184,6 +249,8 @@ export function App(): ReactElement {
               onSeedConsumed={clearSeed}
               steps={recorderSteps}
               setSteps={setRecorderSteps}
+              hudSeconds={hudSeconds}
+              findTimeoutSeconds={findTimeoutSeconds}
             />
           )}
           {tab === 'scripts' && (
@@ -195,9 +262,16 @@ export function App(): ReactElement {
             />
           )}
           {tab === 'tools' && (
-            <ToolsTab tool={tool} setTool={setTool} onSaveScript={saveToScripts} />
+            <ToolsTab
+              tool={tool}
+              setTool={setTool}
+              onSaveScript={saveToScripts}
+              autoRefresh={autoRefresh}
+              onStartAutoRefresh={startAutoRefresh}
+              onStopAutoRefresh={stopAutoRefresh}
+            />
           )}
-          {tab === 'track' && <TrackTab reloadNonce={reloadNonce} />}
+          {tab === 'track' && <TrackTab reloadNonce={reloadNonce} tagColors={tagColors} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}
           {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} />}
           {tab === 'settings' && (
@@ -206,6 +280,12 @@ export function App(): ReactElement {
               onFontSizeChange={changeFontSize}
               fontScale={fontScale}
               onFontScaleChange={changeFontScale}
+              hudSeconds={hudSeconds}
+              onHudSecondsChange={changeHudSeconds}
+              findTimeoutSeconds={findTimeoutSeconds}
+              onFindTimeoutChange={changeFindTimeout}
+              tagColors={tagColors}
+              onTagColorsChange={changeTagColors}
             />
           )}
         </Suspense>
