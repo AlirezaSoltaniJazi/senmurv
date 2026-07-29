@@ -17,7 +17,12 @@ import {
   ungroupScript,
 } from '@/shared/script-io';
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
-import { fieldToStep, isWorkflowScript, parseWorkflowScript } from '@/shared/workflow';
+import {
+  fieldToStep,
+  isWorkflowScript,
+  parseWorkflowScript,
+  toAwaitableScript,
+} from '@/shared/workflow';
 import type { RecorderSeed } from '@/shared/workflow';
 import type { Result, SavedScript, ScriptSeed } from '@/shared/types';
 import { newId } from '@/utils/id';
@@ -200,7 +205,7 @@ export function ScriptsTab({
     setRunningId(script.id); // toggle this row's Run → Stop
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
-      payload: { code: script.code },
+      payload: { code: toAwaitableScript(script.code) },
     });
     // A Flow's response arrives when its steps FINISH (the runner awaits the flow
     // promise); a plain script's arrives when it returns. Either way, the run is

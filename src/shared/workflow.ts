@@ -690,6 +690,19 @@ export function buildWorkflowScript(steps: WorkflowStep[], opts?: WorkflowScript
 })();`;
 }
 
+/**
+ * Publish a script's leading `(async …)()` IIFE promise on the global the MAIN-
+ * world runner awaits, so RUN_SCRIPT settles when the script FINISHES (letting a
+ * Run/Stop toggle revert on completion). {@link buildWorkflowScript} already
+ * embeds this; use it to upgrade OLDER saved flows and Fill scripts (bare IIFEs)
+ * at run time. A no-op when the code already publishes it or isn't a leading
+ * async IIFE (a plain multi-statement script is left untouched).
+ */
+export function toAwaitableScript(code: string): string {
+  if (code.includes('__SENMURV_FLOW__')) return code;
+  return /^\s*\(async\b/.test(code) ? `window.__SENMURV_FLOW__ = ${code}` : code;
+}
+
 /** Was this script produced by the Flow builder (has a STEPS array)? */
 export function isWorkflowScript(code: string): boolean {
   return /const STEPS\s*=\s*\[/.test(code);

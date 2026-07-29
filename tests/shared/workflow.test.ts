@@ -7,6 +7,7 @@ import {
   moveStepRelative,
   newStep,
   parseWorkflowScript,
+  toAwaitableScript,
 } from '@/shared/workflow';
 import type { WorkflowStep } from '@/shared/workflow';
 import type { PickedField } from '@/shared/types';
@@ -338,6 +339,20 @@ describe('awaitable flow', () => {
     const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
     expect(code).toContain('window.__SENMURV_FLOW__ = (async () =>');
     expect(() => new vm.Script(code)).not.toThrow();
+  });
+
+  it('toAwaitableScript upgrades an OLD bare-IIFE flow at run time', () => {
+    const old = '(async () => {\n  const STEPS = [];\n})();';
+    const upgraded = toAwaitableScript(old);
+    expect(upgraded).toBe(`window.__SENMURV_FLOW__ = ${old}`);
+    expect(() => new vm.Script(upgraded)).not.toThrow();
+  });
+
+  it('toAwaitableScript is a no-op for already-published or non-IIFE scripts', () => {
+    const already = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(toAwaitableScript(already)).toBe(already); // already publishes the global
+    const plain = "console.log('hi'); doThing();";
+    expect(toAwaitableScript(plain)).toBe(plain); // not a leading async IIFE
   });
 });
 
