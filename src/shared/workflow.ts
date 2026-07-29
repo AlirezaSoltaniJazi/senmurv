@@ -636,7 +636,11 @@ export function buildWorkflowScript(steps: WorkflowStep[], opts?: WorkflowScript
     1000,
     Math.round((opts?.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000)
   );
-  return `(async () => {
+  // The IIFE's promise is published on a global so the MAIN-world runner can AWAIT
+  // it — that way RUN_SCRIPT settles when the flow FINISHES (not when it starts),
+  // letting the Scripts tab revert its Run/Stop toggle. Assigning a global is a
+  // plain statement, so a copied/exported script stays valid to paste anywhere.
+  return `window.__SENMURV_FLOW__ = (async () => {
   const STEPS = ${data};
   const HUD_MS = ${hudMs};
   const FIND_MS = ${findMs};

@@ -49,6 +49,9 @@ export function ScriptsTab({
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Bumped on each Run and on Stop, so a stale RUN_SCRIPT response (from a run the
+  // user has since stopped or superseded) can't clear a newer row's toggle.
+  const runTokenRef = useRef(0);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, setPending] = useState<ImportedScript[] | null>(null);
   const [pendingSel, setPendingSel] = useState<boolean[]>([]);
@@ -193,22 +196,26 @@ export function ScriptsTab({
   async function run(script: SavedScript): Promise<void> {
     setError(null);
     setStatus(null);
+    const token = ++runTokenRef.current;
     setRunningId(script.id); // toggle this row's Run → Stop
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code: script.code },
     });
+    // A Flow's response arrives when its steps FINISH (the runner awaits the flow
+    // promise); a plain script's arrives when it returns. Either way, the run is
+    // over — revert the toggle. Skip a stale result the user already stopped/re-ran.
+    if (runTokenRef.current !== token) return;
+    setRunningId(null);
     if (res.ok) setStatus(`Ran “${script.name}” in the page.`);
-    else {
-      setError(res.error);
-      setRunningId(null);
-    }
+    else setError(res.error);
   }
 
   // A raw JS script can't be interrupted mid-run (a synchronous new Function(code)()
   // blocks the page's thread), so Stop hard-reloads the active tab — which halts
   // anything the script started (timers/intervals) and also stops a running Flow.
   function stopScript(): void {
+    runTokenRef.current += 1; // invalidate the in-flight run() (its page is reloading)
     setRunningId(null);
     chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
       if (chrome.runtime.lastError) return;

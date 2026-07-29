@@ -32,7 +32,8 @@ describe('newStep', () => {
 describe('buildWorkflowScript', () => {
   it('emits a runnable IIFE with a STEPS array and the interpreter', () => {
     const code = buildWorkflowScript(steps);
-    expect(code.trim().startsWith('(async () =>')).toBe(true);
+    // The IIFE is published on a global so the runner can await the flow to completion.
+    expect(code.trim().startsWith('window.__SENMURV_FLOW__ = (async () =>')).toBe(true);
     expect(code).toContain('const STEPS =');
     expect(code).toContain('clickButton(step.text)');
     expect(code).toContain('setSelect(step)');
@@ -328,6 +329,14 @@ describe('stoppable flow runner', () => {
     const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
     expect(code).toContain('if (stopRequested()) return resolve();'); // sleep bails early
     expect(code).toContain("if (stopRequested()) return reject(new Error('stopped'));"); // waitFor bails
+    expect(() => new vm.Script(code)).not.toThrow();
+  });
+});
+
+describe('awaitable flow', () => {
+  it('publishes the flow promise on a global so a run can be awaited to completion', () => {
+    const code = buildWorkflowScript([{ id: '1', kind: 'wait', ms: 5 }]);
+    expect(code).toContain('window.__SENMURV_FLOW__ = (async () =>');
     expect(() => new vm.Script(code)).not.toThrow();
   });
 });
