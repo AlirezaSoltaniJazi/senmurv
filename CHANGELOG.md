@@ -6,6 +6,8 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-07-29
+
 ### Added
 
 - **Track → Clear all** — a one-click button (with a confirm) to delete every
@@ -384,7 +386,8 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
 
-[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.5.1...v0.6.0
 [0.5.1]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.5.0...v0.5.1
 [0.5.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/AlirezaSoltaniJazi/senmurv/releases/tag/v0.4.0
