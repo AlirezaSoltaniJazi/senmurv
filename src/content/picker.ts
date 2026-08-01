@@ -9,6 +9,7 @@ import type {
   MeasureMode,
   PageMode,
   Result,
+  ToolMode,
 } from '@/shared/types';
 import { contextAlive, notify } from './context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
@@ -105,16 +106,25 @@ function restoreCursor(): void {
   cursorApplied = false;
 }
 
-function isToolMode(mode: PageMode): boolean {
-  return (
-    mode === 'measure' ||
-    mode === 'color' ||
-    mode === 'font' ||
-    mode === 'taborder' ||
-    mode === 'assert' ||
-    mode === 'stack' ||
-    mode === 'validation'
-  );
+/**
+ * Every Tools mode, as a Record keyed on `ToolMode` — so adding a member to that
+ * union and forgetting it HERE is a typecheck error, not a silent teardown leak.
+ * (It was exactly that: a mode missing from this list still started, but
+ * `stopCurrentMode` never reached it, leaving its overlay on the page.)
+ */
+const TOOL_MODES: Record<ToolMode, true> = {
+  measure: true,
+  color: true,
+  font: true,
+  taborder: true,
+  assert: true,
+  stack: true,
+  validation: true,
+  logicalnames: true,
+};
+
+function isToolMode(mode: PageMode): mode is ToolMode {
+  return Object.prototype.hasOwnProperty.call(TOOL_MODES, mode);
 }
 
 /** Tear down whatever is running. Safe to call when already idle. */
@@ -430,6 +440,14 @@ function register(): void {
       case MESSAGE_TYPES.SCAN_TAB_ORDER:
         void withTools((tools) => tools.scanTabOrder()).then(sendResponse);
         return true;
+
+      case MESSAGE_TYPES.DRAW_LOGICAL_NAMES: {
+        // The names were read in the MAIN world by the worker; we only resolve
+        // them to elements and label them.
+        const { records } = message.payload;
+        void withTools((tools) => tools.drawLogicalNames(records)).then(sendResponse);
+        return true;
+      }
 
       case MESSAGE_TYPES.RUN_A11Y_SCAN: {
         const { levels } = message.payload;

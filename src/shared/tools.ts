@@ -16,7 +16,9 @@ export type ToolKey =
   | 'harden'
   | 'jwt'
   | 'json'
-  | 'autorefresh';
+  | 'autorefresh'
+  | 'queryparams'
+  | 'logicalnames';
 
 /**
  * One entry in the Tools launcher. `mode` is the in-page mode the shell tears
@@ -165,6 +167,24 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Pretty-prints or minifies JSON and shows it as a collapsible tree. Parsing is strict JSON (no comments or trailing commas); everything stays on your machine.',
     mode: null,
     requiresPage: false,
+    isReady: true,
+  },
+  {
+    key: 'queryparams',
+    label: 'Query params',
+    blurb:
+      'Read the current URL’s query params — copy the record id or any custom param — then edit them and open the rebuilt URL in a new tab or this one. Reads the address bar only; it never touches the page.',
+    mode: null,
+    requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'logicalnames',
+    label: 'Logical names',
+    blurb:
+      'Labels every field, tab and section on a Dynamics 365 / Power Apps form with its logical (schema) name. Reads the Xrm client API, so it does nothing on an ordinary page; top frame only, and the labels clear when the form re-renders.',
+    mode: 'logicalnames',
+    requiresPage: true,
     isReady: true,
   },
   {

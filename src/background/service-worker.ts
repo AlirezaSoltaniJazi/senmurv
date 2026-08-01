@@ -9,29 +9,38 @@ import {
   getChecklists,
   getNotes,
   getPrefs,
+  deleteProfile,
+  getProfiles,
   getScripts,
   getTasks,
   saveScripts,
   saveTasks,
   savePrefs,
+  upsertProfileStored,
   upsertChecklist,
   upsertNote,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
+import { cookieWriteWarning, parseCookieUrl, urlForPath } from '@/shared/cookie-url';
 import { clearTagInEntries, renameTagInEntries } from '@/shared/tasks';
 import { buildClearPlan } from '@/shared/tools/site-data';
 import type {
   ClearOutcome,
   ClearTypeId,
+  CookieEdit,
+  CookieRow,
   BypassReport,
   BypassState,
   LocatorKind,
+  LogicalNameRecord,
+  LogicalNamesReport,
   PageBypassState,
   RegionConfig,
   Result,
   StorageProbe,
   TimeEntry,
+  WebStorageSnapshot,
   XrmReport,
 } from '@/shared/types';
 
@@ -509,6 +518,102 @@ async function bypassXrm(tabId: number): Promise<Result<XrmReport>> {
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
+}
+
+/**
+ * Read every logical (schema) name off a Dynamics form, for the Logical names
+ * overlay. Runs in the page's MAIN world because `Xrm` only exists in the page's
+ * own realm. NOTE: a serialized FUNCTION, not a code string — neither `eval` nor
+ * `new Function`, so it is NOT a second instance of the sanctioned runner
+ * exception. See agents.md → Security.
+ *
+ * Serialized, therefore self-contained: no closures, no imports, no module
+ * constants (the cap is inlined). It returns PLAIN DATA only — `executeScript`
+ * results must be JSON-serialisable, so it can hand back names but never the
+ * elements they belong to; the content script re-resolves those from `[data-id]`.
+ */
+function readXrmLogicalNames(): {
+  ok: boolean;
+  value?: { name: string; kind: 'field' | 'tab' | 'section' }[];
+  error?: string;
+} {
+  interface XrmNamed {
+    getName?(): string;
+  }
+  interface XrmTab extends XrmNamed {
+    sections: { forEach(cb: (section: XrmNamed) => void): void };
+  }
+  interface XrmPage {
+    ui: {
+      controls: { forEach(cb: (control: XrmNamed) => void): void };
+      tabs: { forEach(cb: (tab: XrmTab) => void): void };
+    };
+  }
+
+  try {
+    const page = (window as unknown as { Xrm?: { Page?: XrmPage } }).Xrm?.Page;
+    if (!page) {
+      return {
+        ok: false,
+        error: 'No Dynamics form here — window.Xrm is not present on this page.',
+      };
+    }
+
+    const LIMIT = 500; // mirrors LOGICAL_NAMES_MAX; inlined because this is serialized
+    const out: { name: string; kind: 'field' | 'tab' | 'section' }[] = [];
+    const push = (named: XrmNamed, kind: 'field' | 'tab' | 'section'): void => {
+      if (out.length >= LIMIT) return;
+      // Feature-detected: not every control type implements the full interface.
+      if (typeof named.getName !== 'function') return;
+      let name: string;
+      try {
+        name = named.getName();
+      } catch {
+        return; // one unreadable control must not lose the whole pass
+      }
+      if (name) out.push({ name, kind });
+    };
+
+    page.ui.tabs.forEach((tab) => {
+      push(tab, 'tab');
+      tab.sections.forEach((section) => push(section, 'section'));
+    });
+    page.ui.controls.forEach((control) => push(control, 'field'));
+
+    return { ok: true, value: out };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Show the logical-names overlay: read the names in the MAIN world, then hand
+ * them to the content script (ISOLATED world), which owns the one overlay and
+ * resolves each name to an element. The two realms share a document but no JS
+ * objects, which is exactly why this is a two-step.
+ */
+async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesReport>> {
+  let records: LogicalNameRecord[];
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: readXrmLogicalNames,
+    });
+    const outcome = results[0]?.result as
+      | { ok: boolean; value?: LogicalNameRecord[]; error?: string }
+      | undefined;
+    if (!outcome?.ok || !outcome.value) {
+      return { ok: false, error: outcome?.error ?? 'Reading the Dynamics form returned nothing.' };
+    }
+    records = outcome.value;
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+  return askTab<LogicalNamesReport>(tabId, {
+    type: MESSAGE_TYPES.DRAW_LOGICAL_NAMES,
+    payload: { records },
+  });
 }
 
 /** Content-script state plus the MAIN-world Xrm probe the panel needs. */
@@ -1100,6 +1205,218 @@ async function getRegionState(
 }
 
 // ---------------------------------------------------------------------------
+// Web storage (Storage tab) — ISOLATED-world injection
+// ---------------------------------------------------------------------------
+
+/**
+ * Injected into the page (ISOLATED world, like the Site-data probe): a content
+ * script's `localStorage` / `sessionStorage` ARE the page origin's, so this needs
+ * no MAIN-world access and no extra permission. Each area is guarded separately —
+ * one throw (site data blocked, opaque origin) must not lose the other.
+ */
+function readWebStorageInPage(): {
+  origin: string;
+  local: { key: string; value: string }[];
+  session: { key: string; value: string }[];
+  warnings: string[];
+} {
+  const warnings: string[] = [];
+  const dump = (store: Storage, label: string): { key: string; value: string }[] => {
+    const out: { key: string; value: string }[] = [];
+    try {
+      for (let i = 0; i < store.length; i += 1) {
+        const key = store.key(i);
+        if (key === null) continue;
+        out.push({ key, value: store.getItem(key) ?? '' });
+      }
+    } catch (err) {
+      warnings.push(`${label} is unreadable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    return out;
+  };
+  return {
+    origin: location.origin,
+    local: dump(window.localStorage, 'localStorage'),
+    session: dump(window.sessionStorage, 'sessionStorage'),
+    warnings,
+  };
+}
+
+/** Injected writer — returns an error string (e.g. quota exceeded) rather than throwing. */
+function writeWebStorageInPage(
+  area: 'local' | 'session',
+  key: string,
+  value: string
+): string | null {
+  try {
+    (area === 'local' ? window.localStorage : window.sessionStorage).setItem(key, value);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+function removeWebStorageInPage(area: 'local' | 'session', key: string): string | null {
+  try {
+    (area === 'local' ? window.localStorage : window.sessionStorage).removeItem(key);
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+function clearWebStorageInPage(area: 'local' | 'session'): string | null {
+  try {
+    (area === 'local' ? window.localStorage : window.sessionStorage).clear();
+    return null;
+  } catch (err) {
+    return err instanceof Error ? err.message : String(err);
+  }
+}
+
+async function readWebStorage(tabId: number): Promise<Result<WebStorageSnapshot>> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: readWebStorageInPage,
+    });
+    const snapshot = results[0]?.result as WebStorageSnapshot | undefined;
+    if (!snapshot) return { ok: false, error: 'Could not read this page’s storage.' };
+    return { ok: true, value: snapshot };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** Run one injected storage mutation; the injected fn reports failure as a string. */
+async function mutateWebStorage(
+  tabId: number,
+  func: (...args: never[]) => string | null,
+  args: unknown[]
+): Promise<Result<void>> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      func: func as (...a: unknown[]) => string | null,
+      args,
+    });
+    const failure = results[0]?.result as string | null | undefined;
+    if (typeof failure === 'string') return { ok: false, error: failure };
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Cookies tab — chrome.cookies against the active tab's URL
+// ---------------------------------------------------------------------------
+
+/** The active tab's URL, validated as a cookie-addressable http(s) page. */
+async function cookieUrlFor(tabId: number): Promise<Result<URL>> {
+  try {
+    const tab = await chrome.tabs.get(tabId);
+    return parseCookieUrl(tab.url ?? '');
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+function toCookieRow(c: chrome.cookies.Cookie): CookieRow {
+  return {
+    name: c.name,
+    value: c.value,
+    domain: c.domain,
+    path: c.path,
+    secure: c.secure,
+    httpOnly: c.httpOnly,
+    sameSite: (c.sameSite ?? 'unspecified') as CookieRow['sameSite'],
+    expirationDate: typeof c.expirationDate === 'number' ? c.expirationDate : null,
+    session: c.session,
+    hostOnly: c.hostOnly,
+  };
+}
+
+/**
+ * Every cookie readable for this tab, INCLUDING HttpOnly ones (invisible to
+ * `document.cookie` — the reason this tab needs the `cookies` permission).
+ * Queried by domain rather than URL so cookies scoped to another path still
+ * appear; Chrome's URL match is a path PREFIX test that would hide them.
+ */
+async function listCookies(tabId: number): Promise<Result<{ origin: string; rows: CookieRow[] }>> {
+  const urlRes = await cookieUrlFor(tabId);
+  if (!urlRes.ok) return urlRes;
+  try {
+    const all = await chrome.cookies.getAll({ domain: urlRes.value.hostname });
+    const rows = all.map(toCookieRow).sort((a, b) => a.name.localeCompare(b.name));
+    return { ok: true, value: { origin: urlRes.value.origin, rows } };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+async function setCookie(tabId: number, edit: CookieEdit): Promise<Result<void>> {
+  const urlRes = await cookieUrlFor(tabId);
+  if (!urlRes.ok) return urlRes;
+  const path = edit.path.trim() === '' ? '/' : edit.path.trim();
+  const warning = cookieWriteWarning({ ...edit, path }, urlRes.value);
+  if (warning !== null) return { ok: false, error: warning };
+  try {
+    // `domain` is deliberately omitted so Chrome derives a host-only cookie from
+    // the URL — that side-steps the leading-dot rule and the __Host- prefix trap.
+    const details: chrome.cookies.SetDetails = {
+      url: urlForPath(urlRes.value, path),
+      name: edit.name.trim(),
+      value: edit.value,
+      path,
+      secure: edit.secure,
+      httpOnly: edit.httpOnly,
+      sameSite: edit.sameSite,
+    };
+    if (edit.expirationDate !== null) details.expirationDate = edit.expirationDate;
+    const written = await chrome.cookies.set(details);
+    if (written === null) {
+      return { ok: false, error: 'Chrome rejected the cookie (check Secure / SameSite / name).' };
+    }
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+async function removeCookie(tabId: number, name: string, path: string): Promise<Result<void>> {
+  const urlRes = await cookieUrlFor(tabId);
+  if (!urlRes.ok) return urlRes;
+  try {
+    await chrome.cookies.remove({ url: urlForPath(urlRes.value, path || '/'), name });
+    return { ok: true, value: undefined };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/** Remove every cookie this tab can see, each at its own path. */
+async function clearCookies(tabId: number): Promise<Result<number>> {
+  const urlRes = await cookieUrlFor(tabId);
+  if (!urlRes.ok) return urlRes;
+  try {
+    const all = await chrome.cookies.getAll({ domain: urlRes.value.hostname });
+    let removed = 0;
+    for (const c of all) {
+      try {
+        await chrome.cookies.remove({ url: urlForPath(urlRes.value, c.path), name: c.name });
+        removed += 1;
+      } catch {
+        // A cookie on a domain we can't address — skip it rather than abort.
+      }
+    }
+    return { ok: true, value: removed };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Message hub
 // ---------------------------------------------------------------------------
 
@@ -1277,6 +1594,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
         withActiveRunnableTab((tabId) => bypassXrm(tabId)).then(sendResponse);
         return true;
 
+      case MESSAGE_TYPES.SHOW_LOGICAL_NAMES:
+        withActiveRunnableTab((tabId) => showLogicalNames(tabId)).then(sendResponse);
+        return true;
+
       case MESSAGE_TYPES.PROBE_SITE_STORAGE:
         withActiveRunnableTab((tabId) => probeSiteStorage(tabId)).then(sendResponse);
         return true;
@@ -1299,6 +1620,72 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 
       case MESSAGE_TYPES.GET_REGION_STATE:
         withActiveRunnableTab((tabId) => getRegionState(tabId)).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.READ_WEB_STORAGE:
+        withActiveRunnableTab((tabId) => readWebStorage(tabId)).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.WRITE_WEB_STORAGE: {
+        const { area, key, value } = message.payload;
+        withActiveRunnableTab((tabId) =>
+          mutateWebStorage(tabId, writeWebStorageInPage, [area, key, value])
+        ).then(sendResponse);
+        return true;
+      }
+
+      case MESSAGE_TYPES.REMOVE_WEB_STORAGE: {
+        const { area, key } = message.payload;
+        withActiveRunnableTab((tabId) =>
+          mutateWebStorage(tabId, removeWebStorageInPage, [area, key])
+        ).then(sendResponse);
+        return true;
+      }
+
+      case MESSAGE_TYPES.CLEAR_WEB_STORAGE: {
+        const { area } = message.payload;
+        withActiveRunnableTab((tabId) =>
+          mutateWebStorage(tabId, clearWebStorageInPage, [area])
+        ).then(sendResponse);
+        return true;
+      }
+
+      case MESSAGE_TYPES.LIST_COOKIES:
+        withActiveRunnableTab((tabId) => listCookies(tabId)).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.SET_COOKIE:
+        withActiveRunnableTab((tabId) => setCookie(tabId, message.payload.cookie)).then(
+          sendResponse
+        );
+        return true;
+
+      case MESSAGE_TYPES.REMOVE_COOKIE:
+        withActiveRunnableTab((tabId) =>
+          removeCookie(tabId, message.payload.name, message.payload.path)
+        ).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.CLEAR_COOKIES:
+        withActiveRunnableTab((tabId) => clearCookies(tabId)).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.GET_PROFILES:
+        getProfiles()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_PROFILE:
+        upsertProfileStored(message.payload.profile)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_PROFILE:
+        deleteProfile(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
       default:

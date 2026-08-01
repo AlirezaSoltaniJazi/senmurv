@@ -11,6 +11,8 @@ import { FontTool } from './tools/FontTool';
 import { HardenTool } from './tools/HardenTool';
 import { JsonFormatterTool } from './tools/JsonFormatterTool';
 import { JwtTool } from './tools/JwtTool';
+import { LogicalNamesTool } from './tools/LogicalNamesTool';
+import { QueryParamsTool } from './tools/QueryParamsTool';
 import { RegionTool } from './tools/RegionTool';
 import { MeasureTool } from './tools/MeasureTool';
 import { TabOrderTool } from './tools/TabOrderTool';
@@ -87,6 +89,8 @@ export function ToolsTab({
         {tool === 'harden' && <HardenTool />}
         {tool === 'jwt' && <JwtTool />}
         {tool === 'json' && <JsonFormatterTool />}
+        {tool === 'queryparams' && <QueryParamsTool />}
+        {tool === 'logicalnames' && <LogicalNamesTool />}
         {tool === 'autorefresh' && (
           <AutoRefreshTool
             active={autoRefresh}

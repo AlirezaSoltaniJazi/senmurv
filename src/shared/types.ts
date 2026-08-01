@@ -147,6 +147,7 @@ export type PageMode =
   | 'assert'
   | 'stack'
   | 'validation'
+  | 'logicalnames'
   | 'match';
 
 /** One highlighted locator-match run: total matches, how many were drawn, and
@@ -160,7 +161,7 @@ export interface MatchResult {
 /** Modes the Tools tab starts. A subset of PageMode, excluding the pre-existing ones. */
 export type ToolMode = Extract<
   PageMode,
-  'measure' | 'color' | 'font' | 'taborder' | 'assert' | 'stack' | 'validation'
+  'measure' | 'color' | 'font' | 'taborder' | 'assert' | 'stack' | 'validation' | 'logicalnames'
 >;
 
 // ---------------------------------------------------------------------------
@@ -615,6 +616,113 @@ export interface XrmReport {
   readonly sections: number;
 }
 
+/** Which level of a Dynamics form a logical name belongs to. */
+export type LogicalNameKind = 'field' | 'tab' | 'section';
+
+/**
+ * One logical (schema) name read from the Xrm API. Deliberately plain data:
+ * `chrome.scripting` results must be JSON-serialisable, so the MAIN-world read
+ * can hand back names but never the elements they belong to — the content
+ * script re-resolves each one against `[data-id]`.
+ */
+export interface LogicalNameRecord {
+  readonly name: string;
+  readonly kind: LogicalNameKind;
+}
+
+/** What the overlay actually managed to label, for the panel's summary line. */
+export interface LogicalNamesReport {
+  readonly fields: number;
+  readonly tabs: number;
+  readonly sections: number;
+  /** How many of {@link LogicalNameRecord}s resolved to a visible element. */
+  readonly labelled: number;
+  readonly total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Cookies + Web Storage tabs
+// ---------------------------------------------------------------------------
+
+/** Which web-storage area an item belongs to. */
+export type StorageArea = 'local' | 'session';
+
+/** One `localStorage` / `sessionStorage` entry, as read from the page. */
+export interface StorageItem {
+  readonly key: string;
+  readonly value: string;
+}
+
+/** Both storage areas of the current origin, in one read. */
+export interface WebStorageSnapshot {
+  readonly origin: string;
+  readonly local: StorageItem[];
+  readonly session: StorageItem[];
+  /** Set when an area could not be read at all (site data blocked, sandboxed). */
+  readonly warnings: string[];
+}
+
+/** A cookie's SameSite attribute, in the shape chrome.cookies uses. */
+export type CookieSameSite = 'no_restriction' | 'lax' | 'strict' | 'unspecified';
+
+/**
+ * One cookie visible to the extension for the current URL. Mirrors the fields of
+ * `chrome.cookies.Cookie` we surface — including `httpOnly`, which `document.cookie`
+ * can never see (the reason this tab needs the `cookies` permission).
+ */
+export interface CookieRow {
+  readonly name: string;
+  readonly value: string;
+  readonly domain: string;
+  readonly path: string;
+  readonly secure: boolean;
+  readonly httpOnly: boolean;
+  readonly sameSite: CookieSameSite;
+  /** Seconds since the epoch; null for a session cookie (dies with the browser). */
+  readonly expirationDate: number | null;
+  readonly session: boolean;
+  /** True when the cookie is scoped to exactly this host (no leading-dot domain). */
+  readonly hostOnly: boolean;
+}
+
+/** The fields the cookie editor can write. `domain` is derived from the tab URL. */
+export interface CookieEdit {
+  readonly name: string;
+  readonly value: string;
+  readonly path: string;
+  readonly secure: boolean;
+  readonly httpOnly: boolean;
+  readonly sameSite: CookieSameSite;
+  /** Seconds since the epoch; omit/null for a session cookie. */
+  readonly expirationDate: number | null;
+}
+
+/** Which store a {@link ValueProfile} drives. */
+export type ProfileTarget = 'cookie' | StorageArea;
+
+/**
+ * A saved "switcher": one cookie/storage key plus the candidate values you flip
+ * between while testing (locales, feature flags, auth states). Ported from
+ * phantom-mock's cookie/storage profiles.
+ */
+export interface ValueProfile {
+  id: string; // newId('prof_')
+  name: string;
+  target: ProfileTarget;
+  /** Cookie name, or storage key. */
+  key: string;
+  /** Cookies only — the path the cookie is scoped to. */
+  path?: string;
+  /** Candidate values, in the order they are offered. */
+  values: string[];
+  /** Wrapped around every value before it is written (e.g. JSON quoting). */
+  prefix?: string;
+  suffix?: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
 // ---------------------------------------------------------------------------
 // My Tasks (checklists) + user preferences
 // ---------------------------------------------------------------------------
@@ -676,6 +784,12 @@ export interface Prefs {
    * absent from the map falls back to its hashed colour. Managed in Settings.
    */
   tagColors?: Record<string, number>;
+  /**
+   * Reload the page after a cookie / web-storage change, so the site actually
+   * picks the new value up (a locale cookie does nothing until a reload).
+   * Toggled from the Cookies and Storage tabs; off by default.
+   */
+  autoReloadOnChange?: boolean;
 }
 
 // ---------------------------------------------------------------------------

@@ -4,24 +4,28 @@ import {
   DEFAULT_PREFS,
   deleteChecklist,
   deleteNote,
+  deleteProfile,
   deleteScript,
   deleteTask,
   getChecklists,
   getNotes,
   getPrefs,
+  getProfiles,
   getScripts,
   getTasks,
   isChecklist,
   isNote,
   isSavedScript,
   isTimeEntry,
+  isValueProfile,
   savePrefs,
   upsertChecklist,
   upsertNote,
+  upsertProfileStored,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
-import type { Checklist, Note, SavedScript, TimeEntry } from '@/shared/types';
+import type { Checklist, Note, SavedScript, TimeEntry, ValueProfile } from '@/shared/types';
 import { store } from '../setup';
 
 function makeScript(overrides: Partial<SavedScript> = {}): SavedScript {
@@ -254,6 +258,54 @@ describe('note storage', () => {
   });
 });
 
+describe('value profiles storage', () => {
+  function mk(over: Partial<ValueProfile> = {}): ValueProfile {
+    return {
+      id: 'prof_1',
+      name: 'Locale',
+      target: 'local',
+      key: 'localeKey',
+      values: ['en_GB'],
+      enabled: true,
+      createdAt: 1,
+      updatedAt: 1,
+      ...over,
+    };
+  }
+
+  it('isValueProfile rejects corrupt / foreign data', () => {
+    expect(isValueProfile(mk())).toBe(true);
+    expect(isValueProfile(mk({ target: 'nope' as ValueProfile['target'] }))).toBe(false);
+    expect(isValueProfile({ ...mk(), values: [1, 2] })).toBe(false);
+    expect(isValueProfile({ ...mk(), enabled: 'yes' })).toBe(false);
+    expect(isValueProfile(null)).toBe(false);
+    // Optional fields must still be the right type when present.
+    expect(isValueProfile({ ...mk(), path: 5 })).toBe(false);
+    expect(isValueProfile({ ...mk(), prefix: '"', suffix: '"' })).toBe(true);
+  });
+
+  it('returns [] when nothing is stored, and drops invalid entries', async () => {
+    expect(await getProfiles()).toEqual([]);
+    store[STORAGE_KEYS.PROFILES] = [mk({ id: 'good' }), { junk: true }];
+    expect((await getProfiles()).map((p) => p.id)).toEqual(['good']);
+  });
+
+  it('upserts by id and deletes', async () => {
+    await upsertProfileStored(mk({ id: 'a' }));
+    await upsertProfileStored(mk({ id: 'b', name: 'Flag' }));
+    expect((await getProfiles()).map((p) => p.id)).toEqual(['a', 'b']);
+
+    await upsertProfileStored(mk({ id: 'a', name: 'Renamed' }));
+    const afterUpdate = await getProfiles();
+    expect(afterUpdate).toHaveLength(2); // replaced, not appended
+    expect(afterUpdate.find((p) => p.id === 'a')?.name).toBe('Renamed');
+
+    const afterDelete = await deleteProfile('a');
+    expect(afterDelete.map((p) => p.id)).toEqual(['b']);
+    expect((await getProfiles()).map((p) => p.id)).toEqual(['b']);
+  });
+});
+
 describe('prefs storage', () => {
   it('returns defaults when nothing is stored', async () => {
     expect(await getPrefs()).toEqual(DEFAULT_PREFS);
@@ -341,6 +393,18 @@ describe('prefs storage', () => {
 
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 4.6 };
     expect((await getPrefs()).hudSeconds).toBe(5); // rounded
+  });
+
+  it('reads autoReloadOnChange, defaulting to absent (off)', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).autoReloadOnChange).toBeUndefined();
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', autoReloadOnChange: true };
+    expect((await getPrefs()).autoReloadOnChange).toBe(true);
+
+    // A non-boolean is ignored rather than coerced.
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', autoReloadOnChange: 'yes' };
+    expect((await getPrefs()).autoReloadOnChange).toBeUndefined();
   });
 
   it('falls back to the default hudSeconds when absent or non-numeric', async () => {

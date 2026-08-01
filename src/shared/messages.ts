@@ -2,21 +2,25 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import type {
   Checklist,
   ClearTypeId,
+  CookieEdit,
   DetectedField,
   BypassOptions,
   BypassReport,
   LocatorKind,
   LocatorSet,
+  LogicalNameRecord,
   MeasureMode,
   Note,
   PageMode,
   Prefs,
   RegionConfig,
   SavedScript,
+  StorageArea,
   TimeEntry,
   ToolMode,
   ToolPickData,
   ToolStreamData,
+  ValueProfile,
   WcagLevel,
 } from '@/shared/types';
 import type { RecordedStep } from '@/shared/workflow';
@@ -106,12 +110,39 @@ export type RuntimeMessage =
       type: typeof MESSAGE_TYPES.CLEAR_SITE_DATA;
       payload: { types: ClearTypeId[]; shouldReload: boolean };
     }
+  // Logical names. SHOW is worker-local (a MAIN-world read of the Xrm API, which
+  // only exists in the page's realm — again a real func, never a code string);
+  // the worker then relays DRAW to the content script, which owns the overlay.
+  // Clearing goes through the standard STOP_TOOL_MODE.
+  | { type: typeof MESSAGE_TYPES.SHOW_LOGICAL_NAMES }
+  | {
+      type: typeof MESSAGE_TYPES.DRAW_LOGICAL_NAMES;
+      payload: { records: LogicalNameRecord[] };
+    }
   // Region emulator. Worker-local like BYPASS_XRM: the shim is a MAIN-world
   // executeScript that passes a real func (not a code string), so it does not
   // widen the sanctioned runner exception.
   | { type: typeof MESSAGE_TYPES.APPLY_REGION; payload: { config: RegionConfig } }
   | { type: typeof MESSAGE_TYPES.RESTORE_REGION }
-  | { type: typeof MESSAGE_TYPES.GET_REGION_STATE };
+  | { type: typeof MESSAGE_TYPES.GET_REGION_STATE }
+  // Web storage (Storage tab). Worker-local, injected into the ISOLATED world —
+  // a content script's localStorage IS the page origin's, so no new permission.
+  | { type: typeof MESSAGE_TYPES.READ_WEB_STORAGE }
+  | {
+      type: typeof MESSAGE_TYPES.WRITE_WEB_STORAGE;
+      payload: { area: StorageArea; key: string; value: string };
+    }
+  | { type: typeof MESSAGE_TYPES.REMOVE_WEB_STORAGE; payload: { area: StorageArea; key: string } }
+  | { type: typeof MESSAGE_TYPES.CLEAR_WEB_STORAGE; payload: { area: StorageArea } }
+  // Cookies tab — chrome.cookies against the active tab's URL ("cookies" permission).
+  | { type: typeof MESSAGE_TYPES.LIST_COOKIES }
+  | { type: typeof MESSAGE_TYPES.SET_COOKIE; payload: { cookie: CookieEdit } }
+  | { type: typeof MESSAGE_TYPES.REMOVE_COOKIE; payload: { name: string; path: string } }
+  | { type: typeof MESSAGE_TYPES.CLEAR_COOKIES }
+  // Value profiles (shared by both tabs)
+  | { type: typeof MESSAGE_TYPES.GET_PROFILES }
+  | { type: typeof MESSAGE_TYPES.SAVE_PROFILE; payload: { profile: ValueProfile } }
+  | { type: typeof MESSAGE_TYPES.DELETE_PROFILE; payload: { id: string } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 
