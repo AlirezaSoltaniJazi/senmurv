@@ -33,6 +33,8 @@ import type {
   BypassReport,
   BypassState,
   LocatorKind,
+  LogicalNameRecord,
+  LogicalNamesReport,
   PageBypassState,
   RegionConfig,
   Result,
@@ -516,6 +518,102 @@ async function bypassXrm(tabId: number): Promise<Result<XrmReport>> {
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
+}
+
+/**
+ * Read every logical (schema) name off a Dynamics form, for the Logical names
+ * overlay. Runs in the page's MAIN world because `Xrm` only exists in the page's
+ * own realm. NOTE: a serialized FUNCTION, not a code string — neither `eval` nor
+ * `new Function`, so it is NOT a second instance of the sanctioned runner
+ * exception. See agents.md → Security.
+ *
+ * Serialized, therefore self-contained: no closures, no imports, no module
+ * constants (the cap is inlined). It returns PLAIN DATA only — `executeScript`
+ * results must be JSON-serialisable, so it can hand back names but never the
+ * elements they belong to; the content script re-resolves those from `[data-id]`.
+ */
+function readXrmLogicalNames(): {
+  ok: boolean;
+  value?: { name: string; kind: 'field' | 'tab' | 'section' }[];
+  error?: string;
+} {
+  interface XrmNamed {
+    getName?(): string;
+  }
+  interface XrmTab extends XrmNamed {
+    sections: { forEach(cb: (section: XrmNamed) => void): void };
+  }
+  interface XrmPage {
+    ui: {
+      controls: { forEach(cb: (control: XrmNamed) => void): void };
+      tabs: { forEach(cb: (tab: XrmTab) => void): void };
+    };
+  }
+
+  try {
+    const page = (window as unknown as { Xrm?: { Page?: XrmPage } }).Xrm?.Page;
+    if (!page) {
+      return {
+        ok: false,
+        error: 'No Dynamics form here — window.Xrm is not present on this page.',
+      };
+    }
+
+    const LIMIT = 500; // mirrors LOGICAL_NAMES_MAX; inlined because this is serialized
+    const out: { name: string; kind: 'field' | 'tab' | 'section' }[] = [];
+    const push = (named: XrmNamed, kind: 'field' | 'tab' | 'section'): void => {
+      if (out.length >= LIMIT) return;
+      // Feature-detected: not every control type implements the full interface.
+      if (typeof named.getName !== 'function') return;
+      let name: string;
+      try {
+        name = named.getName();
+      } catch {
+        return; // one unreadable control must not lose the whole pass
+      }
+      if (name) out.push({ name, kind });
+    };
+
+    page.ui.tabs.forEach((tab) => {
+      push(tab, 'tab');
+      tab.sections.forEach((section) => push(section, 'section'));
+    });
+    page.ui.controls.forEach((control) => push(control, 'field'));
+
+    return { ok: true, value: out };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+/**
+ * Show the logical-names overlay: read the names in the MAIN world, then hand
+ * them to the content script (ISOLATED world), which owns the one overlay and
+ * resolves each name to an element. The two realms share a document but no JS
+ * objects, which is exactly why this is a two-step.
+ */
+async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesReport>> {
+  let records: LogicalNameRecord[];
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: readXrmLogicalNames,
+    });
+    const outcome = results[0]?.result as
+      | { ok: boolean; value?: LogicalNameRecord[]; error?: string }
+      | undefined;
+    if (!outcome?.ok || !outcome.value) {
+      return { ok: false, error: outcome?.error ?? 'Reading the Dynamics form returned nothing.' };
+    }
+    records = outcome.value;
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+  return askTab<LogicalNamesReport>(tabId, {
+    type: MESSAGE_TYPES.DRAW_LOGICAL_NAMES,
+    payload: { records },
+  });
 }
 
 /** Content-script state plus the MAIN-world Xrm probe the panel needs. */
@@ -1494,6 +1592,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 
       case MESSAGE_TYPES.BYPASS_XRM:
         withActiveRunnableTab((tabId) => bypassXrm(tabId)).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.SHOW_LOGICAL_NAMES:
+        withActiveRunnableTab((tabId) => showLogicalNames(tabId)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.PROBE_SITE_STORAGE:

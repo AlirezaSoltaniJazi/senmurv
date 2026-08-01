@@ -70,6 +70,10 @@ export const MESSAGE_TYPES = {
   // Site data
   PROBE_SITE_STORAGE: 'PROBE_SITE_STORAGE',
   CLEAR_SITE_DATA: 'CLEAR_SITE_DATA',
+  // Logical names — worker-local MAIN-world read of the Dynamics Xrm API, then
+  // relayed to the content script, which draws the overlay. STOP_TOOL_MODE clears.
+  SHOW_LOGICAL_NAMES: 'SHOW_LOGICAL_NAMES',
+  DRAW_LOGICAL_NAMES: 'DRAW_LOGICAL_NAMES',
   // Region emulator — worker-local MAIN-world shim (clock/timezone/locale/geo)
   APPLY_REGION: 'APPLY_REGION',
   RESTORE_REGION: 'RESTORE_REGION',
@@ -283,6 +287,10 @@ export const TAB_ORDER_MAX_STOPS = 500;
 /** Cap on drawn locator-match badges, so a broad selector (e.g. `div`) can't
  *  paint thousands of boxes. The true match count is still reported. */
 export const MATCH_HIGHLIGHT_MAX = 200;
+
+/** Cap on drawn logical-name labels, so a huge Dynamics form can't stall the
+ *  overlay. The true control count is still reported. */
+export const LOGICAL_NAMES_MAX = 500;
 
 /** Snap-to-element-edge threshold for the Measure tool, in CSS px. */
 export const MEASURE_SNAP_PX = 6;

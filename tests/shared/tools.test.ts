@@ -21,6 +21,8 @@ describe('TOOLS registry', () => {
       'harden',
       'jwt',
       'json',
+      'queryparams',
+      'logicalnames',
       'autorefresh',
     ] satisfies ToolKey[]);
   });
@@ -42,6 +44,7 @@ describe('TOOLS registry', () => {
       'assert',
       'stack',
       'validation',
+      'logicalnames',
     ]);
   });
 });

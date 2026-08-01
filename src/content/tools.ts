@@ -4,6 +4,7 @@ import { startAssert, stopAssert } from './tools/assert-state';
 import { restorePage, bypassPage, bypassState } from './tools/bypass';
 import { startColor, stopColor } from './tools/color';
 import { startFont, stopFont } from './tools/font-probe';
+import { drawLogicalNames, startLogicalNames, stopLogicalNames } from './tools/logical-names';
 import { startMeasure, stopMeasure } from './tools/measure';
 import { startStacking, stopStacking } from './tools/stacking';
 import { scanTabOrder, startTabOrder, stopLocators, stopTabOrder } from './tools/tab-index';
@@ -39,6 +40,7 @@ const HANDLERS: Partial<Record<PageMode, ModeHandlers>> = {
   assert: { start: startAssert, stop: stopAssert },
   stack: { start: startStacking, stop: stopStacking },
   validation: { start: startValidation, stop: stopValidation },
+  logicalnames: { start: startLogicalNames, stop: stopLogicalNames },
 };
 
 /** Start an in-page Tools mode. Unknown/unimplemented modes are a no-op. */
@@ -66,6 +68,10 @@ export { restorePage, bypassPage, bypassState };
 
 // Tab order: SCAN computes + draws; the panel fetches a stop's locators lazily.
 export { scanTabOrder, stopLocators };
+
+// Logical names: the names are read in the MAIN world (only realm with `Xrm`)
+// and relayed here as plain data; DRAW resolves them to elements and labels them.
+export { drawLogicalNames };
 
 // Accessibility: RUN scans + retains elements; the panel fetches locators lazily.
 // resetA11y drops those retained refs on panel-close teardown.

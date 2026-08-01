@@ -57,6 +57,8 @@ panel's full height; **← Tools** goes back.
 | **Region**          | Make page JS read another country's clock, timezone, locale and geolocation (client-side).                                                                                                                                                                                                           |
 | **Harden selector** | Scores a pasted selector's robustness, names why it will break, and gives the recommended replacement.                                                                                                                                                                                               |
 | **JWT decoder**     | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
+| **Query params**    | Copies the record `id` (or any named param) out of the current URL, and rebuilds it with edited params to open in a new tab or this one.                                                                                                                                                             |
+| **Logical names**   | Labels every field, tab and section on a Dynamics 365 / Power Apps form with its logical (schema) name — the identifier the Web API and `data-id` selectors use. Ported from [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM).                                     |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
 ones for the page-inspection tools: **top frame only** (cross-origin iframes are
@@ -182,6 +184,60 @@ break** and **what to use instead**.
 **Limits**: resolves against the top frame only; if the selector matches several
 elements it hardens the **first**; a selector that matches nothing can't be
 hardened (it says so).
+
+### Query params — detail
+
+Reads the current URL's query string and turns it into something you can act on.
+Three parts:
+
+- **Fetch ID** — the `id` param (any casing) shown with a Copy button. On a
+  record-scoped app (Dynamics, most admin UIs) that is the record's GUID, which
+  is otherwise a manual select-and-copy out of the address bar.
+- **Custom param** — name any param (`etn`, `appid`, `tenant`) and read its value,
+  or be told plainly that it is not in this URL.
+- **Build & open** — **Load current URL** splits the address into a base plus
+  editable name/value rows. Change the `id`, press **Open in new tab** (keeps the
+  record you are on, for comparing two) or **Go here** (navigates this tab).
+  **Sync ID** / **Sync custom** pull a value across from the sections above, and
+  `+ Add param` / `✕` add and drop rows.
+
+Everything is a pure `URL`/`URLSearchParams` transform (`query-params.ts`), so
+duplicate names survive, values are re-encoded correctly, a blank value is kept
+(`&flag=`) and a blank NAME is dropped.
+
+**Limits**: reads the address bar only — it never touches the page. It needs a
+reachable page, so it is gated on `chrome://` and the Web Store (which is also
+what tells you the panel's own full-page view is the active tab).
+
+### Logical names — detail
+
+Dynamics 365 / Power Apps only. Labels every **field, tab and section** on a
+model-driven form with its **logical (schema) name** — `firstname`,
+`fmc_typecode`, `tab_summary`, `sec_general_details` — colour-coded by level
+(field / section / tab). This is the identifier the Web API, FetchXML, Xrm form
+scripts and `data-id` selectors all key on; the display name beside it is
+localized and an admin can rename it at will.
+
+That matters directly for locators: Dynamics regenerates element `id`s per
+session (they embed a GUID, which is why `isStableId` rejects them), so the
+picker prefers `data-id` — and `data-id` carries exactly the logical name this
+tool shows you.
+
+- **Detection is capability-based**, not a hostname match: it asks whether
+  `window.Xrm` exists, so on-prem orgs on arbitrary domains work, and an ordinary
+  page is told plainly that it is not a Dynamics form.
+- **Two realms, by necessity.** `window.Xrm` lives only in the page's MAIN world,
+  while Senmurv's overlay lives in the content script's ISOLATED world — they
+  share a document but no JS objects. So the worker reads the names in the MAIN
+  world (a real injected function, never a code string) and returns plain JSON;
+  the content script resolves each name against `[data-id]` and draws the labels.
+  Nothing is injected into the page's own DOM, so there is nothing to undo.
+- Labels follow the page as it scrolls and are torn down by **Clear**, by
+  switching tool, or by closing the panel.
+
+**Limits**: top frame only; a control on a tab that is not open has no box to
+label (the panel reports "labelled N of M"); labels are cleared when the form
+re-renders; capped at 500 controls.
 
 ### JWT decoder — detail
 

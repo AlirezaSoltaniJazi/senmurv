@@ -8,6 +8,7 @@ import type {
   BypassReport,
   LocatorKind,
   LocatorSet,
+  LogicalNameRecord,
   MeasureMode,
   Note,
   PageMode,
@@ -108,6 +109,15 @@ export type RuntimeMessage =
   | {
       type: typeof MESSAGE_TYPES.CLEAR_SITE_DATA;
       payload: { types: ClearTypeId[]; shouldReload: boolean };
+    }
+  // Logical names. SHOW is worker-local (a MAIN-world read of the Xrm API, which
+  // only exists in the page's realm — again a real func, never a code string);
+  // the worker then relays DRAW to the content script, which owns the overlay.
+  // Clearing goes through the standard STOP_TOOL_MODE.
+  | { type: typeof MESSAGE_TYPES.SHOW_LOGICAL_NAMES }
+  | {
+      type: typeof MESSAGE_TYPES.DRAW_LOGICAL_NAMES;
+      payload: { records: LogicalNameRecord[] };
     }
   // Region emulator. Worker-local like BYPASS_XRM: the shim is a MAIN-world
   // executeScript that passes a real func (not a code string), so it does not

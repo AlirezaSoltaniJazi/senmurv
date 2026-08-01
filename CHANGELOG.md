@@ -8,6 +8,22 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ### Added
 
+- **Tools → Query params** — read the current URL's query string: copy the record
+  **id** (or any custom param you name), then **Load current URL** to split it
+  into editable name/value rows, change one, and **Open in new tab** or **Go
+  here**. Built for the everyday "same app, different record" jump. Reads the
+  address bar only — it never touches the page.
+- **Tools → Logical names** — labels every field, tab and section on a
+  **Dynamics 365 / Power Apps** form with its **logical (schema) name**
+  (`firstname`, `fmc_typecode`, `tab_summary`, `sec_general_details`) — the
+  identifier the Web API, Xrm scripts and `data-id` selectors key on, as opposed
+  to the localized display name an admin can rename. Colour-coded by level, the
+  labels follow the page as it scrolls, and Clear removes them.
+  - Detection is capability-based (`window.Xrm`), not a hostname match, so it
+    works on on-prem orgs too; it says plainly when a page is not a Dynamics form.
+  - Reads the Xrm client API in the page's MAIN world by injecting a real
+    function — never a code string — so it does not widen the script runner's
+    sanctioned exception.
 - **Cookies tab** — see every cookie for the current site, **including HttpOnly
   ones** that page JavaScript can never read, with its path, expiry and
   Secure / HttpOnly flags. Search, **edit** a cookie (value, path, expiry,

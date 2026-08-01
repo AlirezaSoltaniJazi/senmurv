@@ -147,6 +147,7 @@ export type PageMode =
   | 'assert'
   | 'stack'
   | 'validation'
+  | 'logicalnames'
   | 'match';
 
 /** One highlighted locator-match run: total matches, how many were drawn, and
@@ -160,7 +161,7 @@ export interface MatchResult {
 /** Modes the Tools tab starts. A subset of PageMode, excluding the pre-existing ones. */
 export type ToolMode = Extract<
   PageMode,
-  'measure' | 'color' | 'font' | 'taborder' | 'assert' | 'stack' | 'validation'
+  'measure' | 'color' | 'font' | 'taborder' | 'assert' | 'stack' | 'validation' | 'logicalnames'
 >;
 
 // ---------------------------------------------------------------------------
@@ -613,6 +614,30 @@ export interface XrmReport {
   readonly controls: number;
   readonly tabs: number;
   readonly sections: number;
+}
+
+/** Which level of a Dynamics form a logical name belongs to. */
+export type LogicalNameKind = 'field' | 'tab' | 'section';
+
+/**
+ * One logical (schema) name read from the Xrm API. Deliberately plain data:
+ * `chrome.scripting` results must be JSON-serialisable, so the MAIN-world read
+ * can hand back names but never the elements they belong to — the content
+ * script re-resolves each one against `[data-id]`.
+ */
+export interface LogicalNameRecord {
+  readonly name: string;
+  readonly kind: LogicalNameKind;
+}
+
+/** What the overlay actually managed to label, for the panel's summary line. */
+export interface LogicalNamesReport {
+  readonly fields: number;
+  readonly tabs: number;
+  readonly sections: number;
+  /** How many of {@link LogicalNameRecord}s resolved to a visible element. */
+  readonly labelled: number;
+  readonly total: number;
 }
 
 // ---------------------------------------------------------------------------

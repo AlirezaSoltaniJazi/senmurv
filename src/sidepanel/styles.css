@@ -1905,3 +1905,18 @@ input[type='checkbox'] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* Query params — builder rows. The name column is fixed so the value gets the
+   room (a GUID is long); both shrink rather than overflow at panel widths. */
+.qp-name {
+  flex: 0 0 7rem;
+  min-width: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+}
+.qp-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 11px;
+}
