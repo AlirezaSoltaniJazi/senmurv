@@ -8,75 +8,20 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ### Added
 
-- **Tools → Query params** — read the current URL's query string: copy the record
-  **id** (or any custom param you name), then **Load current URL** to split it
-  into editable name/value rows, change one, and **Open in new tab** or **Go
-  here**. Built for the everyday "same app, different record" jump. Reads the
-  address bar only — it never touches the page.
-- **Tools → Logical names** — labels every field, tab and section on a
-  **Dynamics 365 / Power Apps** form with its **logical (schema) name**
-  (`firstname`, `fmc_typecode`, `tab_summary`, `sec_general_details`) — the
-  identifier the Web API, Xrm scripts and `data-id` selectors key on, as opposed
-  to the localized display name an admin can rename. Colour-coded by level, the
-  labels follow the page as it scrolls, and Clear removes them.
-  - Detection is capability-based (`window.Xrm`), not a hostname match, so it
-    works on on-prem orgs too; it says plainly when a page is not a Dynamics form.
-  - Reads the Xrm client API in the page's MAIN world by injecting a real
-    function — never a code string — so it does not widen the script runner's
-    sanctioned exception.
-- **Cookies tab** — see every cookie for the current site, **including HttpOnly
-  ones** that page JavaScript can never read, with its path, expiry and
-  Secure / HttpOnly flags. Search, **edit** a cookie (value, path, expiry,
-  Secure, HttpOnly, SameSite), **add** one, **delete** one, or delete them all.
-  `domain` is derived from the tab so `__Host-` / `__Secure-` and
-  `SameSite=None` rules can't be violated by accident — the editor says why
-  before Chrome silently refuses a write.
-  - Requires the new **`cookies`** permission; it is the only way to reach
-    HttpOnly cookies at all.
-- **Storage tab** — a viewer/editor for the site's **localStorage** and
-  **sessionStorage**: search keys and values, edit a value inline (with a
-  **Pretty JSON** button for stringified-JSON values), add a key, delete one, or
-  clear the whole area behind a self-disarming confirm.
-- **Value profiles (Cookies + Storage)** — save a key plus the values you switch
-  between while testing (locales, feature flags, auth states), then apply each in
-  one click; the live value is shown and the active choice highlighted. Optional
-  prefix/suffix wrapping (e.g. JSON quoting) with a live preview, and an enable
-  toggle. Ported from the Phantom Mock extension's cookie/storage profiles.
-- **Data + Fill/Recorder → Region / County** — a new generator for a
-  region/county name, offered in the Fill/Recorder generator menus and added as a
-  field in **Generate Random Data**.
-- **Fill/Recorder → Number by digit count** — configure a number field's
-  **min/max number of digits** (e.g. 3–5 digits → a 3-to-5-digit number).
-- **Fill/Recorder → name-synced Email** — **Sync FName / Sync LName** toggles make
-  an email match the flow's name fields: a flow generates one person per run, so
-  First / Last / Full name and the email all agree (`first.last.NNN@…`).
-- **Tools → JSON Formatter** — pretty-print or minify JSON and explore it as a
-  collapsible, colour-coded tree; strict-JSON parse errors are shown. Runs
-  entirely locally — nothing is sent anywhere.
-- **Tools → Auto refresh** — reload the tab you start it on every N seconds
-  (presets 5 / 10 / 30 / 60 s, or custom). Keeps running while you use other panel
-  tools; stops on **Stop** or when you close the panel.
-- **Settings → Flow popup auto-close** — set how long the on-page run popup (HUD)
-  stays after a flow finishes before it disappears (default 3 s).
-- **Settings → Element find timeout** — set how long each flow step waits for its
-  element before giving up (default 10 s); a **Wait for element** step with its
-  own timeout still wins.
-- **Settings → Track tags** — see every tag with its colour and usage count, and
-  **rename** it (updates every entry), **delete** it (un-tags those entries but
-  keeps them), or **recolour** it — recolours show everywhere a tag appears.
-- **Recorder → Stop** — a **Stop** button appears while a flow runs and aborts it
-  gracefully between steps (and mid-wait), instead of only pausing between steps.
-- **Scripts → Run / Stop** — each script's **Run** button toggles to **Stop**
-  while it runs and reverts to **Run** the moment it finishes; **Stop** reloads
-  the page (the only reliable way to halt a plain JS script). The toolbar keeps a
-  **Stop (reloads page)** button too.
+- **Cookies tab** — view and edit every cookie for the current site, including
+  the HttpOnly ones a page can't show you.
+- **Storage tab** — view and edit the site's localStorage and sessionStorage.
+- **Value profiles** — save the values you keep switching between while testing
+  (locales, feature flags, logins) and apply one in a click.
+- **Tools → Logical names** — show the logical name of every field, tab and
+  section on a Dynamics 365 / Power Apps form.
+- **Tools → Query params** — edit the current URL's query string and jump to the
+  new address.
 
 ### Changed
 
-- **Scripts → row layout** — action buttons collapse to **icons** when the panel
-  is narrow and show their text labels again when there is room; the **Run/Stop**
-  icons are pixel-centred and matched in size; and nested scripts sit closer to
-  their drag handle (less lead-in space before the checkbox).
+- Senmurv now asks for permission to read and change cookies, which the Cookies
+  tab needs. Chrome will ask you to re-enable the extension after updating.
 
 ## [0.6.0] - 2026-07-29
 
