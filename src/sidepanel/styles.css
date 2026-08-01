@@ -1862,6 +1862,15 @@ input[type='checkbox'] {
   align-items: center;
   gap: 6px;
 }
+/* "localStorage" / "sessionStorage" are API names — the base .badge uppercasing
+   would render them "SESSIONSTORAGE", which reads as shouting, not as an API. */
+.profile-head .badge {
+  text-transform: none;
+  font-weight: 600;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 8px;
+}
 .profile-name {
   font-weight: 600;
   white-space: nowrap;

@@ -93,6 +93,8 @@ export function App(): ReactElement {
   );
   // Track-tag colour overrides (tag → palette index), persisted in prefs.
   const [tagColors, setTagColors] = useState<Record<string, number>>({});
+  // Reload the page after a Cookies / Storage change so the site picks it up.
+  const [autoReloadOnChange, setAutoReloadOnChange] = useState(false);
   // Auto-refresh (Tools): the tab being reloaded + its interval, or null when off.
   // Lifted here so it survives switching Tools sub-tools / panel tabs; stops on
   // Stop or when the panel closes (this component unmounts).
@@ -129,6 +131,7 @@ export function App(): ReactElement {
         setHudSeconds(res.value.hudSeconds ?? HUD_SECONDS_DEFAULT);
         setFindTimeoutSeconds(res.value.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT);
         setTagColors(res.value.tagColors ?? {});
+        setAutoReloadOnChange(res.value.autoReloadOnChange ?? false);
       }
     })();
     return () => {
@@ -143,6 +146,7 @@ export function App(): ReactElement {
     const prefs: Prefs = { fontSize, hudSeconds, findTimeoutSeconds };
     if (fontScale !== undefined) prefs.fontScale = fontScale;
     if (Object.keys(tagColors).length > 0) prefs.tagColors = tagColors;
+    if (autoReloadOnChange) prefs.autoReloadOnChange = true;
     return prefs;
   }
   function persistPrefs(prefs: Prefs): void {
@@ -174,6 +178,14 @@ export function App(): ReactElement {
   function changeFindTimeout(seconds: number): void {
     setFindTimeoutSeconds(seconds);
     persistPrefs({ ...currentPrefs(), findTimeoutSeconds: seconds });
+  }
+
+  function changeAutoReload(next: boolean): void {
+    setAutoReloadOnChange(next);
+    const prefs = currentPrefs();
+    if (next) prefs.autoReloadOnChange = true;
+    else delete prefs.autoReloadOnChange;
+    persistPrefs(prefs);
   }
 
   function changeTagColors(next: Record<string, number>): void {
@@ -281,8 +293,12 @@ export function App(): ReactElement {
               onStopAutoRefresh={stopAutoRefresh}
             />
           )}
-          {tab === 'cookies' && <CookiesTab />}
-          {tab === 'storage' && <StorageTab />}
+          {tab === 'cookies' && (
+            <CookiesTab autoReload={autoReloadOnChange} onAutoReloadChange={changeAutoReload} />
+          )}
+          {tab === 'storage' && (
+            <StorageTab autoReload={autoReloadOnChange} onAutoReloadChange={changeAutoReload} />
+          )}
           {tab === 'track' && <TrackTab reloadNonce={reloadNonce} tagColors={tagColors} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}
           {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} />}

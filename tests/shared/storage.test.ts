@@ -395,6 +395,18 @@ describe('prefs storage', () => {
     expect((await getPrefs()).hudSeconds).toBe(5); // rounded
   });
 
+  it('reads autoReloadOnChange, defaulting to absent (off)', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).autoReloadOnChange).toBeUndefined();
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', autoReloadOnChange: true };
+    expect((await getPrefs()).autoReloadOnChange).toBe(true);
+
+    // A non-boolean is ignored rather than coerced.
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', autoReloadOnChange: 'yes' };
+    expect((await getPrefs()).autoReloadOnChange).toBeUndefined();
+  });
+
   it('falls back to the default hudSeconds when absent or non-numeric', async () => {
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
     expect((await getPrefs()).hudSeconds).toBe(3);

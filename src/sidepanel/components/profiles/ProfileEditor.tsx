@@ -56,6 +56,18 @@ export function ProfileEditor({ initial, onSave, onCancel }: Props): ReactElemen
         onChange={(e) => setDraft({ ...draft, name: e.target.value })}
       />
       <div className="step-target">
+        {!isCookie && (
+          <select
+            aria-label="Storage area"
+            value={draft.target}
+            onChange={(e) =>
+              setDraft({ ...draft, target: e.target.value as ValueProfile['target'] })
+            }
+          >
+            <option value="local">localStorage</option>
+            <option value="session">sessionStorage</option>
+          </select>
+        )}
         <input
           className="name-input"
           placeholder={isCookie ? 'Cookie name' : 'Storage key'}

@@ -6,6 +6,7 @@ import {
   parseValues,
   profileFromEntry,
   profilesFor,
+  profilesForAny,
   upsertProfile,
   validateProfile,
   valuesToText,
@@ -107,6 +108,20 @@ describe('profilesFor', () => {
     expect(profilesFor(list, 'local').map((p) => p.id)).toEqual(['a', 'd']);
     expect(profilesFor(list, 'cookie').map((p) => p.id)).toEqual(['b']);
     expect(profilesFor(list, 'nope' as ProfileTarget)).toEqual([]);
+  });
+});
+
+describe('profilesForAny', () => {
+  it('lists profiles across several targets, preserving order', () => {
+    const list = [
+      mk({ id: 'a', target: 'local' }),
+      mk({ id: 'b', target: 'cookie' }),
+      mk({ id: 'c', target: 'session' }),
+    ];
+    // The Storage tab's Profiles view shows local + session together.
+    expect(profilesForAny(list, ['local', 'session']).map((p) => p.id)).toEqual(['a', 'c']);
+    expect(profilesForAny(list, ['cookie']).map((p) => p.id)).toEqual(['b']);
+    expect(profilesForAny(list, [])).toEqual([]);
   });
 });
 

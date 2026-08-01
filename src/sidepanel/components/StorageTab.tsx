@@ -11,13 +11,23 @@ import type {
   ValueProfile,
   WebStorageSnapshot,
 } from '@/shared/types';
+import { reloadActiveTab } from '@/sidepanel/tab-reload';
 import { CopyButton } from './CopyButton';
 import { ProfileList } from './profiles/ProfileList';
+
+interface Props {
+  /** Reload the page after any successful storage change (persisted preference). */
+  autoReload: boolean;
+  onAutoReloadChange: (next: boolean) => void;
+}
 
 const AREAS: { value: StorageArea; label: string }[] = [
   { value: 'local', label: 'localStorage' },
   { value: 'session', label: 'sessionStorage' },
 ];
+
+/** The Profiles view lists both storage areas together, each row labelled. */
+const STORAGE_TARGETS = ['local', 'session'] as const;
 
 /** Current epoch ms — wrapped so clock reads stay outside render-purity analysis. */
 function nowMs(): number {
@@ -32,8 +42,11 @@ interface Draft {
   isNew: boolean;
 }
 
-export function StorageTab(): ReactElement {
+export function StorageTab({ autoReload, onAutoReloadChange }: Props): ReactElement {
   const [area, setArea] = useState<StorageArea>('local');
+  // The Profiles segment swaps the list out; `area` is remembered underneath so a
+  // new profile still defaults to the area you were last looking at.
+  const [showProfiles, setShowProfiles] = useState(false);
   const [snapshot, setSnapshot] = useState<WebStorageSnapshot | null>(null);
   const [query, setQuery] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -83,12 +96,27 @@ export function StorageTab(): ReactElement {
     ? items.filter((i) => i.key.toLowerCase().includes(q) || i.value.toLowerCase().includes(q))
     : items;
 
-  async function write(key: string, value: string): Promise<string | null> {
+  /**
+   * Re-read the list, then (when enabled) reload the page so the site actually
+   * picks the change up. The reload goes LAST so the panel is already showing
+   * the new state before the tab navigates.
+   */
+  async function afterChange(changed: boolean): Promise<void> {
+    await refresh();
+    if (changed && autoReload) reloadActiveTab();
+  }
+
+  /** Write a key. `target` defaults to the selected area; a profile passes its own. */
+  async function write(
+    key: string,
+    value: string,
+    target: StorageArea = area
+  ): Promise<string | null> {
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.WRITE_WEB_STORAGE,
-      payload: { area, key, value },
+      payload: { area: target, key, value },
     });
-    await refresh();
+    await afterChange(res.ok);
     return res.ok ? null : res.error;
   }
 
@@ -115,7 +143,7 @@ export function StorageTab(): ReactElement {
     });
     if (!res.ok) setError(res.error);
     else setStatus(`Removed “${key}”.`);
-    await refresh();
+    await afterChange(res.ok);
   }
 
   async function clearArea(): Promise<void> {
@@ -126,7 +154,7 @@ export function StorageTab(): ReactElement {
     setArmed(false);
     if (!res.ok) setError(res.error);
     else setStatus(`Cleared ${AREAS.find((a) => a.value === area)?.label}.`);
-    await refresh();
+    await afterChange(res.ok);
   }
 
   /** Pretty-print the draft value when it is JSON (values are often stringified JSON). */
@@ -137,8 +165,13 @@ export function StorageTab(): ReactElement {
     else setError('That value is not valid JSON.');
   }
 
-  const liveValue = (profile: ValueProfile): string | null =>
-    items.find((i) => i.key === profile.key)?.value ?? null;
+  // Profiles are listed across BOTH areas, so read each one's live value from the
+  // area it actually drives — not from whichever area is currently selected.
+  const liveValue = (profile: ValueProfile): string | null => {
+    const area_ = profile.target === 'session' ? 'session' : 'local';
+    const list = snapshot ? snapshot[area_] : [];
+    return list.find((i) => i.key === profile.key)?.value ?? null;
+  };
 
   return (
     <div className="tab">
@@ -148,15 +181,26 @@ export function StorageTab(): ReactElement {
             <button
               key={a.value}
               type="button"
-              className={area === a.value ? 'chip active' : 'chip'}
+              className={!showProfiles && area === a.value ? 'chip active' : 'chip'}
               onClick={() => {
                 setArea(a.value);
+                setShowProfiles(false);
                 setDraft(null);
               }}
             >
               {a.label}
             </button>
           ))}
+          <button
+            type="button"
+            className={showProfiles ? 'chip active' : 'chip'}
+            onClick={() => {
+              setShowProfiles(true);
+              setDraft(null);
+            }}
+          >
+            Profiles
+          </button>
         </div>
         <button type="button" onClick={() => void refresh()} title="Re-read from the page">
           ↻ Refresh
@@ -165,32 +209,51 @@ export function StorageTab(): ReactElement {
 
       {snapshot && <p className="hint dim">{snapshot.origin}</p>}
 
+      {!showProfiles && (
+        <div className="row">
+          <input
+            className="name-input"
+            placeholder="Search keys and values"
+            aria-label="Search storage"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setDraft({ key: '', value: '', isNew: true })}
+          >
+            + Add key
+          </button>
+          <button
+            type="button"
+            className={armed ? 'danger' : ''}
+            disabled={items.length === 0}
+            onClick={() => (armed ? void clearArea() : setArmed(true))}
+          >
+            {armed ? 'Really clear — click again' : 'Clear all'}
+          </button>
+        </div>
+      )}
+
       <div className="row">
-        <input
-          className="name-input"
-          placeholder="Search keys and values"
-          aria-label="Search storage"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
-        <button
-          type="button"
-          className="primary"
-          onClick={() => setDraft({ key: '', value: '', isNew: true })}
+        <label
+          className="checkbox-inline"
+          title="Reload the page after every storage change, so the site picks up the new value"
         >
-          + Add key
-        </button>
-        <button
-          type="button"
-          className={armed ? 'danger' : ''}
-          disabled={items.length === 0}
-          onClick={() => (armed ? void clearArea() : setArmed(true))}
-        >
-          {armed ? 'Really clear — click again' : 'Clear all'}
+          <input
+            type="checkbox"
+            checked={autoReload}
+            onChange={(e) => onAutoReloadChange(e.target.checked)}
+          />
+          Auto-reload page after change
+        </label>
+        <button type="button" onClick={reloadActiveTab} title="Reload the page now">
+          ↻ Reload page
         </button>
       </div>
 
-      {draft && (
+      {!showProfiles && draft && (
         <div className="profile-editor">
           <input
             className="name-input"
@@ -223,7 +286,7 @@ export function StorageTab(): ReactElement {
         </div>
       )}
 
-      {snapshot && shown.length === 0 && (
+      {!showProfiles && snapshot && shown.length === 0 && (
         <p className="hint">
           {items.length === 0
             ? `Nothing in ${AREAS.find((a) => a.value === area)?.label} for this site.`
@@ -231,50 +294,58 @@ export function StorageTab(): ReactElement {
         </p>
       )}
 
-      <ul className="kv-list">
-        {shown.map((item) => (
-          <li key={item.key} className="kv-row">
-            <div className="kv-head">
-              <code className="kv-key" title={item.key}>
-                {item.key}
+      {!showProfiles && (
+        <ul className="kv-list">
+          {shown.map((item) => (
+            <li key={item.key} className="kv-row">
+              <div className="kv-head">
+                <code className="kv-key" title={item.key}>
+                  {item.key}
+                </code>
+                <span className="kv-actions">
+                  <CopyButton text={item.value} />
+                  <button
+                    type="button"
+                    title="Create a switcher profile from this key (or add its value to the existing one)"
+                    onClick={() => {
+                      setProfileSeed(profileFromEntry(area, item.key, item.value, nowMs()));
+                      setShowProfiles(true); // jump to where the editor opens
+                    }}
+                  >
+                    + Profile
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDraft({ key: item.key, value: item.value, isNew: false })}
+                  >
+                    Edit
+                  </button>
+                  <button type="button" className="danger" onClick={() => void remove(item.key)}>
+                    Delete
+                  </button>
+                </span>
+              </div>
+              <code className="kv-value" title={item.value}>
+                {item.value || '(empty)'}
               </code>
-              <span className="kv-actions">
-                <CopyButton text={item.value} />
-                <button
-                  type="button"
-                  title="Create a switcher profile from this key (or add its value to the existing one)"
-                  onClick={() =>
-                    setProfileSeed(profileFromEntry(area, item.key, item.value, nowMs()))
-                  }
-                >
-                  + Profile
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setDraft({ key: item.key, value: item.value, isNew: false })}
-                >
-                  Edit
-                </button>
-                <button type="button" className="danger" onClick={() => void remove(item.key)}>
-                  Delete
-                </button>
-              </span>
-            </div>
-            <code className="kv-value" title={item.value}>
-              {item.value || '(empty)'}
-            </code>
-          </li>
-        ))}
-      </ul>
+            </li>
+          ))}
+        </ul>
+      )}
 
-      <ProfileList
-        target={area}
-        valuesNonce={nonce}
-        seed={profileSeed}
-        onSeedConsumed={() => setProfileSeed(null)}
-        currentValue={liveValue}
-        onApply={(profile, value) => write(profile.key, value)}
-      />
+      {showProfiles && (
+        <ProfileList
+          targets={STORAGE_TARGETS}
+          newTarget={area}
+          valuesNonce={nonce}
+          seed={profileSeed}
+          onSeedConsumed={() => setProfileSeed(null)}
+          currentValue={liveValue}
+          onApply={(profile, value) =>
+            write(profile.key, value, profile.target === 'session' ? 'session' : 'local')
+          }
+        />
+      )}
 
       {snapshot?.warnings.map((w) => (
         <p key={w} className="hint">

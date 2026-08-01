@@ -6,7 +6,8 @@ import {
   activeValue,
   findProfileFor,
   newProfile,
-  profilesFor,
+  PROFILE_TARGET_LABELS,
+  profilesForAny,
   withCandidate,
   wrapValue,
 } from '@/shared/profiles';
@@ -14,8 +15,10 @@ import type { ProfileTarget, Result, ValueProfile } from '@/shared/types';
 import { ProfileEditor } from './ProfileEditor';
 
 interface Props {
-  /** Which store these profiles drive (this tab's area). */
-  target: ProfileTarget;
+  /** Which stores to list. Storage shows local + session together; Cookies just one. */
+  targets: readonly ProfileTarget[];
+  /** The store a brand-new profile defaults to (the tab's current area). */
+  newTarget: ProfileTarget;
   /** Current live value for a profile's key, or null when unset. */
   currentValue: (profile: ValueProfile) => string | null;
   /** Write a (already wrapped) value; resolves to an error string or null. */
@@ -37,13 +40,13 @@ function nowMs(): number {
 }
 
 /**
- * The saved value-switchers for one store: each profile shows its live value and
- * its candidate values as chips; clicking a chip writes it. Ported from
- * phantom-mock's cookie/storage profiles, rendered inline instead of in a
- * separate tab.
+ * The saved value-switchers, as their own view: each profile shows its live value
+ * and its candidate values as chips; clicking a chip writes it. Ported from
+ * phantom-mock's cookie/storage profiles.
  */
 export function ProfileList({
-  target,
+  targets,
+  newTarget,
   currentValue,
   onApply,
   valuesNonce,
@@ -53,7 +56,6 @@ export function ProfileList({
   const [profiles, setProfiles] = useState<ValueProfile[]>([]);
   const [editing, setEditing] = useState<ValueProfile | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [open, setOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -73,15 +75,16 @@ export function ProfileList({
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
     if (!seed) return;
-    const existing = findProfileFor(profiles, target, seed.key);
+    const existing = findProfileFor(profiles, seed.target, seed.key);
     setEditing(existing ? withCandidate(existing, seed.values[0] ?? '') : seed);
-    setOpen(true);
     setError(null);
     onSeedConsumed();
-  }, [seed, profiles, target, onSeedConsumed]);
+  }, [seed, profiles, onSeedConsumed]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
-  const mine = profilesFor(profiles, target);
+  const mine = profilesForAny(profiles, targets);
+  // Only worth labelling each row's store when more than one is listed.
+  const showTarget = targets.length > 1;
 
   async function save(profile: ValueProfile): Promise<void> {
     const res = await sendRuntimeMessage<Result<ValueProfile[]>>({
@@ -115,85 +118,86 @@ export function ProfileList({
   return (
     <div className="profiles-panel">
       <div className="row">
-        <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}>
-          Profiles ({mine.length}) {open ? '▾' : '▸'}
-        </button>
-        {open && editing === null && (
-          <button type="button" onClick={() => setEditing(newProfile(target, nowMs()))}>
+        {editing === null && (
+          <button
+            type="button"
+            className="primary"
+            onClick={() => setEditing(newProfile(newTarget, nowMs()))}
+          >
             + New profile
           </button>
         )}
       </div>
 
-      {open && (
-        <>
-          {editing !== null ? (
-            <ProfileEditor
-              key={editing.id}
-              initial={editing}
-              onSave={(p) => void save(p)}
-              onCancel={() => setEditing(null)}
-            />
-          ) : mine.length === 0 ? (
-            <p className="hint">
-              A profile saves one key plus the values you switch between while testing (locales,
-              feature flags, auth states) — then it is one click to apply each.
-            </p>
-          ) : (
-            <ul className="profile-list">
-              {mine.map((p) => {
-                const current = currentValue(p);
-                const live = activeValue(p, current);
-                return (
-                  <li key={p.id} className={p.enabled ? 'profile-row' : 'profile-row disabled'}>
-                    <div className="profile-head">
-                      <span className="profile-name">{p.name}</span>
-                      <code className="profile-key">{p.key}</code>
-                      <span className="profile-actions">
-                        <button
-                          type="button"
-                          title={p.enabled ? 'Disable profile' : 'Enable profile'}
-                          aria-label={p.enabled ? 'Disable profile' : 'Enable profile'}
-                          aria-pressed={p.enabled}
-                          className={p.enabled ? 'toggle-step on' : 'toggle-step'}
-                          onClick={() => void save({ ...p, enabled: !p.enabled })}
-                        >
-                          ⏻
-                        </button>
-                        <button type="button" onClick={() => setEditing(p)}>
-                          Edit
-                        </button>
-                        <button type="button" className="danger" onClick={() => void remove(p)}>
-                          Delete
-                        </button>
-                      </span>
-                    </div>
-                    <div className="profile-current">
-                      <span className="field-label">now</span>
-                      <code>{current === null ? '(not set)' : current || '(empty)'}</code>
-                    </div>
-                    <div className="chips" data-nonce={valuesNonce}>
-                      {p.values.map((v) => (
-                        <button
-                          key={v}
-                          type="button"
-                          className={live === v ? 'chip active' : 'chip'}
-                          disabled={!p.enabled}
-                          title={`Set ${p.key} = ${wrapValue(p, v)}`}
-                          onClick={() => void apply(p, v)}
-                        >
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          {error && <p className="error">{error}</p>}
-        </>
+      {editing !== null ? (
+        <ProfileEditor
+          key={editing.id}
+          initial={editing}
+          onSave={(p) => void save(p)}
+          onCancel={() => setEditing(null)}
+        />
+      ) : mine.length === 0 ? (
+        <p className="hint">
+          A profile saves one key plus the values you switch between while testing (locales, feature
+          flags, auth states) — then it is one click to apply each. Use <strong>+ Profile</strong>{' '}
+          on any row to start from what is already there.
+        </p>
+      ) : (
+        <ul className="profile-list">
+          {mine.map((p) => {
+            const current = currentValue(p);
+            const live = activeValue(p, current);
+            return (
+              <li key={p.id} className={p.enabled ? 'profile-row' : 'profile-row disabled'}>
+                <div className="profile-head">
+                  <span className="profile-name">{p.name}</span>
+                  {showTarget && (
+                    <span className="badge dim">{PROFILE_TARGET_LABELS[p.target]}</span>
+                  )}
+                  <code className="profile-key">{p.key}</code>
+                  <span className="profile-actions">
+                    <button
+                      type="button"
+                      title={p.enabled ? 'Disable profile' : 'Enable profile'}
+                      aria-label={p.enabled ? 'Disable profile' : 'Enable profile'}
+                      aria-pressed={p.enabled}
+                      className={p.enabled ? 'toggle-step on' : 'toggle-step'}
+                      onClick={() => void save({ ...p, enabled: !p.enabled })}
+                    >
+                      ⏻
+                    </button>
+                    <button type="button" onClick={() => setEditing(p)}>
+                      Edit
+                    </button>
+                    <button type="button" className="danger" onClick={() => void remove(p)}>
+                      Delete
+                    </button>
+                  </span>
+                </div>
+                <div className="profile-current">
+                  <span className="field-label">now</span>
+                  <code>{current === null ? '(not set)' : current || '(empty)'}</code>
+                </div>
+                <div className="chips" data-nonce={valuesNonce}>
+                  {p.values.map((v) => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={live === v ? 'chip active' : 'chip'}
+                      disabled={!p.enabled}
+                      title={`Set ${p.key} = ${wrapValue(p, v)}`}
+                      onClick={() => void apply(p, v)}
+                    >
+                      {v}
+                    </button>
+                  ))}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
       )}
+      {error && <p className="error">{error}</p>}
     </div>
   );
 }

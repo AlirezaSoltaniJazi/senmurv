@@ -80,6 +80,17 @@ export function profilesFor(profiles: ValueProfile[], target: ProfileTarget): Va
 }
 
 /**
+ * The profiles driving ANY of `targets`, in saved order — the Storage tab's
+ * Profiles view lists localStorage and sessionStorage profiles together.
+ */
+export function profilesForAny(
+  profiles: ValueProfile[],
+  targets: readonly ProfileTarget[]
+): ValueProfile[] {
+  return profiles.filter((p) => targets.includes(p.target));
+}
+
+/**
  * Which candidate value is currently live, or null when the store holds something
  * else (or nothing). Compares against the WRAPPED form, since that is what was
  * written — so a prefix/suffix profile still highlights its active chip.

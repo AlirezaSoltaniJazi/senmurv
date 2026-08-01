@@ -5,13 +5,23 @@ import { describeExpiry, matchesQuery, SAME_SITE_OPTIONS } from '@/shared/cookie
 import { sendRuntimeMessage } from '@/shared/messages';
 import { profileFromEntry } from '@/shared/profiles';
 import type { CookieEdit, CookieRow, CookieSameSite, Result, ValueProfile } from '@/shared/types';
+import { reloadActiveTab } from '@/sidepanel/tab-reload';
 import { CopyButton } from './CopyButton';
 import { ProfileList } from './profiles/ProfileList';
+
+interface Props {
+  /** Reload the page after any successful cookie change (persisted preference). */
+  autoReload: boolean;
+  onAutoReloadChange: (next: boolean) => void;
+}
 
 /** Current epoch ms — wrapped so clock reads stay outside render-purity analysis. */
 function nowMs(): number {
   return Date.now();
 }
+
+/** This tab only ever lists cookie profiles. */
+const COOKIE_TARGETS = ['cookie'] as const;
 
 /** A draft in the editor: the writable fields plus whether the name is editable. */
 interface Draft extends CookieEdit {
@@ -55,7 +65,7 @@ function emptyDraft(): Draft {
   };
 }
 
-export function CookiesTab(): ReactElement {
+export function CookiesTab({ autoReload, onAutoReloadChange }: Props): ReactElement {
   const [rows, setRows] = useState<CookieRow[]>([]);
   const [origin, setOrigin] = useState('');
   const [query, setQuery] = useState('');
@@ -66,6 +76,8 @@ export function CookiesTab(): ReactElement {
   const [nonce, setNonce] = useState(0);
   // Handed to ProfileList when a row's "+ Profile" button is pressed.
   const [profileSeed, setProfileSeed] = useState<ValueProfile | null>(null);
+  // The Profiles segment swaps the cookie list out for the switcher view.
+  const [showProfiles, setShowProfiles] = useState(false);
 
   const refresh = useCallback(async (): Promise<void> => {
     const res = await sendRuntimeMessage<Result<{ origin: string; rows: CookieRow[] }>>({
@@ -98,12 +110,22 @@ export function CookiesTab(): ReactElement {
 
   const shown = rows.filter((r) => matchesQuery(r, query));
 
+  /**
+   * Re-read the list, then (when enabled) reload the page so the site actually
+   * picks the change up. The reload goes LAST so the panel is already showing
+   * the new state before the tab navigates.
+   */
+  async function afterChange(changed: boolean): Promise<void> {
+    await refresh();
+    if (changed && autoReload) reloadActiveTab();
+  }
+
   async function writeCookie(cookie: CookieEdit): Promise<string | null> {
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.SET_COOKIE,
       payload: { cookie },
     });
-    await refresh();
+    await afterChange(res.ok);
     return res.ok ? null : res.error;
   }
 
@@ -135,7 +157,7 @@ export function CookiesTab(): ReactElement {
     });
     if (!res.ok) setError(res.error);
     else setStatus(`Deleted “${row.name}”.`);
-    await refresh();
+    await afterChange(res.ok);
   }
 
   async function clearAll(): Promise<void> {
@@ -143,7 +165,7 @@ export function CookiesTab(): ReactElement {
     setArmed(false);
     if (!res.ok) setError(res.error);
     else setStatus(`Deleted ${res.value} cookie(s).`);
-    await refresh();
+    await afterChange(res.ok);
   }
 
   /** Profiles drive a cookie by name (path defaults to the profile's own path). */
@@ -155,34 +177,72 @@ export function CookiesTab(): ReactElement {
   return (
     <div className="tab">
       <div className="row">
-        <input
-          className="name-input"
-          placeholder="Search names and values"
-          aria-label="Search cookies"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-        />
+        <div className="chips">
+          <button
+            type="button"
+            className={showProfiles ? 'chip' : 'chip active'}
+            onClick={() => setShowProfiles(false)}
+          >
+            Cookies
+          </button>
+          <button
+            type="button"
+            className={showProfiles ? 'chip active' : 'chip'}
+            onClick={() => {
+              setShowProfiles(true);
+              setDraft(null);
+            }}
+          >
+            Profiles
+          </button>
+        </div>
         <button type="button" onClick={() => void refresh()} title="Re-read cookies">
-          ↻
+          ↻ Refresh
         </button>
       </div>
       {origin && <p className="hint dim">{origin}</p>}
 
+      {!showProfiles && (
+        <div className="row">
+          <input
+            className="name-input"
+            placeholder="Search names and values"
+            aria-label="Search cookies"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+          <button type="button" className="primary" onClick={() => setDraft(emptyDraft())}>
+            + Add cookie
+          </button>
+          <button
+            type="button"
+            className={armed ? 'danger' : ''}
+            disabled={rows.length === 0}
+            onClick={() => (armed ? void clearAll() : setArmed(true))}
+          >
+            {armed ? 'Really delete all — click again' : 'Delete all'}
+          </button>
+        </div>
+      )}
+
       <div className="row">
-        <button type="button" className="primary" onClick={() => setDraft(emptyDraft())}>
-          + Add cookie
-        </button>
-        <button
-          type="button"
-          className={armed ? 'danger' : ''}
-          disabled={rows.length === 0}
-          onClick={() => (armed ? void clearAll() : setArmed(true))}
+        <label
+          className="checkbox-inline"
+          title="Reload the page after every cookie change, so the site picks up the new value"
         >
-          {armed ? 'Really delete all — click again' : 'Delete all'}
+          <input
+            type="checkbox"
+            checked={autoReload}
+            onChange={(e) => onAutoReloadChange(e.target.checked)}
+          />
+          Auto-reload page after change
+        </label>
+        <button type="button" onClick={reloadActiveTab} title="Reload the page now">
+          ↻ Reload page
         </button>
       </div>
 
-      {draft && (
+      {!showProfiles && draft && (
         <div className="profile-editor">
           <div className="step-target">
             <input
@@ -272,80 +332,86 @@ export function CookiesTab(): ReactElement {
         </div>
       )}
 
-      {!error && shown.length === 0 && (
+      {!showProfiles && !error && shown.length === 0 && (
         <p className="hint">
           {rows.length === 0 ? 'No cookies for this site.' : 'No cookie matches that search.'}
         </p>
       )}
 
-      <ul className="kv-list">
-        {shown.map((row) => (
-          <li key={`${row.name}@${row.domain}${row.path}`} className="kv-row">
-            <div className="kv-head">
-              <code className="kv-key" title={`${row.domain}${row.path}`}>
-                {row.name}
-              </code>
-              <span className="cookie-flags">
-                {row.httpOnly && (
-                  <span className="badge dim" title="Not readable by page JavaScript">
-                    HttpOnly
+      {!showProfiles && (
+        <ul className="kv-list">
+          {shown.map((row) => (
+            <li key={`${row.name}@${row.domain}${row.path}`} className="kv-row">
+              <div className="kv-head">
+                <code className="kv-key" title={`${row.domain}${row.path}`}>
+                  {row.name}
+                </code>
+                <span className="cookie-flags">
+                  {row.httpOnly && (
+                    <span className="badge dim" title="Not readable by page JavaScript">
+                      HttpOnly
+                    </span>
+                  )}
+                  {row.secure && (
+                    <span className="badge dim" title="Sent over https only">
+                      Secure
+                    </span>
+                  )}
+                  <span className="badge dim" title="Expiry">
+                    {describeExpiry(row, now)}
                   </span>
-                )}
-                {row.secure && (
-                  <span className="badge dim" title="Sent over https only">
-                    Secure
-                  </span>
-                )}
-                <span className="badge dim" title="Expiry">
-                  {describeExpiry(row, now)}
                 </span>
-              </span>
-              <span className="kv-actions">
-                <CopyButton text={row.value} />
-                <button
-                  type="button"
-                  title="Create a switcher profile from this cookie (or add its value to the existing one)"
-                  onClick={() =>
-                    setProfileSeed(
-                      profileFromEntry('cookie', row.name, row.value, nowMs(), row.path)
-                    )
-                  }
-                >
-                  + Profile
-                </button>
-                <button type="button" onClick={() => setDraft(draftFrom(row))}>
-                  Edit
-                </button>
-                <button type="button" className="danger" onClick={() => void remove(row)}>
-                  Delete
-                </button>
-              </span>
-            </div>
-            <code className="kv-value" title={row.value}>
-              {row.value || '(empty)'}
-            </code>
-          </li>
-        ))}
-      </ul>
+                <span className="kv-actions">
+                  <CopyButton text={row.value} />
+                  <button
+                    type="button"
+                    title="Create a switcher profile from this cookie (or add its value to the existing one)"
+                    onClick={() => {
+                      setProfileSeed(
+                        profileFromEntry('cookie', row.name, row.value, nowMs(), row.path)
+                      );
+                      setShowProfiles(true); // jump to where the editor opens
+                    }}
+                  >
+                    + Profile
+                  </button>
+                  <button type="button" onClick={() => setDraft(draftFrom(row))}>
+                    Edit
+                  </button>
+                  <button type="button" className="danger" onClick={() => void remove(row)}>
+                    Delete
+                  </button>
+                </span>
+              </div>
+              <code className="kv-value" title={row.value}>
+                {row.value || '(empty)'}
+              </code>
+            </li>
+          ))}
+        </ul>
+      )}
 
-      <ProfileList
-        target="cookie"
-        valuesNonce={nonce}
-        seed={profileSeed}
-        onSeedConsumed={() => setProfileSeed(null)}
-        currentValue={liveValue}
-        onApply={(profile, value) =>
-          writeCookie({
-            name: profile.key,
-            value,
-            path: profile.path ?? '/',
-            secure: false,
-            httpOnly: false,
-            sameSite: 'unspecified',
-            expirationDate: null,
-          })
-        }
-      />
+      {showProfiles && (
+        <ProfileList
+          targets={COOKIE_TARGETS}
+          newTarget="cookie"
+          valuesNonce={nonce}
+          seed={profileSeed}
+          onSeedConsumed={() => setProfileSeed(null)}
+          currentValue={liveValue}
+          onApply={(profile, value) =>
+            writeCookie({
+              name: profile.key,
+              value,
+              path: profile.path ?? '/',
+              secure: false,
+              httpOnly: false,
+              sameSite: 'unspecified',
+              expirationDate: null,
+            })
+          }
+        />
+      )}
 
       {status && <p className="status">{status}</p>}
       {error && <p className="error">{error}</p>}

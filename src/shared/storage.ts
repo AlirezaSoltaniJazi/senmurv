@@ -398,6 +398,7 @@ export async function getPrefs(): Promise<Prefs> {
   }
   const tagColors = readTagColors(v.tagColors);
   if (tagColors) prefs.tagColors = tagColors;
+  if (typeof v.autoReloadOnChange === 'boolean') prefs.autoReloadOnChange = v.autoReloadOnChange;
   return prefs;
 }
 

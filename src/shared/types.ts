@@ -759,6 +759,12 @@ export interface Prefs {
    * absent from the map falls back to its hashed colour. Managed in Settings.
    */
   tagColors?: Record<string, number>;
+  /**
+   * Reload the page after a cookie / web-storage change, so the site actually
+   * picks the new value up (a locale cookie does nothing until a reload).
+   * Toggled from the Cookies and Storage tabs; off by default.
+   */
+  autoReloadOnChange?: boolean;
 }
 
 // ---------------------------------------------------------------------------
