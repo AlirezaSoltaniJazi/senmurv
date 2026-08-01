@@ -25,6 +25,12 @@ const ScriptsTab = lazy(() =>
   import('./components/ScriptsTab').then((m) => ({ default: m.ScriptsTab }))
 );
 const ToolsTab = lazy(() => import('./components/ToolsTab').then((m) => ({ default: m.ToolsTab })));
+const CookiesTab = lazy(() =>
+  import('./components/CookiesTab').then((m) => ({ default: m.CookiesTab }))
+);
+const StorageTab = lazy(() =>
+  import('./components/StorageTab').then((m) => ({ default: m.StorageTab }))
+);
 const TrackTab = lazy(() => import('./components/TrackTab').then((m) => ({ default: m.TrackTab })));
 const MyTasksTab = lazy(() =>
   import('./components/MyTasksTab').then((m) => ({ default: m.MyTasksTab }))
@@ -40,6 +46,8 @@ type TabKey =
   | 'recorder'
   | 'scripts'
   | 'tools'
+  | 'cookies'
+  | 'storage'
   | 'track'
   | 'mytasks'
   | 'notes'
@@ -51,6 +59,8 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'recorder', label: 'Recorder' },
   { key: 'scripts', label: 'Scripts' },
   { key: 'tools', label: 'Tools' },
+  { key: 'cookies', label: 'Cookies' },
+  { key: 'storage', label: 'Storage' },
   { key: 'track', label: 'Track' },
   { key: 'mytasks', label: 'My Tasks' },
   { key: 'notes', label: 'Notes' },
@@ -271,6 +281,8 @@ export function App(): ReactElement {
               onStopAutoRefresh={stopAutoRefresh}
             />
           )}
+          {tab === 'cookies' && <CookiesTab />}
+          {tab === 'storage' && <StorageTab />}
           {tab === 'track' && <TrackTab reloadNonce={reloadNonce} tagColors={tagColors} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}
           {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} />}

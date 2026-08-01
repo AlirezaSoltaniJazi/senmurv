@@ -19,6 +19,7 @@ import type {
   Subtask,
   TimeEntry,
   TimeInterval,
+  ValueProfile,
 } from '@/shared/types';
 
 // ---------------------------------------------------------------------------
@@ -284,6 +285,61 @@ export async function deleteNote(id: string): Promise<Note[]> {
     const notes = await getNotes();
     const next = notes.filter((n) => n.id !== id);
     await chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: next });
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Value profiles (Cookies + Storage tabs)
+// ---------------------------------------------------------------------------
+
+/** Type guard for a stored value profile (rejects corrupt / legacy data). */
+export function isValueProfile(value: unknown): value is ValueProfile {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    (v.target === 'cookie' || v.target === 'local' || v.target === 'session') &&
+    typeof v.key === 'string' &&
+    Array.isArray(v.values) &&
+    v.values.every((x) => typeof x === 'string') &&
+    typeof v.enabled === 'boolean' &&
+    typeof v.createdAt === 'number' &&
+    typeof v.updatedAt === 'number' &&
+    (v.path === undefined || typeof v.path === 'string') &&
+    (v.prefix === undefined || typeof v.prefix === 'string') &&
+    (v.suffix === undefined || typeof v.suffix === 'string')
+  );
+}
+
+/** Read all value profiles (silently drops anything that fails validation). */
+export async function getProfiles(): Promise<ValueProfile[]> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.PROFILES);
+  const raw = result[STORAGE_KEYS.PROFILES];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isValueProfile);
+}
+
+/** Insert or update a profile by id; returns the new list. */
+export async function upsertProfileStored(profile: ValueProfile): Promise<ValueProfile[]> {
+  return withKeyLock(STORAGE_KEYS.PROFILES, async () => {
+    const profiles = await getProfiles();
+    const exists = profiles.some((p) => p.id === profile.id);
+    const next = exists
+      ? profiles.map((p) => (p.id === profile.id ? profile : p))
+      : [...profiles, profile];
+    await chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: next });
+    return next;
+  });
+}
+
+/** Remove a profile by id; returns the new list. */
+export async function deleteProfile(id: string): Promise<ValueProfile[]> {
+  return withKeyLock(STORAGE_KEYS.PROFILES, async () => {
+    const profiles = await getProfiles();
+    const next = profiles.filter((p) => p.id !== id);
+    await chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: next });
     return next;
   });
 }

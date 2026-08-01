@@ -3,7 +3,7 @@
   "name": "Senmurv",
   "version": "0.6.0",
   "description": "QA side-panel toolkit: generate test data, find element locators, record & run page scripts, and track time & tasks.",
-  "permissions": ["sidePanel", "scripting", "storage", "tabs"],
+  "permissions": ["sidePanel", "scripting", "storage", "tabs", "cookies"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background/service-worker.ts",

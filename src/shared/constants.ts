@@ -5,6 +5,7 @@ export const STORAGE_KEYS = {
   CHECKLISTS: 'senmurv:checklists',
   NOTES: 'senmurv:notes',
   PREFS: 'senmurv:prefs',
+  PROFILES: 'senmurv:profiles',
 } as const;
 
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
@@ -73,6 +74,23 @@ export const MESSAGE_TYPES = {
   APPLY_REGION: 'APPLY_REGION',
   RESTORE_REGION: 'RESTORE_REGION',
   GET_REGION_STATE: 'GET_REGION_STATE',
+  // Storage tab — read/write the page's localStorage + sessionStorage. Injected
+  // into the ISOLATED world (a content script's storage IS the page origin's),
+  // so these need no permission beyond the existing scripting + host access.
+  READ_WEB_STORAGE: 'READ_WEB_STORAGE',
+  WRITE_WEB_STORAGE: 'WRITE_WEB_STORAGE',
+  REMOVE_WEB_STORAGE: 'REMOVE_WEB_STORAGE',
+  CLEAR_WEB_STORAGE: 'CLEAR_WEB_STORAGE',
+  // Cookies tab — chrome.cookies against the active tab's URL. Requires the
+  // "cookies" permission; it is the only way to see or edit HttpOnly cookies.
+  LIST_COOKIES: 'LIST_COOKIES',
+  SET_COOKIE: 'SET_COOKIE',
+  REMOVE_COOKIE: 'REMOVE_COOKIE',
+  CLEAR_COOKIES: 'CLEAR_COOKIES',
+  // Value profiles (shared by the Cookies + Storage tabs)
+  GET_PROFILES: 'GET_PROFILES',
+  SAVE_PROFILE: 'SAVE_PROFILE',
+  DELETE_PROFILE: 'DELETE_PROFILE',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */

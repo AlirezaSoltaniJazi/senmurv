@@ -8,6 +8,24 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ### Added
 
+- **Cookies tab** — see every cookie for the current site, **including HttpOnly
+  ones** that page JavaScript can never read, with its path, expiry and
+  Secure / HttpOnly flags. Search, **edit** a cookie (value, path, expiry,
+  Secure, HttpOnly, SameSite), **add** one, **delete** one, or delete them all.
+  `domain` is derived from the tab so `__Host-` / `__Secure-` and
+  `SameSite=None` rules can't be violated by accident — the editor says why
+  before Chrome silently refuses a write.
+  - Requires the new **`cookies`** permission; it is the only way to reach
+    HttpOnly cookies at all.
+- **Storage tab** — a viewer/editor for the site's **localStorage** and
+  **sessionStorage**: search keys and values, edit a value inline (with a
+  **Pretty JSON** button for stringified-JSON values), add a key, delete one, or
+  clear the whole area behind a self-disarming confirm.
+- **Value profiles (Cookies + Storage)** — save a key plus the values you switch
+  between while testing (locales, feature flags, auth states), then apply each in
+  one click; the live value is shown and the active choice highlighted. Optional
+  prefix/suffix wrapping (e.g. JSON quoting) with a live preview, and an enable
+  toggle. Ported from the Phantom Mock extension's cookie/storage profiles.
 - **Data + Fill/Recorder → Region / County** — a new generator for a
   region/county name, offered in the Fill/Recorder generator menus and added as a
   field in **Generate Random Data**.
