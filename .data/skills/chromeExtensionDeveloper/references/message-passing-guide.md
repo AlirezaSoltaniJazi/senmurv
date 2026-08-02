@@ -62,12 +62,8 @@ export interface DeleteScriptMessage {
   };
 }
 
-// Response type
-export interface MessageResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
+// Response type — the project's actual fallible-op shape (src/shared/types.ts)
+export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 // Union of all messages
 export type RuntimeMessage =
@@ -86,32 +82,32 @@ export type RuntimeMessage =
 ```typescript
 // src/shared/messages.ts — helper function
 
-export async function sendMessage<T>(message: RuntimeMessage): Promise<MessageResponse<T>> {
+export async function sendRuntimeMessage<T>(message: RuntimeMessage): Promise<Result<T>> {
   try {
     const response = await chrome.runtime.sendMessage(message);
     if (chrome.runtime.lastError) {
-      return { success: false, error: chrome.runtime.lastError.message };
+      return { ok: false, error: chrome.runtime.lastError.message };
     }
-    return response as MessageResponse<T>;
+    return response as Result<T>;
   } catch (error) {
     return {
-      success: false,
+      ok: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
 
 // Usage in a Side Panel tab
-import { sendMessage, MESSAGE_TYPES } from '@/shared/messages';
+import { sendRuntimeMessage, MESSAGE_TYPES } from '@/shared/messages';
 
-const response = await sendMessage<SavedScript[]>({
+const response = await sendRuntimeMessage<SavedScript[]>({
   type: MESSAGE_TYPES.GET_SCRIPTS,
 });
 
-if (response.success) {
-  renderScripts(response.data!);
+if (response.ok) {
+  renderScripts(response.value);
 } else {
-  showError(response.error!);
+  showError(response.error);
 }
 ```
 
@@ -128,11 +124,11 @@ chrome.runtime.onMessage.addListener(
   (
     message: RuntimeMessage,
     sender: chrome.runtime.MessageSender,
-    sendResponse: (response: MessageResponse) => void
+    sendResponse: (response: Result<unknown>) => void
   ) => {
     // Type guard — reject unknown messages
     if (!message || !message.type || !(message.type in MESSAGE_TYPES)) {
-      sendResponse({ success: false, error: 'Unknown message type' });
+      sendResponse({ ok: false, error: 'Unknown message type' });
       return false;
     }
 
@@ -141,7 +137,7 @@ chrome.runtime.onMessage.addListener(
       .then(sendResponse)
       .catch((error) => {
         sendResponse({
-          success: false,
+          ok: false,
           error: error instanceof Error ? error.message : 'Handler failed',
         });
       });
@@ -153,7 +149,7 @@ chrome.runtime.onMessage.addListener(
 async function handleMessage(
   message: RuntimeMessage,
   sender: chrome.runtime.MessageSender
-): Promise<MessageResponse> {
+): Promise<Result<unknown>> {
   switch (message.type) {
     case MESSAGE_TYPES.RUN_SCRIPT:
       return handleRunScript(message.payload.scriptId);
@@ -164,7 +160,7 @@ async function handleMessage(
     case MESSAGE_TYPES.DELETE_SCRIPT:
       return handleDeleteScript(message.payload.scriptId);
     default:
-      return { success: false, error: `Unhandled message: ${message.type}` };
+      return { ok: false, error: `Unhandled message: ${message.type}` };
   }
 }
 ```
@@ -203,12 +199,12 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage) => {
 ```typescript
 // src/content/picker.ts — after the user clicks an element
 
-import { sendMessage, MESSAGE_TYPES } from '@/shared/messages';
+import { sendRuntimeMessage, MESSAGE_TYPES } from '@/shared/messages';
 import { generateLocatorSet } from '@/shared/locators';
 
 function onElementClicked(target: Element): void {
   const locators = generateLocatorSet(target); // PURE — no chrome/DOM side effects beyond reading
-  void sendMessage({
+  void sendRuntimeMessage({
     type: MESSAGE_TYPES.ELEMENT_PICKED,
     payload: { locators },
   });
@@ -224,12 +220,12 @@ function onElementClicked(target: Element): void {
 ```typescript
 // src/background/service-worker.ts
 
-async function handleRunScript(scriptId: string): Promise<MessageResponse> {
+async function handleRunScript(scriptId: string): Promise<Result<void>> {
   const script = (await getScripts()).find((s) => s.id === scriptId);
-  if (!script) return { success: false, error: 'Script not found' };
+  if (!script) return { ok: false, error: 'Script not found' };
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return { success: false, error: 'No active tab' };
+  if (!tab?.id) return { ok: false, error: 'No active tab' };
 
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -238,7 +234,7 @@ async function handleRunScript(scriptId: string): Promise<MessageResponse> {
     args: [script.code],
   });
 
-  return { success: true };
+  return { ok: true, value: undefined };
 }
 ```
 

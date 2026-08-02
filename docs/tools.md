@@ -57,8 +57,10 @@ panel's full height; **← Tools** goes back.
 | **Region**          | Make page JS read another country's clock, timezone, locale and geolocation (client-side).                                                                                                                                                                                                           |
 | **Harden selector** | Scores a pasted selector's robustness, names why it will break, and gives the recommended replacement.                                                                                                                                                                                               |
 | **JWT decoder**     | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
+| **JSON Formatter**  | Pretty-prints or minifies pasted JSON and explores it as a collapsible, colour-coded tree. Strict JSON only; parse errors are shown. Needs no page access.                                                                                                                                           |
 | **Query params**    | Copies the record `id` (or any named param) out of the current URL, and rebuilds it with edited params to open in a new tab or this one.                                                                                                                                                             |
 | **Logical names**   | Labels every field, tab and section on a Dynamics 365 / Power Apps form with its logical (schema) name — the identifier the Web API and `data-id` selectors use. Ported from [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM).                                     |
+| **Auto refresh**    | Reloads the tab you started it on every N seconds (presets 5/10/30/60s, or custom). Keeps running while you use other panel tools; stops on **Stop** or when you close the panel.                                                                                                                    |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
 ones for the page-inspection tools: **top frame only** (cross-origin iframes are
@@ -68,7 +70,8 @@ is the exception — it reads no page, so it runs anywhere.
 
 > **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
 > **Tab order**, **Accessibility**, **Fonts**, **Assertions**, **Stacking**,
-> **Validation**, **Region**, **Harden selector** and the **JWT decoder**.
+> **Validation**, **Region**, **Harden selector**, the **JWT decoder**, the
+> **JSON Formatter**, **Query params**, **Logical names** and **Auto refresh**.
 
 ### Region — detail
 
@@ -444,6 +447,27 @@ the `Xrm` client API — `setRequiredLevel('none')`, `setVisible`/`setDisabled` 
 controls, and `setVisible` on tabs and sections. This is what Level Up for
 Dynamics CRM does, and no DOM-level pass can reach it, because the model lives
 in the page's JavaScript rather than in its markup.
+
+### JSON Formatter — detail
+
+Paste JSON to pretty-print or minify it, and explore it as a collapsible,
+colour-coded tree.
+
+- **Strict JSON only** — no comments or trailing commas; a parse error is shown
+  in place rather than guessed at.
+- Needs no page access, so it runs on any tab (including `chrome://`); nothing
+  is sent anywhere.
+
+### Auto refresh — detail
+
+Reloads **one tab** — the one active when you press Start — every N seconds
+(presets 5 / 10 / 30 / 60 s, or a custom interval), so you can watch a page pick
+up server-side changes without doing it by hand.
+
+- **Targets the tab it started on**, not whatever tab is focused later, and
+  keeps ticking while you switch to other panel tools.
+- **Stop**, or closing the panel, ends it — there is no background timer once
+  the panel is gone.
 
 ### How it is wired
 

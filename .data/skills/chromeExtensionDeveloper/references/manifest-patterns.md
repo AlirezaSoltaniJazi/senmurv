@@ -12,7 +12,7 @@
   "name": "Senmurv",
   "version": "1.0.0",
   "description": "QA helper — generate test data, find element locators, and run JS scripts from a Side Panel.",
-  "permissions": ["sidePanel", "scripting", "storage", "tabs"],
+  "permissions": ["sidePanel", "scripting", "storage", "tabs", "cookies"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -62,10 +62,11 @@ Every permission MUST have a justification comment in the codebase:
 
 | Permission                     | Justification                                                  |
 | ------------------------------ | -------------------------------------------------------------- |
-| `sidePanel`                    | Core surface — all three tools live in the Side Panel          |
+| `sidePanel`                    | Core surface — every tab lives in the Side Panel               |
 | `scripting`                    | Run user scripts in the page's MAIN world (`executeScript`)    |
 | `storage`                      | Persist saved scripts and preferences (`chrome.storage.local`) |
 | `tabs`                         | Query the active tab and message the content picker            |
+| `cookies`                      | Read/write the current site's cookies for the Cookies tab      |
 | `host_permissions: <all_urls>` | Picker + script-runner must work on any page the user opens    |
 
 ---

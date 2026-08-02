@@ -36,26 +36,30 @@ Never store state in service worker memory — it will be lost:
 ```typescript
 // src/shared/storage.ts
 
-import { STORAGE_KEYS, DEFAULT_LOCALE } from '@/shared/constants';
-import type { SavedScript, Locale } from '@/shared/types';
+import { STORAGE_KEYS } from '@/shared/constants';
+import type { SavedScript, Prefs } from '@/shared/types';
 
-// Typed storage wrapper
+const DEFAULT_PREFS: Prefs = { fontSize: 'medium' };
+
+// Typed storage wrapper (senmurv has one of these per data kind — scripts,
+// tasks, checklists, notes, profiles, prefs — all following this shape)
 export async function getScripts(): Promise<SavedScript[]> {
   const result = await chrome.storage.local.get(STORAGE_KEYS.SCRIPTS);
-  return result[STORAGE_KEYS.SCRIPTS] ?? [];
+  const raw = result[STORAGE_KEYS.SCRIPTS];
+  return Array.isArray(raw) ? raw : [];
 }
 
-export async function setScripts(scripts: SavedScript[]): Promise<void> {
+export async function saveScripts(scripts: SavedScript[]): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: scripts });
 }
 
-export async function getLocale(): Promise<Locale> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.LOCALE);
-  return result[STORAGE_KEYS.LOCALE] ?? DEFAULT_LOCALE;
+export async function getPrefs(): Promise<Prefs> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.PREFS);
+  return result[STORAGE_KEYS.PREFS] ?? DEFAULT_PREFS;
 }
 
-export async function setLocale(locale: Locale): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEYS.LOCALE]: locale });
+export async function savePrefs(prefs: Prefs): Promise<void> {
+  await chrome.storage.local.set({ [STORAGE_KEYS.PREFS]: prefs });
 }
 ```
 
@@ -63,30 +67,29 @@ export async function setLocale(locale: Locale): Promise<void> {
 
 ## Installation & Update Handlers
 
+senmurv deliberately seeds **nothing** on install — the Scripts list, tasks,
+notes and checklists all start empty (see `docs/tools.md` / `docs/architecture.md`
+→ Storage). The actual `onInstalled` handler only re-asserts the Side Panel
+behavior:
+
 ```typescript
 // src/background/service-worker.ts
 
-import { SAMPLE_SCRIPTS } from '@/shared/sample-scripts';
-
-async function handleInstalled(details: chrome.runtime.InstalledDetails): Promise<void> {
-  switch (details.reason) {
-    case 'install':
-      await initializeExtension();
-      break;
-    case 'update':
-      await migrateStorage(details.previousVersion!);
-      break;
-  }
+function enableSidePanelOnActionClick(): void {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((err) => console.error('[Senmurv] setPanelBehavior failed:', err));
 }
 
-async function initializeExtension(): Promise<void> {
-  // Seed the sample script(s) so the Scripts tab isn't empty on first run
-  const existing = await getScripts();
-  if (existing.length === 0) {
-    await setScripts(SAMPLE_SCRIPTS);
-  }
-}
+enableSidePanelOnActionClick();
+chrome.runtime.onInstalled.addListener(() => {
+  enableSidePanelOnActionClick();
+});
 ```
+
+If a future change needs an `install`/`update` migration, keep the same shape —
+switch on `details.reason`, and validate/rewrite storage rather than seeding
+sample data into it.
 
 ---
 
@@ -99,12 +102,12 @@ for the sanctioned exception (it is governed by the page's CSP, not the extensio
 ```typescript
 // src/background/service-worker.ts
 
-async function handleRunScript(scriptId: string): Promise<MessageResponse> {
+async function handleRunScript(scriptId: string): Promise<Result<void>> {
   const script = (await getScripts()).find((s) => s.id === scriptId);
-  if (!script) return { success: false, error: 'Script not found' };
+  if (!script) return { ok: false, error: 'Script not found' };
 
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return { success: false, error: 'No active tab' };
+  if (!tab?.id) return { ok: false, error: 'No active tab' };
 
   await chrome.scripting.executeScript({
     target: { tabId: tab.id },
@@ -113,7 +116,7 @@ async function handleRunScript(scriptId: string): Promise<MessageResponse> {
     args: [script.code],
   });
 
-  return { success: true };
+  return { ok: true, value: undefined };
 }
 
 // Injected into the page's MAIN world. Runs under the PAGE's CSP, like a bookmarklet.
@@ -128,14 +131,10 @@ function runUserScript(code: string): void {
 ## Error Recovery Pattern
 
 ```typescript
-// Recover after service worker restart — re-assert the panel behavior and re-seed if storage is empty
+// Recover after service worker restart — re-assert the panel behavior; senmurv
+// has nothing to re-seed since storage is never pre-populated
 chrome.runtime.onStartup.addListener(async () => {
   await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-
-  const scripts = await getScripts();
-  if (scripts.length === 0) {
-    await setScripts(SAMPLE_SCRIPTS);
-  }
 });
 ```
 
@@ -146,6 +145,6 @@ chrome.runtime.onStartup.addListener(async () => {
 1. **Register all event listeners synchronously** at top level — never conditionally
 2. **Never store state in variables** — always use `chrome.storage.local`
 3. **Design for termination** — SW can die between any two lines of code
-4. **Recover on startup** — re-assert `sidePanel` behavior and re-read storage on `onStartup` / `onInstalled`
-5. **Seed on install only** — only write `SAMPLE_SCRIPTS` when storage is empty, never clobber user data
+4. **Recover on startup** — re-assert `sidePanel` behavior on `onStartup` / `onInstalled`
+5. **Never seed sample/default data** — the Scripts list, tasks, notes and checklists start empty by design; do not add seeding back
 6. **Batch storage operations** — minimize reads/writes to reduce wake-ups

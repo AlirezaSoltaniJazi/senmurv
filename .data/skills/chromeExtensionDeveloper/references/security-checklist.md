@@ -22,6 +22,7 @@ For every permission in `manifest.json`:
 | `scripting`                    | Only used by the script runner (`executeScript`) — never to inject arbitrary extension code into pages |
 | `storage`                      | Data stored is non-sensitive (scripts/prefs), validated before write                                   |
 | `tabs`                         | Only used to query the active tab and message the picker                                               |
+| `cookies`                      | Only used by the Cookies tab to read/write the current site's cookies                                  |
 | `host_permissions: <all_urls>` | Required by picker + runner; ensure no per-page data is collected or exfiltrated                       |
 
 ---
@@ -132,13 +133,13 @@ function isValidMessage(message: unknown): message is ExtensionMessage {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   // Verify sender is our extension
   if (sender.id !== chrome.runtime.id) {
-    sendResponse({ success: false, error: 'Unauthorized sender' });
+    sendResponse({ ok: false, error: 'Unauthorized sender' });
     return false;
   }
 
   // Validate message shape
   if (!isValidMessage(message)) {
-    sendResponse({ success: false, error: 'Invalid message format' });
+    sendResponse({ ok: false, error: 'Invalid message format' });
     return false;
   }
 

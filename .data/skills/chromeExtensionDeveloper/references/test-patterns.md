@@ -121,7 +121,7 @@ export default defineConfig({
 // tests/shared/storage.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { getScripts, setScripts } from '@/shared/storage';
+import { getScripts, saveScripts } from '@/shared/storage';
 import { STORAGE_KEYS } from '@/shared/constants';
 
 describe('storage helpers', () => {
@@ -147,11 +147,11 @@ describe('storage helpers', () => {
     });
   });
 
-  describe('setScripts', () => {
+  describe('saveScripts', () => {
     it('persists scripts to storage', async () => {
       const scripts = [{ id: 'scr_1', name: 'noop', code: '' }];
 
-      await setScripts(scripts);
+      await saveScripts(scripts);
 
       expect(chrome.storage.local.set).toHaveBeenCalledWith({
         [STORAGE_KEYS.SCRIPTS]: scripts,
@@ -179,8 +179,8 @@ describe('handleMessage', () => {
       payload: { script },
     });
 
-    expect(result.success).toBe(true);
-    expect(result.data).toMatchObject({ name: 'log title' });
+    expect(result.ok).toBe(true);
+    expect(result.value).toMatchObject({ name: 'log title' });
   });
 
   it('rejects unknown message types', async () => {
@@ -188,7 +188,7 @@ describe('handleMessage', () => {
       type: 'UNKNOWN_TYPE' as any,
     });
 
-    expect(result.success).toBe(false);
+    expect(result.ok).toBe(false);
     expect(result.error).toContain('Unhandled message');
   });
 });
@@ -295,37 +295,29 @@ describe('picker overlay', () => {
 
 ## E2E Testing with Playwright
 
-```typescript
-// tests/e2e/extension.spec.ts
+senmurv's actual E2E harness is **Python** Playwright (not a Node/Vitest
+`tests/e2e/` suite — there isn't one). See the `runInChrome` skill for the full
+recipe (loading `dist/` unpacked, resolving the service-worker's extension id,
+driving the panel as a background tab). Sketch of the same check in that
+harness:
 
-import { test, expect, chromium } from '@anthropic-ai/playwright';
-import path from 'path';
+```python
+# via the runInChrome skill — see its assets/verify-example.py
+ctx = p.chromium.launch_persistent_context(
+    tempfile.mkdtemp(), headless=False,
+    args=[f"--disable-extensions-except={DIST}", f"--load-extension={DIST}", "--no-first-run"])
 
-const extensionPath = path.resolve(__dirname, '../../dist');
+sw = ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker", timeout=15000)
+ext_id = sw.url.split("/")[2]
 
-test.describe('senmurv extension', () => {
-  test('side panel opens and shows the three tabs', async () => {
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
-    });
+panel = ctx.new_page()
+panel.goto(f"chrome-extension://{ext_id}/src/sidepanel/index.html")
 
-    // Get extension ID
-    const [background] = context.serviceWorkers();
-    const extensionId = background.url().split('/')[2];
+# Tab routing renders plain-text buttons, not data-testid — assert by role/name
+for name in ("Data", "Locator", "Recorder", "Scripts", "Tools"):
+    assert panel.get_by_role("button", name=name).is_visible()
 
-    // Open the Side Panel page directly
-    const panel = await context.newPage();
-    await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/index.html`);
-
-    // Verify the tab routing rendered
-    await expect(panel.locator('[data-testid="tab-data"]')).toBeVisible();
-    await expect(panel.locator('[data-testid="tab-locator"]')).toBeVisible();
-    await expect(panel.locator('[data-testid="tab-scripts"]')).toBeVisible();
-
-    await context.close();
-  });
-});
+ctx.close()
 ```
 
 ---

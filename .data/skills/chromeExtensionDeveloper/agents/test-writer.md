@@ -19,7 +19,8 @@ Test generation following senmurv project conventions. Creates Vitest tests with
 
 ```
 You are writing tests for the senmurv Chrome extension (a QA Side Panel helper:
-Generate Random Data, Find Element Locator, Execute JS Script).
+Generate Random Data, Find Element Locator, Recorder, Execute JS Script, Tools
+launcher, Cookies, Storage, Track, My Tasks, Notes).
 
 Testing conventions:
 - Framework: Vitest with happy-dom environment

@@ -44,6 +44,18 @@ data-testid › formControlName › id › value / aria-label › role + name �
 
 Save, edit, **format** (pretty-print), and **import / export** your scripts (and decode `javascript:` bookmarklets), then run your own JavaScript in the page's context — like a bookmarklet manager, but in the side panel.
 
+### 🧰 Tools
+
+A launcher of page-inspection and utility tools: **Bypass** (strip client-side locks), **Site data** (clear this origin's storage), **Measure**, **Colour**, **Tab order**, **Accessibility** (WCAG A/AA/AAA), **Fonts**, **Assertions**, **Stacking**, **Validation**, **Region** (emulate another country's clock/timezone/locale/geolocation), **Harden selector**, **JWT decoder**, **JSON Formatter**, **Query params**, **Logical names** (Dynamics 365 / Power Apps), and **Auto refresh**. See [docs/tools.md](docs/tools.md) for details.
+
+### 🍪 Cookies
+
+View and edit every cookie for the current site, including the HttpOnly ones a page can't show you.
+
+### 🗄️ Storage
+
+View and edit the site's localStorage and sessionStorage. Both Cookies and Storage support **value profiles** — save the values you keep switching between while testing (locales, feature flags, logins) and apply one in a click.
+
 ### ⏺ Recorder
 
 **Record a flow** of your real interactions — clicks, inputs, selects — into an editable step list (or build steps by hand), then **Run** it, **Run from any step**, **Copy as script**, or **Save to Scripts**. Steps cover click (by text or selector), fill, select, checkbox, radio, wait, wait-for-element, press key, and run JS. A live **on-page HUD** marks each step running / done / failed as it goes. **Ad-hoc Insert** keeps the fast path — pick many form fields at once to fill live or add them as steps. Generated scripts are self-contained and replay like a bookmarklet.
@@ -97,13 +109,13 @@ npm run package        # build + zip → release/senmurv-<version>.zip
 
 ### Tech stack
 
-| Layer    | Tech                                                           |
-| -------- | -------------------------------------------------------------- |
-| Language | TypeScript (strict, no `any`)                                  |
-| UI       | React 19 + Chrome Side Panel                                   |
-| Build    | Vite + [@crxjs/vite-plugin](https://crxjs.dev/)                |
-| Tests    | Vitest + happy-dom                                             |
-| APIs     | `chrome.sidePanel`, `chrome.scripting`, `chrome.storage.local` |
+| Layer    | Tech                                                                             |
+| -------- | -------------------------------------------------------------------------------- |
+| Language | TypeScript (strict, no `any`)                                                    |
+| UI       | React 19 + Chrome Side Panel                                                     |
+| Build    | Vite + [@crxjs/vite-plugin](https://crxjs.dev/)                                  |
+| Tests    | Vitest + happy-dom                                                               |
+| APIs     | `chrome.sidePanel`, `chrome.scripting`, `chrome.storage.local`, `chrome.cookies` |
 
 ## Releasing
 

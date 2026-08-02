@@ -4,10 +4,11 @@
  */
 
 // Type imports
-import type { RuntimeMessage, MessageResponse } from '@/shared/types';
+import type { RuntimeMessage } from '@/shared/messages';
+import type { Result } from '@/shared/types';
 
 // Value imports
-import { MESSAGE_TYPES, sendMessage } from '@/shared/messages';
+import { MESSAGE_TYPES, sendRuntimeMessage } from '@/shared/messages';
 import { generateLocatorSet } from '@/shared/locators';
 
 // Constants
@@ -35,12 +36,12 @@ function init(): void {
 function handleMessage(
   message: RuntimeMessage,
   _sender: chrome.runtime.MessageSender,
-  sendResponse: (response: MessageResponse) => void,
+  sendResponse: (response: Result<void>) => void,
 ): boolean {
   switch (message.type) {
     case MESSAGE_TYPES.START_PICK:
       startPicking();
-      sendResponse({ success: true });
+      sendResponse({ ok: true, value: undefined });
       return false; // Synchronous response
 
     default:
@@ -117,7 +118,7 @@ function onClick(event: MouseEvent): void {
   if (!target) return;
 
   // generateLocatorSet is PURE — defined in @/shared/locators
-  void sendMessage({
+  void sendRuntimeMessage({
     type: MESSAGE_TYPES.ELEMENT_PICKED,
     payload: { locators: generateLocatorSet(target) },
   });

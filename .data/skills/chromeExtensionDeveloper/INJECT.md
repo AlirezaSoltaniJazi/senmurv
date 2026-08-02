@@ -6,9 +6,9 @@
 
 - **FIRST**: Read [LEARNED.md](LEARNED.md) — corrections and preferences from previous sessions
 - **Stack**: Chrome MV3, TypeScript 5+ strict, React 19, Vite + CRXJS, Vitest, ESLint, Prettier
-- **Purpose**: QA Side Panel helper — Generate Random Data (faker), Find Element Locator (picker), Execute JS Script (MAIN-world runner)
-- **Source**: `src/` — background (service-worker), content (picker), sidepanel (React UI), shared (types/messages/locators/faker-data/storage)
-- **APIs**: `chrome.sidePanel`, `chrome.scripting` (`world:'MAIN'`), `chrome.storage.local`, `chrome.tabs`, `chrome.runtime`
+- **Purpose**: QA Side Panel helper — Data (faker), Locator (picker), Recorder, Scripts (MAIN-world runner), Tools launcher, Cookies, Storage, Track, My Tasks, Notes, Settings
+- **Source**: `src/` — background (service-worker), content (picker + tools/), sidepanel (React UI), shared (types/messages/locators/faker-data/storage/tools/profiles)
+- **APIs**: `chrome.sidePanel`, `chrome.scripting` (`world:'MAIN'`), `chrome.storage.local`, `chrome.cookies`, `chrome.tabs`, `chrome.runtime`
 - **Key rules**: Typed messages (discriminant union: START_PICK, ELEMENT_PICKED, RUN_SCRIPT, GET_SCRIPTS, SAVE_SCRIPT, DELETE_SCRIPT); Shadow DOM picker (`<senmurv-picker-overlay>`); pure `shared/locators.ts`; `@/` aliases; no `any`; named exports; typed `chrome.storage.local`
 - **Never** (extension code): `eval()`/`new Function()`, `any`, default exports, raw chrome.storage, global CSS injection
 - **ONE exception**: the Execute JS Script runner calls `new Function(code)()` inside a MAIN-world injected func — governed by the PAGE's CSP, isolated to that runner; do NOT remove it

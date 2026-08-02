@@ -161,12 +161,10 @@ chrome.runtime.onInstalled.addListener(async ({ reason, previousVersion }) => {
 
 **Symptom**: `chrome.*` APIs show type errors or are unrecognized.
 
-**Fix**: Install Chrome types:
+**Fix**: Install Chrome types (senmurv already depends on this):
 
 ```bash
-npm install -D @anthropic-ai/chrome-types
-# or
-npm install -D @anthropic-ai/web-extensions
+npm install -D @types/chrome
 ```
 
 Add to `tsconfig.json`:
@@ -174,7 +172,7 @@ Add to `tsconfig.json`:
 ```json
 {
   "compilerOptions": {
-    "types": ["@anthropic-ai/chrome-types"]
+    "types": ["chrome"]
   }
 }
 ```
