@@ -4,7 +4,7 @@
 
 Locale-aware test data via `@faker-js/faker`.
 
-- **Fields**: first name, last name, phone, address, postal code, email, date of birth.
+- **Fields**: first name, last name, phone, address, postal code, region/county, email, date of birth.
 - **Locale switcher**: default `en_GB`; switchable (e.g. `en_US`, `de`, `fr`). Each locale uses the matching faker instance.
 - **Actions**: per-field **Copy** (`navigator.clipboard.writeText`), and **Regenerate** for a fresh set.
 - Pure generation lives in `src/shared/faker-data.ts`; the tab is a thin renderer.
@@ -14,7 +14,7 @@ Locale-aware test data via `@faker-js/faker`.
 Pick an element and get ranked, copy-ready locators — each annotated with how many elements it matches on the live page (**unique** / _N_ matches / no match).
 
 - **Picker**: click **Pick element** → the page content script highlights elements on hover (Shadow-DOM overlay) and captures the next click (suppressing the page's own handler).
-- **Ranking** (`LOCATOR_PRIORITY`): `data-testid` (and `data-test`/`data-cy`/`data-qa`) › `id` › role + accessible name › unique CSS selector › relative XPath (absolute XPath as fallback). The top viable strategy is marked **recommended**.
+- **Ranking** (`LOCATOR_PRIORITY`): `data-testid` (and `data-test`/`data-cy`/`data-qa`) › Angular `formcontrolname` › `id` › attribute (radio/`mat-radio-button` `value`) › `aria-label` › role + accessible name › unique CSS selector › relative XPath (absolute XPath as fallback). The top viable strategy is marked **recommended**.
 - **Match count / uniqueness**: every locator shows its live match count, so you can immediately tell whether a selector is unique on the page.
 - **Test a locator**: type any CSS selector or XPath (e.g. `mat-label` or `//button[@type='submit']`) and see how many elements match — no picking required. CSS vs XPath is auto-detected.
   - **Highlight** outlines and numbers **every** match on the page (not just a count), updating live as you edit the selector, with **‹ ›** to scroll through them one at a time. Answers "my selector matches 7 — but _which_ 7?". A broad selector is capped at the first 200 boxes (the true count is still shown); top frame only.

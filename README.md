@@ -26,7 +26,7 @@ Writing browser tests means constantly answering the same questions: _what's a s
 
 ### 🎲 Generate Random Data
 
-Locale-aware test data via [`@faker-js/faker`](https://fakerjs.dev/) — first/last name, phone, address, postal code, email, date of birth. Switch **country/locale** (15 supported — UK, US, Portugal, Belgium, Netherlands, Switzerland, Germany, Italy, France, Spain, Norway, Sweden, Finland, Czech Republic, Austria), toggle **phone country code** on/off, copy any field, or regenerate.
+Locale-aware test data via [`@faker-js/faker`](https://fakerjs.dev/) — first/last name, phone, address, postal code, region/county, email, date of birth. Switch **country/locale** (15 supported — UK, US, Portugal, Belgium, Netherlands, Switzerland, Germany, Italy, France, Spain, Norway, Sweden, Finland, Czech Republic, Austria), toggle **phone country code** on/off, copy any field, or regenerate.
 
 ### 🎯 Find Element Locator
 
@@ -74,7 +74,7 @@ Jot down quick free-form notes (optional title + body), newest first.
 
 ### ⚙️ Settings & toolbar
 
-Choose the panel **font size** (Small / Medium / Large). A toolbar **Refresh** re-syncs data across open panels, and **Open in full page** launches the whole toolkit in a browser tab.
+Choose the panel **font size** (Small / Medium / Large / X-Large, plus a fine-tune slider), set the **Flow run-popup auto-close** delay and **element-find timeout**, and manage **Track tags** (rename / recolour / delete). A toolbar **Refresh** re-syncs data across open panels, and **Open in full page** launches the whole toolkit in a browser tab.
 
 ## Install
 

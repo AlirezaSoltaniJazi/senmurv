@@ -60,7 +60,7 @@ async function init() {
 
 ```typescript
 const host = document.createElement('senmurv-picker-overlay');
-const shadow = host.attachShadow({ mode: 'closed' });
+const shadow = host.attachShadow({ mode: 'open' }); // matches src/content/overlay.ts
 // All styles go inside shadow — fully isolated
 ```
 

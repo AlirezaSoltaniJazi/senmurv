@@ -16,10 +16,10 @@ import type { Runtime } from 'chrome';
 import { crx } from '@crxjs/vite-plugin';
 
 // 3. Path alias imports (@/)
-import { sendRuntimeMessage, MESSAGE_TYPES } from '@/shared/messages';
-import { generateLocatorSet } from '@/shared/locators';
+import { sendRuntimeMessage } from '@/shared/messages';
+import { buildLocatorSet } from '@/shared/locators';
 import type { SavedScript, LocatorSuggestion } from '@/shared/types';
-import { STORAGE_KEYS } from '@/shared/constants';
+import { MESSAGE_TYPES, STORAGE_KEYS } from '@/shared/constants';
 
 // 4. Relative imports (only within same feature directory)
 import { ScriptsTab } from './components/ScriptsTab';
@@ -66,7 +66,7 @@ export async function getScripts(): Promise<SavedScript[]> {
 // ✅ Correct — discriminated union for messages
 export interface RunScriptMessage {
   type: 'RUN_SCRIPT';
-  payload: { scriptId: string };
+  payload: { code: string };
 }
 
 // ✅ Correct — result type for fallible operations (the project's actual shape,
@@ -95,7 +95,7 @@ type Message = { script?: SavedScript; scriptId?: string; status?: string };
 | Type aliases       | `PascalCase`            | `Locale`, `LocatorStrategy`, `MessageType`                |
 | Enums              | `PascalCase`            | rarely used — prefer `as const` unions                    |
 | Enum values        | `SCREAMING_SNAKE`       | when an enum is needed, `SCREAMING_SNAKE` members         |
-| Functions          | `camelCase`             | `generateTestData`, `handleMessage`, `generateLocatorSet` |
+| Functions          | `camelCase`             | `generateTestData`, `handleMessage`, `buildLocatorSet`    |
 | Private funcs      | `camelCase` (no prefix) | Internal to module — not exported = private               |
 | Constants          | `SCREAMING_SNAKE_CASE`  | `STORAGE_KEYS`, `MESSAGE_TYPES`, `LOCATOR_PRIORITY`       |
 | Variables          | `camelCase`             | `scriptCount`, `isPicking`, `currentTab`                  |

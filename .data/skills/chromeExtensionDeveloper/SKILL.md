@@ -88,17 +88,17 @@ senmurv/
 
 ## Key Patterns
 
-| Pattern                  | Approach                                                                                   | Key Rule                                                                            |
-| ------------------------ | ------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
-| Side Panel surface       | `chrome.sidePanel.setPanelBehavior` + `setOptions`                                         | Open on action click; one panel HTML, React-rendered                                |
-| Script execution         | `chrome.scripting.executeScript({ world: 'MAIN' })`                                        | Inject one runner func; see sanctioned exception below                              |
-| State management         | `chrome.storage.local` with typed wrappers                                                 | Always use typed get/set helpers, never raw API                                     |
-| Message passing          | Typed schemas via `chrome.runtime.sendMessage`                                             | Every message has `type` discriminant + typed payload                               |
-| Service worker lifecycle | Event-driven; re-assert `sidePanel` behavior on `onInstalled`/`onStartup`, recover on wake | Never assume SW stays alive — re-read storage on wake; nothing is seeded on install |
-| Content picker UI        | Shadow DOM isolation (`<senmurv-picker-overlay>`)                                          | Never pollute page global styles or namespace                                       |
-| Side Panel communication | One-time messages to service worker / tabs                                                 | Always handle `chrome.runtime.lastError`                                            |
-| Locator generation       | PURE functions in `shared/locators.ts`                                                     | Rank by `LOCATOR_PRIORITY`; no DOM/chrome in pure code                              |
-| Error handling           | Result objects `{ ok, value?, error? }`                                                    | Never throw in async chrome API callbacks                                           |
+| Pattern                  | Approach                                                                                                                                                     | Key Rule                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Side Panel surface       | `chrome.sidePanel.setPanelBehavior` + `setOptions`                                                                                                           | Open on action click; one panel HTML, React-rendered                                |
+| Script execution         | `chrome.scripting.executeScript({ world: 'MAIN' })`                                                                                                          | Inject one runner func; see sanctioned exception below                              |
+| State management         | `chrome.storage.local` with typed wrappers                                                                                                                   | Always use typed get/set helpers, never raw API                                     |
+| Message passing          | Typed schemas via `chrome.runtime.sendMessage`                                                                                                               | Every message has `type` discriminant + typed payload                               |
+| Service worker lifecycle | Event-driven; re-assert `sidePanel` behavior via an unconditional top-level call (re-runs on every wake) plus `onInstalled` — no `onStartup` listener needed | Never assume SW stays alive — re-read storage on wake; nothing is seeded on install |
+| Content picker UI        | Shadow DOM isolation (`<senmurv-picker-overlay>`)                                                                                                            | Never pollute page global styles or namespace                                       |
+| Side Panel communication | One-time messages to service worker / tabs                                                                                                                   | Always handle `chrome.runtime.lastError`                                            |
+| Locator generation       | PURE functions in `shared/locators.ts`                                                                                                                       | Rank by `LOCATOR_PRIORITY`; no DOM/chrome in pure code                              |
+| Error handling           | Result objects `{ ok, value?, error? }`                                                                                                                      | Never throw in async chrome API callbacks                                           |
 
 See [references/manifest-patterns.md](references/manifest-patterns.md) for full code examples.
 

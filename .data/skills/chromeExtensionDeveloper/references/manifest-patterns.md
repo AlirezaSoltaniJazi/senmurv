@@ -38,9 +38,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["src/content/picker.ts"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [],
@@ -73,16 +74,16 @@ Every permission MUST have a justification comment in the codebase:
 
 ## Content Script Declaration (The Picker)
 
-senmurv declares exactly one content script — the locator picker. It stays idle until it receives `START_PICK`:
+senmurv declares exactly one content script — the locator picker. It stays idle until it receives `START_PICK`. Its `matches` is deliberately narrower than `host_permissions` (`http`/`https` only, `all_frames: false`) — the picker only needs itself declared upfront on ordinary pages, while `host_permissions: <all_urls>` lets the script-runner and injected-content-script fallback (`injectPicker` in the service worker) still reach other schemes on demand:
 
 ```json
 {
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["src/content/picker.ts"],
-      "css": [],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ]
 }

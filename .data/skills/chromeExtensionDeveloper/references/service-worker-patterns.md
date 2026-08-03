@@ -11,15 +11,15 @@ The MV3 service worker can terminate at any time. Design for statelessness:
 ```typescript
 // src/background/service-worker.ts
 
-// ✅ Correct — event listeners at top level (registered synchronously)
-chrome.runtime.onInstalled.addListener(handleInstalled);
-chrome.runtime.onStartup.addListener(handleStartup);
+// ✅ Correct — event listeners registered synchronously at top level
+chrome.runtime.onInstalled.addListener(() => enableSidePanelOnActionClick());
 chrome.runtime.onMessage.addListener(handleMessage);
 
-// ✅ Open the Side Panel when the toolbar icon is clicked (set once, synchronously)
-chrome.sidePanel
-  .setPanelBehavior({ openPanelOnActionClick: true })
-  .catch((error) => console.error(error));
+// ✅ Also called unconditionally at module top level. Module-top-level code
+// re-runs every time the SW script re-evaluates (install, browser startup,
+// or waking from termination) — so this one call covers all three cases,
+// and senmurv has no separate onStartup listener.
+enableSidePanelOnActionClick();
 
 // ❌ Wrong — conditional event registration (may miss events after wake)
 if (someCondition) {
@@ -36,10 +36,18 @@ Never store state in service worker memory — it will be lost:
 ```typescript
 // src/shared/storage.ts
 
-import { STORAGE_KEYS } from '@/shared/constants';
+import {
+  FIND_TIMEOUT_SECONDS_DEFAULT,
+  HUD_SECONDS_DEFAULT,
+  STORAGE_KEYS,
+} from '@/shared/constants';
 import type { SavedScript, Prefs } from '@/shared/types';
 
-const DEFAULT_PREFS: Prefs = { fontSize: 'medium' };
+const DEFAULT_PREFS: Prefs = {
+  fontSize: 'medium',
+  hudSeconds: HUD_SECONDS_DEFAULT,
+  findTimeoutSeconds: FIND_TIMEOUT_SECONDS_DEFAULT,
+};
 
 // Typed storage wrapper (senmurv has one of these per data kind — scripts,
 // tasks, checklists, notes, profiles, prefs — all following this shape)
@@ -100,20 +108,17 @@ runner uses `new Function` deliberately — see [security-checklist.md](security
 for the sanctioned exception (it is governed by the page's CSP, not the extension's):
 
 ```typescript
-// src/background/service-worker.ts
+// src/background/service-worker.ts (simplified — the real handler goes through
+// withActiveRunnableTab, which resolves + validates the tab first)
 
-async function handleRunScript(scriptId: string): Promise<Result<void>> {
-  const script = (await getScripts()).find((s) => s.id === scriptId);
-  if (!script) return { ok: false, error: 'Script not found' };
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return { ok: false, error: 'No active tab' };
-
+// The panel already resolved the saved script and sends its CODE directly —
+// the service worker never looks a script up by id.
+async function runScriptInPage(tabId: number, code: string): Promise<Result<void>> {
   await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
+    target: { tabId },
     world: 'MAIN',
     func: runUserScript,
-    args: [script.code],
+    args: [code],
   });
 
   return { ok: true, value: undefined };
@@ -131,11 +136,18 @@ function runUserScript(code: string): void {
 ## Error Recovery Pattern
 
 ```typescript
-// Recover after service worker restart — re-assert the panel behavior; senmurv
-// has nothing to re-seed since storage is never pre-populated
-chrome.runtime.onStartup.addListener(async () => {
-  await chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true });
-});
+// Recover after a service worker restart. senmurv has no onStartup listener —
+// the module's top-level code below re-runs on every wake (install, browser
+// startup, or restart after termination), so this one call covers all three.
+// Nothing needs re-seeding either — storage is never pre-populated.
+function enableSidePanelOnActionClick(): void {
+  chrome.sidePanel
+    .setPanelBehavior({ openPanelOnActionClick: true })
+    .catch((err) => console.error('[Senmurv] setPanelBehavior failed:', err));
+}
+
+// Runs whenever the service worker wakes — cheap and idempotent.
+enableSidePanelOnActionClick();
 ```
 
 ---
@@ -145,6 +157,6 @@ chrome.runtime.onStartup.addListener(async () => {
 1. **Register all event listeners synchronously** at top level — never conditionally
 2. **Never store state in variables** — always use `chrome.storage.local`
 3. **Design for termination** — SW can die between any two lines of code
-4. **Recover on startup** — re-assert `sidePanel` behavior on `onStartup` / `onInstalled`
+4. **Recover on wake** — re-assert `sidePanel` behavior with an unconditional top-level call (senmurv has no `onStartup` listener — module top-level code already re-runs on every wake) plus `onInstalled`
 5. **Never seed sample/default data** — the Scripts list, tasks, notes and checklists start empty by design; do not add seeding back
 6. **Batch storage operations** — minimize reads/writes to reduce wake-ups

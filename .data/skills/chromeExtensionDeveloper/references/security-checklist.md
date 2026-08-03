@@ -41,9 +41,10 @@ For every permission in `manifest.json`:
 ### DOM Injection Rules
 
 ```typescript
-// ✅ Safe — Shadow DOM isolation
+// ✅ Safe — Shadow DOM isolation (real overlay uses 'open'; styles stay
+// isolated from the page either way — see src/content/overlay.ts)
 const host = document.createElement('senmurv-picker-overlay');
-const shadow = host.attachShadow({ mode: 'closed' });
+const shadow = host.attachShadow({ mode: 'open' });
 shadow.innerHTML = `<style>/* scoped styles */</style>`;
 document.body.appendChild(host);
 

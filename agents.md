@@ -4,7 +4,7 @@
 
 Chrome extension (Manifest V3) that gives QA / test-automation engineers a set of tools inside a **Chrome Side Panel**, routed as tabs in `src/sidepanel/App.tsx`:
 
-1. **Generate Random Data** — realistic, locale-aware test data (first/last name, phone, address, postal code, email, date of birth) via `@faker-js/faker`, with a locale switcher (default `en_GB`), copy-to-clipboard, and regenerate.
+1. **Generate Random Data** — realistic, locale-aware test data (first/last name, phone, address, postal code, region/county, email, date of birth) via `@faker-js/faker`, with a locale switcher (default `en_GB`), copy-to-clipboard, and regenerate.
 2. **Find Element Locator** — an in-page element picker (hover-highlight, click-capture) that produces ranked locator suggestions (data-testid › id › role+name › CSS › XPath), each with its live **match count / uniqueness**, plus copy-ready snippets for **Playwright, WebdriverIO, Cypress, Selenium, and Robot Framework**. Also includes a "Test a locator" box (with match-highlighting) to count matches for any CSS/XPath.
 3. **Recorder** — record clicks/inputs/selects into an editable step list (or build by hand), then run/run-from-step/stop, save as a script, or export as a spec for the frameworks above.
 4. **Execute JS Script** — save / edit / import (`javascript:` bookmarklets) JS scripts in `chrome.storage.local` and run a chosen script in the page's **MAIN world** via `chrome.scripting`.
