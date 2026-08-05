@@ -214,3 +214,13 @@ export function findTool(key: ToolKey): ToolDescriptor {
   const first = TOOLS[0] as ToolDescriptor;
   return TOOLS.find((t) => t.key === key) ?? first;
 }
+
+/** Whether a tool's label or blurb matches a launcher search query. Blank query matches everything. */
+export function matchesToolQuery(
+  tool: Pick<ToolDescriptor, 'label' | 'blurb'>,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (q === '') return true;
+  return tool.label.toLowerCase().includes(q) || tool.blurb.toLowerCase().includes(q);
+}

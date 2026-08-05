@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { findTool, TOOLS } from '@/shared/tools';
+import { findTool, matchesToolQuery, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
 import { A11yTool } from './tools/A11yTool';
@@ -47,6 +47,8 @@ export function ToolsTab({
   onStartAutoRefresh,
   onStopAutoRefresh,
 }: Props): ReactElement {
+  const [query, setQuery] = useState('');
+
   // Opening a tool, switching tools, or going back to the launcher should start
   // at the top — the panel otherwise keeps the previous scroll position.
   useEffect(() => {
@@ -54,19 +56,33 @@ export function ToolsTab({
   }, [tool]);
 
   if (tool === null) {
+    const shown = TOOLS.filter((t) => matchesToolQuery(t, query));
     return (
       <div className="tab">
         <p className="hint">Inspect and unblock the page. Pick a tool to start.</p>
-        <ul className="tool-list">
-          {TOOLS.map((t) => (
-            <li key={t.key}>
-              <button type="button" className="tool-row" onClick={() => setTool(t.key)}>
-                <span className="tool-row-name">{t.label}</span>
-                <span className="tool-row-blurb">{t.blurb}</span>
-              </button>
-            </li>
-          ))}
-        </ul>
+        <div className="row">
+          <input
+            className="name-input"
+            placeholder="Search tools"
+            aria-label="Search tools"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        {shown.length === 0 ? (
+          <p className="hint">No tool matches that search.</p>
+        ) : (
+          <ul className="tool-list">
+            {shown.map((t) => (
+              <li key={t.key}>
+                <button type="button" className="tool-row" onClick={() => setTool(t.key)}>
+                  <span className="tool-row-name">{t.label}</span>
+                  <span className="tool-row-blurb">{t.blurb}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
     );
   }

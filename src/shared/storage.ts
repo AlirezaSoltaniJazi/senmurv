@@ -21,6 +21,7 @@ import type {
   TimeInterval,
   ValueProfile,
 } from '@/shared/types';
+import type { QueryParamSet } from '@/shared/tools/query-params';
 
 // ---------------------------------------------------------------------------
 // Per-key write serialization
@@ -340,6 +341,61 @@ export async function deleteProfile(id: string): Promise<ValueProfile[]> {
     const profiles = await getProfiles();
     const next = profiles.filter((p) => p.id !== id);
     await chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: next });
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Query param sets (Query params tool)
+// ---------------------------------------------------------------------------
+
+/** Type guard for a stored query-param set (rejects corrupt / legacy data). */
+export function isQueryParamSet(value: unknown): value is QueryParamSet {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    typeof v.base === 'string' &&
+    Array.isArray(v.params) &&
+    v.params.every(
+      (p) =>
+        typeof p === 'object' &&
+        p !== null &&
+        typeof (p as Record<string, unknown>).name === 'string' &&
+        typeof (p as Record<string, unknown>).value === 'string'
+    ) &&
+    typeof v.hash === 'string' &&
+    typeof v.createdAt === 'number' &&
+    typeof v.updatedAt === 'number'
+  );
+}
+
+/** Read all query-param sets (silently drops anything that fails validation). */
+export async function getQueryParamSets(): Promise<QueryParamSet[]> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.QUERY_PARAM_SETS);
+  const raw = result[STORAGE_KEYS.QUERY_PARAM_SETS];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isQueryParamSet);
+}
+
+/** Insert or update a query-param set by id; returns the new list. */
+export async function upsertQueryParamSet(set: QueryParamSet): Promise<QueryParamSet[]> {
+  return withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, async () => {
+    const sets = await getQueryParamSets();
+    const exists = sets.some((s) => s.id === set.id);
+    const next = exists ? sets.map((s) => (s.id === set.id ? set : s)) : [...sets, set];
+    await chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
+    return next;
+  });
+}
+
+/** Remove a query-param set by id; returns the new list. */
+export async function deleteQueryParamSet(id: string): Promise<QueryParamSet[]> {
+  return withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, async () => {
+    const sets = await getQueryParamSets();
+    const next = sets.filter((s) => s.id !== id);
+    await chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
     return next;
   });
 }

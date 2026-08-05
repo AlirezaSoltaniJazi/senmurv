@@ -23,6 +23,7 @@ import type {
   ValueProfile,
   WcagLevel,
 } from '@/shared/types';
+import type { QueryParamSet } from '@/shared/tools/query-params';
 import type { RecordedStep } from '@/shared/workflow';
 
 /**
@@ -145,7 +146,11 @@ export type RuntimeMessage =
   // Value profiles (shared by both tabs)
   | { type: typeof MESSAGE_TYPES.GET_PROFILES }
   | { type: typeof MESSAGE_TYPES.SAVE_PROFILE; payload: { profile: ValueProfile } }
-  | { type: typeof MESSAGE_TYPES.DELETE_PROFILE; payload: { id: string } };
+  | { type: typeof MESSAGE_TYPES.DELETE_PROFILE; payload: { id: string } }
+  // Query param sets (Query params tool)
+  | { type: typeof MESSAGE_TYPES.GET_QUERY_PARAM_SETS }
+  | { type: typeof MESSAGE_TYPES.SAVE_QUERY_PARAM_SET; payload: { set: QueryParamSet } }
+  | { type: typeof MESSAGE_TYPES.DELETE_QUERY_PARAM_SET; payload: { id: string } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

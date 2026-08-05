@@ -1,4 +1,5 @@
 import type { Result } from '@/shared/types';
+import { newId } from '@/utils/id';
 
 /**
  * Pure URL query-string logic for the Query params tool. Chrome-free and
@@ -95,4 +96,39 @@ export function updateParam(
   patch: Partial<QueryParam>
 ): QueryParam[] {
   return params.map((p, i) => (i === index ? { ...p, ...patch } : p));
+}
+
+/**
+ * A saved snapshot of the whole builder — base URL, every param row, and the
+ * hash — so a full combination (e.g. "Account record": etn=account,
+ * pagetype=entityrecord, appid=...) can be recalled in one click, rather than
+ * saving just one param's value at a time.
+ */
+export interface QueryParamSet {
+  readonly id: string;
+  readonly name: string;
+  readonly base: string;
+  readonly params: QueryParam[];
+  readonly hash: string;
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+/** A new named set from the builder's current state. */
+export function newQueryParamSet(
+  name: string,
+  base: string,
+  params: readonly QueryParam[],
+  hash: string,
+  now: number
+): QueryParamSet {
+  return {
+    id: newId('qps_'),
+    name,
+    base,
+    params: [...params],
+    hash,
+    createdAt: now,
+    updatedAt: now,
+  };
 }

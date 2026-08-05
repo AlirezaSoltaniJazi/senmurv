@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   NOTES: 'senmurv:notes',
   PREFS: 'senmurv:prefs',
   PROFILES: 'senmurv:profiles',
+  QUERY_PARAM_SETS: 'senmurv:queryParamSets',
 } as const;
 
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
@@ -99,6 +100,11 @@ export const MESSAGE_TYPES = {
   GET_PROFILES: 'GET_PROFILES',
   SAVE_PROFILE: 'SAVE_PROFILE',
   DELETE_PROFILE: 'DELETE_PROFILE',
+  // Query param sets — a named snapshot of the Query params builder (base +
+  // every row + hash), recalled as one chip instead of one param at a time.
+  GET_QUERY_PARAM_SETS: 'GET_QUERY_PARAM_SETS',
+  SAVE_QUERY_PARAM_SET: 'SAVE_QUERY_PARAM_SET',
+  DELETE_QUERY_PARAM_SET: 'DELETE_QUERY_PARAM_SET',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */

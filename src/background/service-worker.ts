@@ -4,6 +4,7 @@ import type { RuntimeMessage } from '@/shared/messages';
 import {
   deleteChecklist,
   deleteNote,
+  deleteQueryParamSet,
   deleteScript,
   deleteTask,
   getChecklists,
@@ -11,6 +12,7 @@ import {
   getPrefs,
   deleteProfile,
   getProfiles,
+  getQueryParamSets,
   getScripts,
   getTasks,
   saveScripts,
@@ -19,6 +21,7 @@ import {
   upsertProfileStored,
   upsertChecklist,
   upsertNote,
+  upsertQueryParamSet,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
@@ -1624,6 +1627,24 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.SAVE_PREFS:
         savePrefs(message.payload.prefs)
           .then(() => sendResponse({ ok: true, value: message.payload.prefs }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_QUERY_PARAM_SETS:
+        getQueryParamSets()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_QUERY_PARAM_SET:
+        upsertQueryParamSet(message.payload.set)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_QUERY_PARAM_SET:
+        deleteQueryParamSet(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 

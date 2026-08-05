@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findTool, TOOLS } from '@/shared/tools';
+import { findTool, matchesToolQuery, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 
 describe('TOOLS registry', () => {
@@ -58,5 +58,31 @@ describe('findTool', () => {
 
   it('falls back to the first tool rather than returning undefined', () => {
     expect(findTool('nope' as ToolKey)).toBe(TOOLS[0]);
+  });
+});
+
+describe('matchesToolQuery', () => {
+  it('matches a blank query against everything', () => {
+    expect(matchesToolQuery({ label: 'Bypass', blurb: 'x' }, '')).toBe(true);
+    expect(matchesToolQuery({ label: 'Bypass', blurb: 'x' }, '   ')).toBe(true);
+  });
+
+  it('matches the label case-insensitively', () => {
+    expect(matchesToolQuery({ label: 'Accessibility', blurb: 'x' }, 'access')).toBe(true);
+    expect(matchesToolQuery({ label: 'Accessibility', blurb: 'x' }, 'ACCESS')).toBe(true);
+    expect(matchesToolQuery({ label: 'Accessibility', blurb: 'x' }, 'nope')).toBe(false);
+  });
+
+  it('also matches the blurb, so searching by what a tool does works', () => {
+    expect(
+      matchesToolQuery({ label: 'Open in Web API', blurb: 'Dataverse Web API URL' }, 'dataverse')
+    ).toBe(true);
+  });
+
+  it('finds every real tool by a distinctive word in its own label', () => {
+    for (const tool of TOOLS) {
+      const word = tool.label.split(' ')[0]!;
+      expect(matchesToolQuery(tool, word)).toBe(true);
+    }
   });
 });

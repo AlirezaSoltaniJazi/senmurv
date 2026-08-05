@@ -4,6 +4,7 @@ import {
   buildUrl,
   findIdParam,
   findParam,
+  newQueryParamSet,
   parseUrl,
   removeParam,
   setParam,
@@ -160,6 +161,27 @@ describe('row helpers are immutable', () => {
     expect(next[1]).toEqual({ name: 'b', value: 'changed' });
     expect(next[0]).toEqual({ name: 'a', value: '1' });
     expect(base[1]!.value).toBe('2');
+  });
+});
+
+describe('newQueryParamSet', () => {
+  it('snapshots the base, rows and hash under a name, with a fresh id', () => {
+    const params: QueryParam[] = [{ name: 'etn', value: 'account' }];
+    const set = newQueryParamSet('Account record', 'https://x.test/p', params, '#top', 42);
+    expect(set.name).toBe('Account record');
+    expect(set.base).toBe('https://x.test/p');
+    expect(set.params).toEqual(params);
+    expect(set.hash).toBe('#top');
+    expect(set.createdAt).toBe(42);
+    expect(set.updatedAt).toBe(42);
+    expect(set.id.startsWith('qps_')).toBe(true);
+  });
+
+  it('copies the params array rather than aliasing it', () => {
+    const params: QueryParam[] = [{ name: 'a', value: '1' }];
+    const set = newQueryParamSet('Set', 'https://x.test', params, '', 1);
+    expect(set.params).not.toBe(params);
+    expect(set.params).toEqual(params);
   });
 });
 

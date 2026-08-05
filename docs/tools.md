@@ -210,6 +210,11 @@ Everything is a pure `URL`/`URLSearchParams` transform (`query-params.ts`), so
 duplicate names survive, values are re-encoded correctly, a blank value is kept
 (`&flag=`) and a blank NAME is dropped.
 
+- **Saved sets** — **+ Save this set** writes the whole builder (base URL,
+  every row, and the hash) to a named preset, shown as a chip; clicking it
+  loads the whole combination back into the builder in one step, rather than
+  refilling each param by hand.
+
 **Limits**: reads the address bar only — it never touches the page. It needs a
 reachable page, so it is gated on `chrome://` and the Web Store (which is also
 what tells you the panel's own full-page view is the active tab).

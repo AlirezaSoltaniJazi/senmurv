@@ -5,16 +5,19 @@ import {
   deleteChecklist,
   deleteNote,
   deleteProfile,
+  deleteQueryParamSet,
   deleteScript,
   deleteTask,
   getChecklists,
   getNotes,
   getPrefs,
   getProfiles,
+  getQueryParamSets,
   getScripts,
   getTasks,
   isChecklist,
   isNote,
+  isQueryParamSet,
   isSavedScript,
   isTimeEntry,
   isValueProfile,
@@ -22,10 +25,12 @@ import {
   upsertChecklist,
   upsertNote,
   upsertProfileStored,
+  upsertQueryParamSet,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
 import type { Checklist, Note, SavedScript, TimeEntry, ValueProfile } from '@/shared/types';
+import type { QueryParamSet } from '@/shared/tools/query-params';
 import { store } from '../setup';
 
 function makeScript(overrides: Partial<SavedScript> = {}): SavedScript {
@@ -70,6 +75,22 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     id: 'note_1',
     title: 'Standup',
     body: 'Discuss the release plan.',
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeSet(overrides: Partial<QueryParamSet> = {}): QueryParamSet {
+  return {
+    id: 'qps_1',
+    name: 'Account record',
+    base: 'https://org.crm4.dynamics.com/main.aspx',
+    params: [
+      { name: 'etn', value: 'account' },
+      { name: 'pagetype', value: 'entityrecord' },
+    ],
+    hash: '',
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -255,6 +276,43 @@ describe('note storage', () => {
     await upsertNote(makeNote({ id: 'note_2' }));
     const remaining = await deleteNote('note_1');
     expect(remaining.map((n) => n.id)).toEqual(['note_2']);
+  });
+});
+
+describe('isQueryParamSet', () => {
+  it('accepts a well-formed set and rejects junk', () => {
+    expect(isQueryParamSet(makeSet())).toBe(true);
+    expect(isQueryParamSet({ ...makeSet(), params: [{ name: 'a' }] })).toBe(false);
+    expect(isQueryParamSet({ ...makeSet(), base: 5 })).toBe(false);
+    expect(isQueryParamSet(null)).toBe(false);
+  });
+});
+
+describe('query param set storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getQueryParamSets()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.QUERY_PARAM_SETS] = [makeSet(), { id: 'bad' }];
+    expect(await getQueryParamSets()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertQueryParamSet(makeSet());
+    let all = await getQueryParamSets();
+    expect(all).toHaveLength(1);
+
+    all = await upsertQueryParamSet(makeSet({ name: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.name).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertQueryParamSet(makeSet());
+    await upsertQueryParamSet(makeSet({ id: 'qps_2' }));
+    const remaining = await deleteQueryParamSet('qps_1');
+    expect(remaining.map((s) => s.id)).toEqual(['qps_2']);
   });
 });
 

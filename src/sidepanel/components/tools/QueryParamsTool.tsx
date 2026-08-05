@@ -1,17 +1,26 @@
-import { useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { MESSAGE_TYPES } from '@/shared/constants';
+import { sendRuntimeMessage } from '@/shared/messages';
 import {
   addParam,
   buildUrl,
   findIdParam,
   findParam,
+  newQueryParamSet,
   parseUrl,
   removeParam,
   setParam,
   updateParam,
 } from '@/shared/tools/query-params';
-import type { QueryParam } from '@/shared/tools/query-params';
+import type { QueryParam, QueryParamSet } from '@/shared/tools/query-params';
+import type { Result } from '@/shared/types';
 import { CopyButton } from '@/sidepanel/components/CopyButton';
+
+/** Current epoch ms — wrapped so clock reads stay outside render-purity analysis. */
+function nowMs(): number {
+  return Date.now();
+}
 
 /** Read the active tab's URL. The panel holds `tabs`, so no worker round-trip. */
 function readActiveUrl(onUrl: (url: string) => void): void {
@@ -40,6 +49,10 @@ export function QueryParamsTool(): ReactElement {
   const [hash, setHash] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<string | null>(null);
+  // Saved whole-builder snapshots (base + every row + hash), one click to recall.
+  const [sets, setSets] = useState<QueryParamSet[]>([]);
+  // null = the "+ Save this set" button; a string = the naming input is open.
+  const [savingName, setSavingName] = useState<string | null>(null);
 
   const refresh = useCallback((): void => {
     readActiveUrl(setCurrentUrl);
@@ -49,6 +62,16 @@ export function QueryParamsTool(): ReactElement {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Initial read of saved sets.
+  useEffect(() => {
+    void (async () => {
+      const res = await sendRuntimeMessage<Result<QueryParamSet[]>>({
+        type: MESSAGE_TYPES.GET_QUERY_PARAM_SETS,
+      });
+      if (res.ok) setSets(res.value);
+    })();
+  }, []);
 
   const parsedCurrent = currentUrl === '' ? null : parseUrl(currentUrl);
   const currentParams = parsedCurrent?.ok ? parsedCurrent.value.params : [];
@@ -110,6 +133,47 @@ export function QueryParamsTool(): ReactElement {
   function goHere(): void {
     if (built === '') return;
     navigateActiveTab(built, setError);
+  }
+
+  /** Save the whole builder — base, every row, and the hash — as one named set. */
+  async function saveSet(): Promise<void> {
+    const name = (savingName ?? '').trim();
+    if (name === '') {
+      setError('Name this set first.');
+      return;
+    }
+    setError(null);
+    const set = newQueryParamSet(name, base, rows, hash, nowMs());
+    const res = await sendRuntimeMessage<Result<QueryParamSet[]>>({
+      type: MESSAGE_TYPES.SAVE_QUERY_PARAM_SET,
+      payload: { set },
+    });
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setSets(res.value);
+    setSavingName(null);
+    setStatus(`Saved “${name}”.`);
+  }
+
+  /** Load a saved set back into the builder in one step. */
+  function applySet(set: QueryParamSet): void {
+    setError(null);
+    setBase(set.base);
+    setRows(set.params);
+    setHash(set.hash);
+    setStatus(`Loaded “${set.name}”.`);
+  }
+
+  async function removeSet(set: QueryParamSet): Promise<void> {
+    if (!window.confirm(`Delete the saved set “${set.name}”?`)) return;
+    const res = await sendRuntimeMessage<Result<QueryParamSet[]>>({
+      type: MESSAGE_TYPES.DELETE_QUERY_PARAM_SET,
+      payload: { id: set.id },
+    });
+    if (res.ok) setSets(res.value);
+    else setError(res.error);
   }
 
   return (
@@ -242,6 +306,63 @@ export function QueryParamsTool(): ReactElement {
           Go here
         </button>
       </div>
+
+      {/* ── 4. Saved sets ─────────────────────────────────────────── */}
+      <h3 className="section-title">Saved sets</h3>
+      <div className="row">
+        {savingName === null ? (
+          <button
+            type="button"
+            onClick={() => setSavingName('')}
+            title="Save the base URL, every row and the hash as one named preset"
+          >
+            + Save this set
+          </button>
+        ) : (
+          <>
+            <input
+              className="name-input"
+              placeholder="Name this set, e.g. Account record"
+              aria-label="Set name"
+              autoFocus
+              value={savingName}
+              onChange={(e) => setSavingName(e.target.value)}
+            />
+            <button type="button" className="primary" onClick={() => void saveSet()}>
+              Save
+            </button>
+            <button type="button" onClick={() => setSavingName(null)}>
+              Cancel
+            </button>
+          </>
+        )}
+      </div>
+
+      {sets.length > 0 && (
+        <div className="chips">
+          {sets.map((set) => (
+            <Fragment key={set.id}>
+              <button
+                type="button"
+                className="chip"
+                title={`Load base + ${set.params.length} param(s)${set.hash ? ' + hash' : ''}`}
+                onClick={() => applySet(set)}
+              >
+                {set.name}
+              </button>
+              <button
+                type="button"
+                className="chip danger"
+                title={`Delete “${set.name}”`}
+                aria-label={`Delete saved set ${set.name}`}
+                onClick={() => void removeSet(set)}
+              >
+                ✕
+              </button>
+            </Fragment>
+          ))}
+        </div>
+      )}
 
       {status && <p className="status">{status}</p>}
       {error && <p className="error">{error}</p>}
