@@ -67,6 +67,10 @@ export const MESSAGE_TYPES = {
   GET_BYPASS_STATE: 'GET_BYPASS_STATE',
   BYPASS_XRM: 'BYPASS_XRM',
   BYPASS_STATE_CHANGED: 'BYPASS_STATE_CHANGED',
+  // Web API URL — worker-local MAIN-world read (same shape as BYPASS_XRM) that
+  // resolves the current Dynamics record into its Dataverse Web API URL (God
+  // Mode's "Open record in Web API").
+  GET_XRM_WEB_API_URL: 'GET_XRM_WEB_API_URL',
   // Site data
   PROBE_SITE_STORAGE: 'PROBE_SITE_STORAGE',
   CLEAR_SITE_DATA: 'CLEAR_SITE_DATA',

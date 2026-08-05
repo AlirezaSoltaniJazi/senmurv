@@ -20,6 +20,7 @@ import { SiteDataTool } from './tools/SiteDataTool';
 import { StackTool } from './tools/StackTool';
 import { ValidationTool } from './tools/ValidationTool';
 import { BypassTool } from './tools/BypassTool';
+import { WebApiTool } from './tools/WebApiTool';
 
 interface Props {
   /** The open tool, or null for the launcher. Lifted into App so it survives tab switches. */
@@ -91,6 +92,7 @@ export function ToolsTab({
         {tool === 'json' && <JsonFormatterTool />}
         {tool === 'queryparams' && <QueryParamsTool />}
         {tool === 'logicalnames' && <LogicalNamesTool />}
+        {tool === 'webapi' && <WebApiTool />}
         {tool === 'autorefresh' && (
           <AutoRefreshTool
             active={autoRefresh}

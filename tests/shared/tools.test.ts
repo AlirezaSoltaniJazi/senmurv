@@ -23,6 +23,7 @@ describe('TOOLS registry', () => {
       'json',
       'queryparams',
       'logicalnames',
+      'webapi',
       'autorefresh',
     ] satisfies ToolKey[]);
   });

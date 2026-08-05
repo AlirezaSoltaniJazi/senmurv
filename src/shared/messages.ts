@@ -103,6 +103,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.GET_BYPASS_STATE }
   | { type: typeof MESSAGE_TYPES.BYPASS_XRM }
   | { type: typeof MESSAGE_TYPES.BYPASS_STATE_CHANGED; payload: { report: BypassReport } }
+  // Web API URL — worker-local like BYPASS_XRM: resolves the current Dynamics
+  // record into its Dataverse Web API URL (God Mode's "Open record in Web API").
+  | { type: typeof MESSAGE_TYPES.GET_XRM_WEB_API_URL }
   // Site data. Both are worker-local: the worker injects into the page rather
   // than routing through the content script, so no new permission is needed.
   | { type: typeof MESSAGE_TYPES.PROBE_SITE_STORAGE }

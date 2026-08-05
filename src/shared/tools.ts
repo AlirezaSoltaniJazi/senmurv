@@ -18,7 +18,8 @@ export type ToolKey =
   | 'json'
   | 'autorefresh'
   | 'queryparams'
-  | 'logicalnames';
+  | 'logicalnames'
+  | 'webapi';
 
 /**
  * One entry in the Tools launcher. `mode` is the in-page mode the shell tears
@@ -184,6 +185,15 @@ export const TOOLS: readonly ToolDescriptor[] = [
     blurb:
       'Labels every field, tab and section on a Dynamics 365 / Power Apps form with its logical (schema) name. Reads the Xrm client API, so it does nothing on an ordinary page; top frame only, and the labels clear when the form re-renders.',
     mode: 'logicalnames',
+    requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'webapi',
+    label: 'Open in Web API',
+    blurb:
+      'Resolves the current record to its Dataverse Web API URL and opens it in a new tab. Reads the Xrm client API, so it does nothing on an ordinary (non-Dynamics) page.',
+    mode: null,
     requiresPage: true,
     isReady: true,
   },

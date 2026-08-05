@@ -616,6 +616,14 @@ export interface XrmReport {
   readonly sections: number;
 }
 
+/** The current Dynamics record, resolved to its Dataverse Web API URL. */
+export interface XrmWebApiRecord {
+  readonly entityLogicalName: string;
+  readonly entitySetName: string;
+  readonly recordId: string;
+  readonly url: string;
+}
+
 /** Which level of a Dynamics form a logical name belongs to. */
 export type LogicalNameKind = 'field' | 'tab' | 'section';
 
