@@ -4,17 +4,6 @@ Source of truth for the **Detailed description** field on the Senmurv Chrome Web
 Store listing. Update this file when features change, then paste the "Current
 listing" block into the CWS dashboard.
 
-> Note: the archived listing below predated the **Tools** tab, the Recorder's
-> **Export as spec**, and the Locator's **Highlight matches**. The current listing
-> adds those plus the newest work — **Region / County** data, the **JSON
-> Formatter** and **Auto refresh** tools, the Fill/Recorder generator options
-> (digit-count numbers, name-synced email), the **Settings** flow timings and
-> **Track-tag** management, the Scripts **Run/Stop** toggle with folder
-> grouping, and — newest — the **Cookies** and **Storage** tabs, **value
-> profiles**, and **Tools → Logical names** / **Query params**. Performance/
-> reliability work is not user-facing copy, so it is intentionally not listed
-> here.
-
 ---
 
 ## Current listing
@@ -52,5 +41,3 @@ Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 • Settings — panel font size, the flow-run popup auto-close and element-find timeout, and Track-tag management (rename / recolour / delete); plus Refresh and Open-in-full-page from the toolbar.
 
 All data and settings stay in your browser. Senmurv does not collect or transmit any data.
-
----

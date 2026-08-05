@@ -60,6 +60,7 @@ panel's full height; **← Tools** goes back.
 | **JSON Formatter**  | Pretty-prints or minifies pasted JSON and explores it as a collapsible, colour-coded tree. Strict JSON only; parse errors are shown. Needs no page access.                                                                                                                                           |
 | **Query params**    | Copies the record `id` (or any named param) out of the current URL, and rebuilds it with edited params to open in a new tab or this one.                                                                                                                                                             |
 | **Logical names**   | Labels every field, tab and section on a Dynamics 365 / Power Apps form with its logical (schema) name — the identifier the Web API and `data-id` selectors use. Ported from [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM).                                     |
+| **Open in Web API** | Resolves the current Dynamics 365 / Dataverse record to its Web API URL and opens it in a new tab. Ported from **God Mode**'s "Open Record in Web Api" button in [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM).                                                 |
 | **Auto refresh**    | Reloads the tab you started it on every N seconds (presets 5/10/30/60s, or custom). Keeps running while you use other panel tools; stops on **Stop** or when you close the panel.                                                                                                                    |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
@@ -71,7 +72,8 @@ is the exception — it reads no page, so it runs anywhere.
 > **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
 > **Tab order**, **Accessibility**, **Fonts**, **Assertions**, **Stacking**,
 > **Validation**, **Region**, **Harden selector**, the **JWT decoder**, the
-> **JSON Formatter**, **Query params**, **Logical names** and **Auto refresh**.
+> **JSON Formatter**, **Query params**, **Logical names**, **Open in Web API**
+> and **Auto refresh**.
 
 ### Region — detail
 
@@ -241,6 +243,31 @@ tool shows you.
 **Limits**: top frame only; a control on a tab that is not open has no box to
 label (the panel reports "labelled N of M"); labels are cleared when the form
 re-renders; capped at 500 controls.
+
+### Open in Web API — detail
+
+Dynamics 365 / Power Apps only. Resolves the record open in the current form to
+its **Dataverse Web API URL** — e.g.
+`https://org.crm.dynamics.com/api/data/v9.2/accounts(11111111-1111-1111-1111-111111111111)`
+— and offers it to copy or open in a new tab. Ported from **God Mode**'s "Open
+Record in Web Api" button, a mode of Level Up for Dynamics CRM.
+
+- **Detection is capability-based**, not a hostname match, same as Logical
+  names: it asks whether `window.Xrm` exists, so on-prem orgs on arbitrary
+  domains work, and an ordinary page is told plainly that it is not a Dynamics
+  form.
+- **The entity set name is resolved, not guessed.** `getEntityName()` returns
+  the entity's _logical_ name (e.g. `account`), which is not what the Web API
+  path needs — some entity set names are irregular, not just a naive plural.
+  The tool calls `Xrm.Utility.getEntityMetadata` for the real `EntitySetName`
+  (e.g. `accounts`) instead of hand-rolling pluralization.
+- **Runs in the page's MAIN world**, like Bypass Dynamics and Logical names,
+  because `window.Xrm` only exists there — a real injected function, never a
+  code string, and it returns plain JSON.
+
+**Limits**: needs a saved record — a new, unsaved form has no id and is
+reported as such; on-prem deployments must expose the Web API at the standard
+`/api/data/v9.2/` path (older orgs on `v9.1` or earlier are not detected).
 
 ### JWT decoder — detail
 
