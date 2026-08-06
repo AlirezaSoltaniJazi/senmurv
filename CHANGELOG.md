@@ -6,6 +6,27 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Notes** — saving a new note now clears the form for the next one, instead of
+  silently flipping into edit mode. Unsaved text (a new note or a mid-edit) is
+  auto-saved as you type, so closing the panel never loses it.
+- **Tools → Open in Web API** — resolve the current Dynamics 365 / Dataverse
+  record to its Web API URL and open it in a new tab — the same shortcut God
+  Mode (a mode of Level Up for Dynamics CRM) offers.
+- **Tools → Query params → Saved sets** — save the whole builder (base URL,
+  every param row, and the hash) as one named preset; a chip loads the whole
+  combination back into the builder in one click.
+- **Tools → search** — a search box in the Tools launcher filters the list by a
+  tool's name or by what it does.
+- **Tools → pin favourites** — pin up to 5 tools to the top of the launcher as
+  compact quick-access chips, so your most-used tools are never a scroll away.
+- **Tools → icons** — every tool now has its own icon, shown in the launcher
+  list, its pinned chip, and its own header.
+- **Zoom shortcuts** — Cmd/Ctrl **+** / **-** zooms the panel in/out and Cmd/Ctrl
+  **0** resets it, mirroring the browser's own zoom shortcut (Ctrl on
+  Windows/Linux, Cmd on macOS).
+
 ## [0.7.0] - 2026-08-01
 
 ### Added

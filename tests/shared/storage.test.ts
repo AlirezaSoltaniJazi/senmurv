@@ -465,19 +465,15 @@ describe('prefs storage', () => {
     expect((await getPrefs()).autoReloadOnChange).toBeUndefined();
   });
 
-  it('reads pinnedTools: drops unknown keys, dedupes, and caps at MAX_PINNED_TOOLS', async () => {
+  it('reads pinnedTools: dedupes and caps at MAX_PINNED_TOOLS', async () => {
+    // This layer only checks shape (string, non-empty, deduped, capped) — not
+    // whether an entry is still a real ToolKey. That check is deliberately
+    // done by the sidepanel's validPinnedTools (shared/tools.test.ts), not
+    // here, so the service worker's bundle never needs a value import of the
+    // TOOLS registry (see the comment on readPinnedTools).
     store[STORAGE_KEYS.PREFS] = {
       fontSize: 'medium',
-      pinnedTools: [
-        'bypass',
-        'not-a-real-tool',
-        'bypass',
-        'measure',
-        'color',
-        'a11y',
-        'font',
-        'assert',
-      ],
+      pinnedTools: ['bypass', 'bypass', 'measure', 'color', 'a11y', 'font', 'assert'],
     };
     expect((await getPrefs()).pinnedTools).toEqual(['bypass', 'measure', 'color', 'a11y', 'font']);
 

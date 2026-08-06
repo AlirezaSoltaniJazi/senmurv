@@ -236,6 +236,17 @@ export function findTool(key: ToolKey): ToolDescriptor {
   return TOOLS.find((t) => t.key === key) ?? first;
 }
 
+/**
+ * Keep only entries that are still real ToolKeys — drops a stale key left
+ * over from a renamed/removed tool. Storage only validates shape (see
+ * readPinnedTools in shared/storage.ts); this is where a persisted pinned-
+ * tools list gets checked against the actual registry.
+ */
+export function validPinnedTools(keys: readonly string[]): ToolKey[] {
+  const validKeys = new Set<string>(TOOLS.map((t) => t.key));
+  return keys.filter((k): k is ToolKey => validKeys.has(k));
+}
+
 /** Whether a tool's label or blurb matches a launcher search query. Blank query matches everything. */
 export function matchesToolQuery(
   tool: Pick<ToolDescriptor, 'label' | 'blurb'>,

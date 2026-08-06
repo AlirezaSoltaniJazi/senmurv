@@ -11,7 +11,7 @@ import {
   MESSAGE_TYPES,
 } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
-import { togglePinned } from '@/shared/tools';
+import { togglePinned, validPinnedTools } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
@@ -140,7 +140,7 @@ export function App(): ReactElement {
         setFindTimeoutSeconds(res.value.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT);
         setTagColors(res.value.tagColors ?? {});
         setAutoReloadOnChange(res.value.autoReloadOnChange ?? false);
-        setPinnedTools(res.value.pinnedTools ?? []);
+        setPinnedTools(validPinnedTools(res.value.pinnedTools ?? []));
       }
     })();
     return () => {

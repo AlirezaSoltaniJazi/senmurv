@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findTool, matchesToolQuery, togglePinned, TOOLS } from '@/shared/tools';
+import { findTool, matchesToolQuery, togglePinned, TOOLS, validPinnedTools } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 
 describe('TOOLS registry', () => {
@@ -116,5 +116,24 @@ describe('togglePinned', () => {
     const pinned: ToolKey[] = ['bypass'];
     togglePinned(pinned, 'measure', 5);
     expect(pinned).toEqual(['bypass']);
+  });
+});
+
+describe('validPinnedTools', () => {
+  it('drops keys that are not real tools', () => {
+    expect(validPinnedTools(['bypass', 'not-a-real-tool', 'measure'])).toEqual([
+      'bypass',
+      'measure',
+    ]);
+  });
+
+  it('keeps every real tool key and preserves order', () => {
+    const keys = TOOLS.map((t) => t.key);
+    expect(validPinnedTools(keys)).toEqual(keys);
+  });
+
+  it('returns an empty array for an empty or all-invalid input', () => {
+    expect(validPinnedTools([])).toEqual([]);
+    expect(validPinnedTools(['nope'])).toEqual([]);
   });
 });

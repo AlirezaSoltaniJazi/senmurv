@@ -11,7 +11,6 @@ import {
   STORAGE_KEYS,
 } from '@/shared/constants';
 import { TAG_COLOR_COUNT } from '@/shared/tasks';
-import { TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import type {
   Checklist,
@@ -418,15 +417,21 @@ function isFontSize(value: unknown): value is FontSize {
 }
 
 /**
- * Validate a stored pinned-tools list: keep only real, deduplicated ToolKeys,
- * in their stored order, capped at MAX_PINNED_TOOLS.
+ * Validate a stored pinned-tools list: keep deduplicated, non-empty string
+ * entries, in their stored order, capped at MAX_PINNED_TOOLS. This layer only
+ * checks shape — whether an entry is still a REAL ToolKey (vs. a stale key
+ * from a renamed/removed tool) is filtered by the sidepanel's validPinnedTools
+ * (shared/tools.ts), which already has the live TOOLS registry in its own
+ * bundle. A value import of TOOLS here would pull shared/tools.ts into the
+ * service worker's bundle too, forking it into a shared chunk that collides
+ * in name with content/tools.ts's lazy Tools chunk (see
+ * tests/build/bundle-placement.test.ts).
  */
 function readPinnedTools(value: unknown): ToolKey[] | undefined {
   if (!Array.isArray(value)) return undefined;
-  const validKeys = new Set<string>(TOOLS.map((t) => t.key));
   const out: ToolKey[] = [];
   for (const v of value) {
-    if (typeof v === 'string' && validKeys.has(v) && !out.includes(v as ToolKey)) {
+    if (typeof v === 'string' && v.length > 0 && !out.includes(v as ToolKey)) {
       out.push(v as ToolKey);
     }
     if (out.length >= MAX_PINNED_TOOLS) break;
