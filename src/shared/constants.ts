@@ -185,6 +185,9 @@ export const FONT_PRESET_ZOOM = {
   xlarge: 1.3,
 } as const;
 
+/** How many tools can be pinned to the top of the Tools launcher at once. */
+export const MAX_PINNED_TOOLS = 5;
+
 /** Flow run-popup (in-page HUD) auto-close delay bounds + default, in seconds. */
 export const HUD_SECONDS_MIN = 1;
 export const HUD_SECONDS_MAX = 60;

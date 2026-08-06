@@ -29,6 +29,9 @@ export type ToolKey =
 export interface ToolDescriptor {
   readonly key: ToolKey;
   readonly label: string;
+  /** A single glyph identifying the tool at a glance — the launcher, its
+   * pinned chip and its own header all show `${icon} ${label}`. */
+  readonly icon: string;
   /** Standing hint shown under the title. States the tool's real limits. */
   readonly blurb: string;
   readonly mode: PageMode | null;
@@ -47,6 +50,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'bypass',
     label: 'Bypass',
+    icon: '🔓',
     blurb:
       'Strips client-side locks so you can drive a disabled or hidden form. The server can still reject the submit, and on a model-driven form it affects the view, not the model.',
     mode: null,
@@ -56,6 +60,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'sitedata',
     label: 'Site data',
+    icon: '🧹',
     blurb:
       "Clears this origin's storage. Chrome does not expose HTTP cache size or let extensions clear it per-origin — use Clear + hard reload for that.",
     mode: null,
@@ -65,6 +70,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'measure',
     label: 'Measure',
+    icon: '📏',
     blurb:
       'Drag a region, or hover an element for its box model. Numbers are CSS px in the top frame; page zoom changes them.',
     mode: 'measure',
@@ -74,6 +80,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'color',
     label: 'Colour',
+    icon: '🎨',
     blurb:
       'Reads an element’s colours in every format plus its WCAG contrast. Background images, gradients and ::before overlays are invisible to the ancestor walk and are flagged, not guessed.',
     mode: 'color',
@@ -83,6 +90,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'taborder',
     label: 'Tab order',
+    icon: '🔢',
     blurb:
       'Computed from the DOM — top frame only. Closed shadow roots, cross-origin frames, roving tabindex and JS focus managers are not visible.',
     mode: 'taborder',
@@ -92,6 +100,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'a11y',
     label: 'Accessibility',
+    icon: '♿',
     blurb:
       'WCAG A / AA / AAA checks. Automated testing catches roughly 30–40% of accessibility issues, and AAA coverage is thin by nature — this never replaces a manual audit.',
     mode: null,
@@ -101,6 +110,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'font',
     label: 'Fonts',
+    icon: '🔤',
     blurb:
       'Typography of the hovered element. Resolves the rendered face where it can and says so when it cannot.',
     mode: 'font',
@@ -110,6 +120,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'assert',
     label: 'Assertions',
+    icon: '✅',
     blurb:
       'Click an element to snapshot its state (text, value, checked, enabled, visible, attributes) and get copy-ready assertions for Playwright / Cypress / WebdriverIO / Selenium / Robot, targeted by its recommended locator.',
     mode: 'assert',
@@ -119,6 +130,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'stack',
     label: 'Stacking',
+    icon: '🗂️',
     blurb:
       'Click a point to see every element stacked under it and which one receives the click — finds the overlay behind an “element click intercepted” failure. Top frame only.',
     mode: 'stack',
@@ -128,6 +140,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'validation',
     label: 'Validation',
+    icon: '📋',
     blurb:
       'Click a form field to read every client-side validation rule it declares (required, length, range, step, pattern, autocomplete) and a suggested boundary-test checklist. Declared constraints only — the server may enforce more.',
     mode: 'validation',
@@ -137,6 +150,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'region',
     label: 'Region',
+    icon: '🌍',
     blurb:
       'Make page JavaScript read another country’s clock, timezone, locale and geolocation. Client-side only — your IP and the Accept-Language header are unchanged, and a reload clears it.',
     mode: null,
@@ -146,6 +160,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'harden',
     label: 'Harden selector',
+    icon: '🛡️',
     blurb:
       'Paste a fragile selector to score its robustness, name why it will break, and get the picker’s recommended replacement. Resolves against the current page, top frame only.',
     mode: null,
@@ -155,6 +170,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'jwt',
     label: 'JWT decoder',
+    icon: '🔑',
     blurb:
       'Decodes a JWT’s header and claims and shows how long it is valid. The signature is shown but never verified, and the token stays on your machine.',
     mode: null,
@@ -164,6 +180,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'json',
     label: 'JSON Formatter',
+    icon: '🧾',
     blurb:
       'Pretty-prints or minifies JSON and shows it as a collapsible tree. Parsing is strict JSON (no comments or trailing commas); everything stays on your machine.',
     mode: null,
@@ -173,6 +190,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'queryparams',
     label: 'Query params',
+    icon: '🔗',
     blurb:
       'Read the current URL’s query params — copy the record id or any custom param — then edit them and open the rebuilt URL in a new tab or this one. Reads the address bar only; it never touches the page.',
     mode: null,
@@ -182,6 +200,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'logicalnames',
     label: 'Logical names',
+    icon: '🏷️',
     blurb:
       'Labels every field, tab and section on a Dynamics 365 / Power Apps form with its logical (schema) name. Reads the Xrm client API, so it does nothing on an ordinary page; top frame only, and the labels clear when the form re-renders.',
     mode: 'logicalnames',
@@ -191,6 +210,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'webapi',
     label: 'Open in Web API',
+    icon: '📡',
     blurb:
       'Resolves the current record to its Dataverse Web API URL and opens it in a new tab. Reads the Xrm client API, so it does nothing on an ordinary (non-Dynamics) page.',
     mode: null,
@@ -200,6 +220,7 @@ export const TOOLS: readonly ToolDescriptor[] = [
   {
     key: 'autorefresh',
     label: 'Auto refresh',
+    icon: '🔄',
     blurb:
       'Reloads the tab you start it on every N seconds. Keeps going while you use other panel tools; stops on Stop or when you close the panel. Targets that one tab, not whatever is focused later.',
     mode: null,
@@ -223,4 +244,15 @@ export function matchesToolQuery(
   const q = query.trim().toLowerCase();
   if (q === '') return true;
   return tool.label.toLowerCase().includes(q) || tool.blurb.toLowerCase().includes(q);
+}
+
+/**
+ * Toggle `key` in a pinned-tools list: unpins if already pinned, else pins —
+ * unless `pinned` is already at `max`, in which case adding is a no-op (same
+ * array reference back, so callers can detect it with `next === pinned`).
+ */
+export function togglePinned(pinned: ToolKey[], key: ToolKey, max: number): ToolKey[] {
+  if (pinned.includes(key)) return pinned.filter((k) => k !== key);
+  if (pinned.length >= max) return pinned;
+  return [...pinned, key];
 }

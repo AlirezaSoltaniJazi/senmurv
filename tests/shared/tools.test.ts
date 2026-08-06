@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { findTool, matchesToolQuery, TOOLS } from '@/shared/tools';
+import { findTool, matchesToolQuery, togglePinned, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 
 describe('TOOLS registry', () => {
@@ -33,6 +33,12 @@ describe('TOOLS registry', () => {
       expect(tool.label.length).toBeGreaterThan(0);
       expect(tool.blurb.length).toBeGreaterThan(20);
     }
+  });
+
+  it('gives every tool its own non-empty icon — no two tools share one', () => {
+    const icons = TOOLS.map((t) => t.icon);
+    for (const icon of icons) expect(icon.length).toBeGreaterThan(0);
+    expect(new Set(icons).size).toBe(icons.length);
   });
 
   it('only assigns an in-page mode to tools that actually enter one', () => {
@@ -84,5 +90,31 @@ describe('matchesToolQuery', () => {
       const word = tool.label.split(' ')[0]!;
       expect(matchesToolQuery(tool, word)).toBe(true);
     }
+  });
+});
+
+describe('togglePinned', () => {
+  it('pins a new key by appending it', () => {
+    expect(togglePinned(['bypass'], 'measure', 5)).toEqual(['bypass', 'measure']);
+  });
+
+  it('unpins an already-pinned key', () => {
+    expect(togglePinned(['bypass', 'measure'], 'bypass', 5)).toEqual(['measure']);
+  });
+
+  it('is a no-op (same array reference) when adding past the cap', () => {
+    const pinned: ToolKey[] = ['bypass', 'measure', 'color', 'a11y', 'font'];
+    expect(togglePinned(pinned, 'stack', 5)).toBe(pinned);
+  });
+
+  it('still allows unpinning while at the cap', () => {
+    const pinned: ToolKey[] = ['bypass', 'measure', 'color', 'a11y', 'font'];
+    expect(togglePinned(pinned, 'font', 5)).toEqual(['bypass', 'measure', 'color', 'a11y']);
+  });
+
+  it('does not mutate the input array', () => {
+    const pinned: ToolKey[] = ['bypass'];
+    togglePinned(pinned, 'measure', 5);
+    expect(pinned).toEqual(['bypass']);
   });
 });

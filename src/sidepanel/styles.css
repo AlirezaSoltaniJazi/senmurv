@@ -771,7 +771,10 @@ select,
 
 /* Recorder: step position number, optional name, and the "Move to…" row */
 .step-num {
-  font: 600 11px ui-monospace, Menlo, monospace;
+  font:
+    600 11px ui-monospace,
+    Menlo,
+    monospace;
   color: var(--muted);
   flex: 0 0 auto;
 }
@@ -1566,6 +1569,21 @@ input[type='checkbox'] {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.tool-row-wrap {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+.tool-row-wrap .tool-row {
+  flex: 1;
+  min-width: 0;
+}
+.pin-btn {
+  flex: none;
+}
+.pin-btn.pinned {
+  color: var(--accent);
 }
 .tool-row {
   display: block;

@@ -57,7 +57,9 @@ export function ToolShell({ tool, onBack, children }: Props): ReactElement {
           ← Tools
         </button>
       </div>
-      <h2 className="section-title">{tool.label}</h2>
+      <h2 className="section-title">
+        {tool.icon} {tool.label}
+      </h2>
       <p className="hint">{tool.blurb}</p>
       {probe.status === 'checking' && <p className="hint">Checking the page…</p>}
       {probe.status === 'error' && <p className="error">{probe.message}</p>}

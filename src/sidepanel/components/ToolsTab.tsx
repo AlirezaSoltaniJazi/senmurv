@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { MAX_PINNED_TOOLS } from '@/shared/constants';
 import { findTool, matchesToolQuery, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
@@ -32,6 +33,9 @@ interface Props {
   autoRefresh: { tabId: number; seconds: number } | null;
   onStartAutoRefresh: (seconds: number) => void;
   onStopAutoRefresh: () => void;
+  /** Pinned tool keys, in pin order — shown as quick-access chips above the list. */
+  pinnedTools: ToolKey[];
+  onTogglePin: (tool: ToolKey) => void;
 }
 
 /**
@@ -46,6 +50,8 @@ export function ToolsTab({
   autoRefresh,
   onStartAutoRefresh,
   onStopAutoRefresh,
+  pinnedTools,
+  onTogglePin,
 }: Props): ReactElement {
   const [query, setQuery] = useState('');
 
@@ -57,9 +63,38 @@ export function ToolsTab({
 
   if (tool === null) {
     const shown = TOOLS.filter((t) => matchesToolQuery(t, query));
+    const atPinCap = pinnedTools.length >= MAX_PINNED_TOOLS;
     return (
       <div className="tab">
         <p className="hint">Inspect and unblock the page. Pick a tool to start.</p>
+
+        {pinnedTools.length > 0 && (
+          <>
+            <h3 className="section-title">Pinned</h3>
+            <div className="chips">
+              {pinnedTools.map((key) => {
+                const t = findTool(key);
+                return (
+                  <Fragment key={key}>
+                    <button type="button" className="chip" onClick={() => setTool(key)}>
+                      {t.icon} {t.label}
+                    </button>
+                    <button
+                      type="button"
+                      className="chip danger"
+                      title={`Unpin ${t.label}`}
+                      aria-label={`Unpin ${t.label}`}
+                      onClick={() => onTogglePin(key)}
+                    >
+                      ✕
+                    </button>
+                  </Fragment>
+                );
+              })}
+            </div>
+          </>
+        )}
+
         <div className="row">
           <input
             className="name-input"
@@ -73,14 +108,36 @@ export function ToolsTab({
           <p className="hint">No tool matches that search.</p>
         ) : (
           <ul className="tool-list">
-            {shown.map((t) => (
-              <li key={t.key}>
-                <button type="button" className="tool-row" onClick={() => setTool(t.key)}>
-                  <span className="tool-row-name">{t.label}</span>
-                  <span className="tool-row-blurb">{t.blurb}</span>
-                </button>
-              </li>
-            ))}
+            {shown.map((t) => {
+              const pinned = pinnedTools.includes(t.key);
+              return (
+                <li key={t.key} className="tool-row-wrap">
+                  <button type="button" className="tool-row" onClick={() => setTool(t.key)}>
+                    <span className="tool-row-name">
+                      {t.icon} {t.label}
+                    </span>
+                    <span className="tool-row-blurb">{t.blurb}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className={pinned ? 'icon-btn pin-btn pinned' : 'icon-btn pin-btn'}
+                    title={
+                      pinned
+                        ? `Unpin ${t.label}`
+                        : atPinCap
+                          ? `Up to ${MAX_PINNED_TOOLS} pinned tools — unpin one first`
+                          : `Pin ${t.label}`
+                    }
+                    aria-label={pinned ? `Unpin ${t.label}` : `Pin ${t.label}`}
+                    aria-pressed={pinned}
+                    disabled={!pinned && atPinCap}
+                    onClick={() => onTogglePin(t.key)}
+                  >
+                    {pinned ? '★' : '☆'}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>

@@ -465,6 +465,30 @@ describe('prefs storage', () => {
     expect((await getPrefs()).autoReloadOnChange).toBeUndefined();
   });
 
+  it('reads pinnedTools: drops unknown keys, dedupes, and caps at MAX_PINNED_TOOLS', async () => {
+    store[STORAGE_KEYS.PREFS] = {
+      fontSize: 'medium',
+      pinnedTools: [
+        'bypass',
+        'not-a-real-tool',
+        'bypass',
+        'measure',
+        'color',
+        'a11y',
+        'font',
+        'assert',
+      ],
+    };
+    expect((await getPrefs()).pinnedTools).toEqual(['bypass', 'measure', 'color', 'a11y', 'font']);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).pinnedTools).toBeUndefined();
+
+    // A non-array is ignored rather than coerced.
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', pinnedTools: 'bypass' };
+    expect((await getPrefs()).pinnedTools).toBeUndefined();
+  });
+
   it('falls back to the default hudSeconds when absent or non-numeric', async () => {
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
     expect((await getPrefs()).hudSeconds).toBe(3);

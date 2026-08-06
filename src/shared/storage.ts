@@ -7,9 +7,12 @@ import {
   HUD_SECONDS_DEFAULT,
   HUD_SECONDS_MAX,
   HUD_SECONDS_MIN,
+  MAX_PINNED_TOOLS,
   STORAGE_KEYS,
 } from '@/shared/constants';
 import { TAG_COLOR_COUNT } from '@/shared/tasks';
+import { TOOLS } from '@/shared/tools';
+import type { ToolKey } from '@/shared/tools';
 import type {
   Checklist,
   FontSize,
@@ -414,6 +417,23 @@ function isFontSize(value: unknown): value is FontSize {
   return value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge';
 }
 
+/**
+ * Validate a stored pinned-tools list: keep only real, deduplicated ToolKeys,
+ * in their stored order, capped at MAX_PINNED_TOOLS.
+ */
+function readPinnedTools(value: unknown): ToolKey[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const validKeys = new Set<string>(TOOLS.map((t) => t.key));
+  const out: ToolKey[] = [];
+  for (const v of value) {
+    if (typeof v === 'string' && validKeys.has(v) && !out.includes(v as ToolKey)) {
+      out.push(v as ToolKey);
+    }
+    if (out.length >= MAX_PINNED_TOOLS) break;
+  }
+  return out.length > 0 ? out : undefined;
+}
+
 /** Validate a stored tag→palette-index map, keeping only well-formed entries. */
 function readTagColors(value: unknown): Record<string, number> | undefined {
   if (typeof value !== 'object' || value === null) return undefined;
@@ -455,6 +475,8 @@ export async function getPrefs(): Promise<Prefs> {
   const tagColors = readTagColors(v.tagColors);
   if (tagColors) prefs.tagColors = tagColors;
   if (typeof v.autoReloadOnChange === 'boolean') prefs.autoReloadOnChange = v.autoReloadOnChange;
+  const pinnedTools = readPinnedTools(v.pinnedTools);
+  if (pinnedTools) prefs.pinnedTools = pinnedTools;
   return prefs;
 }
 
