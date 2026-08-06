@@ -4,6 +4,7 @@ import type { RuntimeMessage } from '@/shared/messages';
 import {
   deleteChecklist,
   deleteNote,
+  deleteQueryParamSet,
   deleteScript,
   deleteTask,
   getChecklists,
@@ -11,6 +12,7 @@ import {
   getPrefs,
   deleteProfile,
   getProfiles,
+  getQueryParamSets,
   getScripts,
   getTasks,
   saveScripts,
@@ -19,6 +21,7 @@ import {
   upsertProfileStored,
   upsertChecklist,
   upsertNote,
+  upsertQueryParamSet,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
@@ -42,6 +45,7 @@ import type {
   TimeEntry,
   WebStorageSnapshot,
   XrmReport,
+  XrmWebApiRecord,
 } from '@/shared/types';
 
 // ---------------------------------------------------------------------------
@@ -513,6 +517,94 @@ async function bypassXrm(tabId: number): Promise<Result<XrmReport>> {
       | undefined;
     if (!outcome?.ok || !outcome.value) {
       return { ok: false, error: outcome?.error ?? 'The Dynamics bypass returned nothing.' };
+    }
+    return { ok: true, value: outcome.value };
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+/**
+ * Resolve the current Dynamics record to its Dataverse Web API URL — ported
+ * from God Mode's "Open record in Web API" button (Level Up for Dynamics CRM).
+ *
+ * Runs in the page's MAIN world because the Xrm client API only exists in the
+ * page's own realm. NOTE: this passes a serialized FUNCTION, not a code string
+ * — it uses neither `eval` nor `new Function`, so it is NOT a second instance
+ * of the sanctioned runner exception. See agents.md → Security.
+ *
+ * Serialized, therefore self-contained: no closures, no imports, and the Xrm
+ * shapes are declared inline (types erase; only runtime code is transferred).
+ * `Xrm.Utility.getEntityMetadata` is async, so this func is async too —
+ * `chrome.scripting.executeScript` awaits a returned promise before handing
+ * back `results[0].result` (see probeStorageInPage for the same shape).
+ */
+async function readXrmWebApiUrl(): Promise<{
+  ok: boolean;
+  value?: { entityLogicalName: string; entitySetName: string; recordId: string; url: string };
+  error?: string;
+}> {
+  interface XrmEntity {
+    getId(): string;
+    getEntityName(): string;
+  }
+  interface XrmPageContext {
+    getClientUrl(): string;
+  }
+  interface XrmPage {
+    data: { entity: XrmEntity };
+    context: XrmPageContext;
+  }
+  interface XrmEntityMetadata {
+    EntitySetName: string;
+  }
+  interface XrmUtility {
+    getEntityMetadata(entityLogicalName: string, attributes: string[]): Promise<XrmEntityMetadata>;
+  }
+
+  try {
+    const xrm = (window as unknown as { Xrm?: { Page?: XrmPage; Utility?: XrmUtility } }).Xrm;
+    const page = xrm?.Page;
+    if (!page || !xrm?.Utility) {
+      return {
+        ok: false,
+        error: 'No Dynamics form here — window.Xrm is not present on this page.',
+      };
+    }
+
+    const recordId = page.data.entity.getId().replace(/[{}]/g, '');
+    const isUnsaved = recordId === '' || /^0+$/.test(recordId.replace(/-/g, ''));
+    if (isUnsaved) {
+      return {
+        ok: false,
+        error: 'This record has not been saved yet — it has no id to open in the Web API.',
+      };
+    }
+
+    const entityLogicalName = page.data.entity.getEntityName();
+    const metadata = await xrm.Utility.getEntityMetadata(entityLogicalName, []);
+    const entitySetName = metadata.EntitySetName;
+    const clientUrl = page.context.getClientUrl();
+    const url = `${clientUrl}/api/data/v9.2/${entitySetName}(${recordId})`;
+
+    return { ok: true, value: { entityLogicalName, entitySetName, recordId, url } };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  }
+}
+
+async function xrmWebApiUrl(tabId: number): Promise<Result<XrmWebApiRecord>> {
+  try {
+    const results = await chrome.scripting.executeScript({
+      target: { tabId },
+      world: 'MAIN',
+      func: readXrmWebApiUrl,
+    });
+    const outcome = results[0]?.result as
+      | { ok: boolean; value?: XrmWebApiRecord; error?: string }
+      | undefined;
+    if (!outcome?.ok || !outcome.value) {
+      return { ok: false, error: outcome?.error ?? 'Resolving the Web API URL returned nothing.' };
     }
     return { ok: true, value: outcome.value };
   } catch (err) {
@@ -1538,6 +1630,24 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
+      case MESSAGE_TYPES.GET_QUERY_PARAM_SETS:
+        getQueryParamSets()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_QUERY_PARAM_SET:
+        upsertQueryParamSet(message.payload.set)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_QUERY_PARAM_SET:
+        deleteQueryParamSet(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
       case MESSAGE_TYPES.RUN_SCRIPT:
         withActiveRunnableTab((tabId) => runScriptInPage(tabId, message.payload.code)).then(
           sendResponse
@@ -1592,6 +1702,10 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 
       case MESSAGE_TYPES.BYPASS_XRM:
         withActiveRunnableTab((tabId) => bypassXrm(tabId)).then(sendResponse);
+        return true;
+
+      case MESSAGE_TYPES.GET_XRM_WEB_API_URL:
+        withActiveRunnableTab((tabId) => xrmWebApiUrl(tabId)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.SHOW_LOGICAL_NAMES:

@@ -12,7 +12,7 @@
   "name": "Senmurv",
   "version": "1.0.0",
   "description": "QA helper — generate test data, find element locators, and run JS scripts from a Side Panel.",
-  "permissions": ["sidePanel", "scripting", "storage", "tabs"],
+  "permissions": ["sidePanel", "scripting", "storage", "tabs", "cookies"],
   "host_permissions": ["<all_urls>"],
   "background": {
     "service_worker": "src/background/service-worker.ts",
@@ -38,9 +38,10 @@
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["src/content/picker.ts"],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ],
   "web_accessible_resources": [],
@@ -62,26 +63,27 @@ Every permission MUST have a justification comment in the codebase:
 
 | Permission                     | Justification                                                  |
 | ------------------------------ | -------------------------------------------------------------- |
-| `sidePanel`                    | Core surface — all three tools live in the Side Panel          |
+| `sidePanel`                    | Core surface — every tab lives in the Side Panel               |
 | `scripting`                    | Run user scripts in the page's MAIN world (`executeScript`)    |
 | `storage`                      | Persist saved scripts and preferences (`chrome.storage.local`) |
 | `tabs`                         | Query the active tab and message the content picker            |
+| `cookies`                      | Read/write the current site's cookies for the Cookies tab      |
 | `host_permissions: <all_urls>` | Picker + script-runner must work on any page the user opens    |
 
 ---
 
 ## Content Script Declaration (The Picker)
 
-senmurv declares exactly one content script — the locator picker. It stays idle until it receives `START_PICK`:
+senmurv declares exactly one content script — the locator picker. It stays idle until it receives `START_PICK`. Its `matches` is deliberately narrower than `host_permissions` (`http`/`https` only, `all_frames: false`) — the picker only needs itself declared upfront on ordinary pages, while `host_permissions: <all_urls>` lets the script-runner and injected-content-script fallback (`injectPicker` in the service worker) still reach other schemes on demand:
 
 ```json
 {
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
+      "matches": ["http://*/*", "https://*/*"],
       "js": ["src/content/picker.ts"],
-      "css": [],
-      "run_at": "document_idle"
+      "run_at": "document_idle",
+      "all_frames": false
     }
   ]
 }

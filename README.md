@@ -26,7 +26,7 @@ Writing browser tests means constantly answering the same questions: _what's a s
 
 ### 🎲 Generate Random Data
 
-Locale-aware test data via [`@faker-js/faker`](https://fakerjs.dev/) — first/last name, phone, address, postal code, email, date of birth. Switch **country/locale** (15 supported — UK, US, Portugal, Belgium, Netherlands, Switzerland, Germany, Italy, France, Spain, Norway, Sweden, Finland, Czech Republic, Austria), toggle **phone country code** on/off, copy any field, or regenerate.
+Locale-aware test data via [`@faker-js/faker`](https://fakerjs.dev/) — first/last name, phone, address, postal code, region/county, email, date of birth. Switch **country/locale** (15 supported — UK, US, Portugal, Belgium, Netherlands, Switzerland, Germany, Italy, France, Spain, Norway, Sweden, Finland, Czech Republic, Austria), toggle **phone country code** on/off, copy any field, or regenerate.
 
 ### 🎯 Find Element Locator
 
@@ -43,6 +43,18 @@ data-testid › formControlName › id › value / aria-label › role + name �
 ### 📝 Execute JS Script
 
 Save, edit, **format** (pretty-print), and **import / export** your scripts (and decode `javascript:` bookmarklets), then run your own JavaScript in the page's context — like a bookmarklet manager, but in the side panel.
+
+### 🧰 Tools
+
+A launcher of page-inspection and utility tools: **Bypass** (strip client-side locks), **Site data** (clear this origin's storage), **Measure**, **Colour**, **Tab order**, **Accessibility** (WCAG A/AA/AAA), **Fonts**, **Assertions**, **Stacking**, **Validation**, **Region** (emulate another country's clock/timezone/locale/geolocation), **Harden selector**, **JWT decoder**, **JSON Formatter**, **Query params**, **Logical names** (Dynamics 365 / Power Apps), and **Auto refresh**. See [docs/tools.md](docs/tools.md) for details.
+
+### 🍪 Cookies
+
+View and edit every cookie for the current site, including the HttpOnly ones a page can't show you.
+
+### 🗄️ Storage
+
+View and edit the site's localStorage and sessionStorage. Both Cookies and Storage support **value profiles** — save the values you keep switching between while testing (locales, feature flags, logins) and apply one in a click.
 
 ### ⏺ Recorder
 
@@ -62,7 +74,7 @@ Jot down quick free-form notes (optional title + body), newest first.
 
 ### ⚙️ Settings & toolbar
 
-Choose the panel **font size** (Small / Medium / Large). A toolbar **Refresh** re-syncs data across open panels, and **Open in full page** launches the whole toolkit in a browser tab.
+Choose the panel **font size** (Small / Medium / Large / X-Large, plus a fine-tune slider), set the **Flow run-popup auto-close** delay and **element-find timeout**, and manage **Track tags** (rename / recolour / delete). A toolbar **Refresh** re-syncs data across open panels, and **Open in full page** launches the whole toolkit in a browser tab.
 
 ## Install
 
@@ -97,13 +109,13 @@ npm run package        # build + zip → release/senmurv-<version>.zip
 
 ### Tech stack
 
-| Layer    | Tech                                                           |
-| -------- | -------------------------------------------------------------- |
-| Language | TypeScript (strict, no `any`)                                  |
-| UI       | React 19 + Chrome Side Panel                                   |
-| Build    | Vite + [@crxjs/vite-plugin](https://crxjs.dev/)                |
-| Tests    | Vitest + happy-dom                                             |
-| APIs     | `chrome.sidePanel`, `chrome.scripting`, `chrome.storage.local` |
+| Layer    | Tech                                                                             |
+| -------- | -------------------------------------------------------------------------------- |
+| Language | TypeScript (strict, no `any`)                                                    |
+| UI       | React 19 + Chrome Side Panel                                                     |
+| Build    | Vite + [@crxjs/vite-plugin](https://crxjs.dev/)                                  |
+| Tests    | Vitest + happy-dom                                                               |
+| APIs     | `chrome.sidePanel`, `chrome.scripting`, `chrome.storage.local`, `chrome.cookies` |
 
 ## Releasing
 

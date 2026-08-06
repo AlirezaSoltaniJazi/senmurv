@@ -6,6 +6,7 @@ export const STORAGE_KEYS = {
   NOTES: 'senmurv:notes',
   PREFS: 'senmurv:prefs',
   PROFILES: 'senmurv:profiles',
+  QUERY_PARAM_SETS: 'senmurv:queryParamSets',
 } as const;
 
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
@@ -67,6 +68,10 @@ export const MESSAGE_TYPES = {
   GET_BYPASS_STATE: 'GET_BYPASS_STATE',
   BYPASS_XRM: 'BYPASS_XRM',
   BYPASS_STATE_CHANGED: 'BYPASS_STATE_CHANGED',
+  // Web API URL — worker-local MAIN-world read (same shape as BYPASS_XRM) that
+  // resolves the current Dynamics record into its Dataverse Web API URL (God
+  // Mode's "Open record in Web API").
+  GET_XRM_WEB_API_URL: 'GET_XRM_WEB_API_URL',
   // Site data
   PROBE_SITE_STORAGE: 'PROBE_SITE_STORAGE',
   CLEAR_SITE_DATA: 'CLEAR_SITE_DATA',
@@ -95,6 +100,11 @@ export const MESSAGE_TYPES = {
   GET_PROFILES: 'GET_PROFILES',
   SAVE_PROFILE: 'SAVE_PROFILE',
   DELETE_PROFILE: 'DELETE_PROFILE',
+  // Query param sets — a named snapshot of the Query params builder (base +
+  // every row + hash), recalled as one chip instead of one param at a time.
+  GET_QUERY_PARAM_SETS: 'GET_QUERY_PARAM_SETS',
+  SAVE_QUERY_PARAM_SET: 'SAVE_QUERY_PARAM_SET',
+  DELETE_QUERY_PARAM_SET: 'DELETE_QUERY_PARAM_SET',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -174,6 +184,9 @@ export const FONT_PRESET_ZOOM = {
   large: 1.15,
   xlarge: 1.3,
 } as const;
+
+/** How many tools can be pinned to the top of the Tools launcher at once. */
+export const MAX_PINNED_TOOLS = 5;
 
 /** Flow run-popup (in-page HUD) auto-close delay bounds + default, in seconds. */
 export const HUD_SECONDS_MIN = 1;

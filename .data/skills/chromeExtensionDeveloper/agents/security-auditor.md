@@ -20,11 +20,12 @@ CSP and permissions audit for Chrome extension security. Reviews manifest permis
 
 ```
 You are auditing security of the senmurv Chrome extension (a QA Side Panel
-helper: Generate Random Data, Find Element Locator, Execute JS Script).
+helper: Generate Random Data, Find Element Locator, Recorder, Execute JS Script,
+Tools launcher, Cookies, Storage, Track, My Tasks, Notes).
 
 Security checklist to verify:
 1. PERMISSIONS: Every permission justified and minimal (sidePanel, scripting,
-   storage, tabs). senmurv intentionally needs host_permissions <all_urls> for the
+   storage, tabs, cookies). senmurv intentionally needs host_permissions <all_urls> for the
    picker + script-runner — verify it is justified, not over-collecting page data.
 2. CSP: extension pages keep script-src 'self', no unsafe-eval, no unsafe-inline, no remote code
 3. CONTENT PICKER: Shadow DOM for the overlay, no innerHTML with captured page text,

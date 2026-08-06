@@ -2,10 +2,16 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   FIND_TIMEOUT_SECONDS_DEFAULT,
+  FONT_PRESET_ZOOM,
+  FONT_SCALE_MAX,
+  FONT_SCALE_MIN,
+  FONT_SCALE_STEP,
   HUD_SECONDS_DEFAULT,
+  MAX_PINNED_TOOLS,
   MESSAGE_TYPES,
 } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
+import { togglePinned, validPinnedTools } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
@@ -93,6 +99,8 @@ export function App(): ReactElement {
   );
   // Track-tag colour overrides (tag → palette index), persisted in prefs.
   const [tagColors, setTagColors] = useState<Record<string, number>>({});
+  // Tools pinned to the top of the launcher, in pin order; persisted in prefs.
+  const [pinnedTools, setPinnedTools] = useState<ToolKey[]>([]);
   // Reload the page after a Cookies / Storage change so the site picks it up.
   const [autoReloadOnChange, setAutoReloadOnChange] = useState(false);
   // Auto-refresh (Tools): the tab being reloaded + its interval, or null when off.
@@ -132,6 +140,7 @@ export function App(): ReactElement {
         setFindTimeoutSeconds(res.value.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT);
         setTagColors(res.value.tagColors ?? {});
         setAutoReloadOnChange(res.value.autoReloadOnChange ?? false);
+        setPinnedTools(validPinnedTools(res.value.pinnedTools ?? []));
       }
     })();
     return () => {
@@ -147,6 +156,7 @@ export function App(): ReactElement {
     if (fontScale !== undefined) prefs.fontScale = fontScale;
     if (Object.keys(tagColors).length > 0) prefs.tagColors = tagColors;
     if (autoReloadOnChange) prefs.autoReloadOnChange = true;
+    if (pinnedTools.length > 0) prefs.pinnedTools = pinnedTools;
     return prefs;
   }
   function persistPrefs(prefs: Prefs): void {
@@ -195,6 +205,46 @@ export function App(): ReactElement {
     else delete prefs.tagColors;
     persistPrefs(prefs);
   }
+
+  // Pin/unpin from the Tools launcher. Adding past MAX_PINNED_TOOLS is a no-op
+  // (the launcher already disables that button; togglePinned is the backstop).
+  function togglePinnedTool(key: ToolKey): void {
+    const next = togglePinned(pinnedTools, key, MAX_PINNED_TOOLS);
+    if (next === pinnedTools) return;
+    setPinnedTools(next);
+    const prefs = currentPrefs();
+    if (next.length > 0) prefs.pinnedTools = next;
+    else delete prefs.pinnedTools;
+    persistPrefs(prefs);
+  }
+
+  // Cmd/Ctrl + Plus/Minus/0 zooms the panel — the same shortcut the browser
+  // itself uses, since a chrome.sidePanel document doesn't share the host
+  // tab's native zoom. changeFontScale/changeFontSize are recreated every
+  // render (not memoized), so listing them re-subscribes the listener each
+  // render too — cheap, and the only way to guarantee it never reads stale
+  // prefs (currentPrefs() closes over several independent state slices).
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent): void {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        const base = fontScale ?? FONT_PRESET_ZOOM[fontSize];
+        const next = Math.round((base + FONT_SCALE_STEP) * 100) / 100;
+        changeFontScale(Math.min(FONT_SCALE_MAX, next));
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        const base = fontScale ?? FONT_PRESET_ZOOM[fontSize];
+        const next = Math.round((base - FONT_SCALE_STEP) * 100) / 100;
+        changeFontScale(Math.max(FONT_SCALE_MIN, next));
+      } else if (e.key === '0') {
+        e.preventDefault();
+        changeFontSize('medium');
+      }
+    }
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [fontScale, fontSize, changeFontScale, changeFontSize]);
 
   // Auto-refresh: start reloads the tab that's active right now, every N seconds.
   const startAutoRefresh = useCallback((seconds: number) => {
@@ -291,6 +341,8 @@ export function App(): ReactElement {
               autoRefresh={autoRefresh}
               onStartAutoRefresh={startAutoRefresh}
               onStopAutoRefresh={stopAutoRefresh}
+              pinnedTools={pinnedTools}
+              onTogglePin={togglePinnedTool}
             />
           )}
           {tab === 'cookies' && (

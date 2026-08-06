@@ -4,7 +4,7 @@
 
 Locale-aware test data via `@faker-js/faker`.
 
-- **Fields**: first name, last name, phone, address, postal code, email, date of birth.
+- **Fields**: first name, last name, phone, address, postal code, region/county, email, date of birth.
 - **Locale switcher**: default `en_GB`; switchable (e.g. `en_US`, `de`, `fr`). Each locale uses the matching faker instance.
 - **Actions**: per-field **Copy** (`navigator.clipboard.writeText`), and **Regenerate** for a fresh set.
 - Pure generation lives in `src/shared/faker-data.ts`; the tab is a thin renderer.
@@ -14,7 +14,7 @@ Locale-aware test data via `@faker-js/faker`.
 Pick an element and get ranked, copy-ready locators — each annotated with how many elements it matches on the live page (**unique** / _N_ matches / no match).
 
 - **Picker**: click **Pick element** → the page content script highlights elements on hover (Shadow-DOM overlay) and captures the next click (suppressing the page's own handler).
-- **Ranking** (`LOCATOR_PRIORITY`): `data-testid` (and `data-test`/`data-cy`/`data-qa`) › `id` › role + accessible name › unique CSS selector › relative XPath (absolute XPath as fallback). The top viable strategy is marked **recommended**.
+- **Ranking** (`LOCATOR_PRIORITY`): `data-testid` (and `data-test`/`data-cy`/`data-qa`) › Angular `formcontrolname` › `id` › attribute (radio/`mat-radio-button` `value`) › `aria-label` › role + accessible name › unique CSS selector › relative XPath (absolute XPath as fallback). The top viable strategy is marked **recommended**.
 - **Match count / uniqueness**: every locator shows its live match count, so you can immediately tell whether a selector is unique on the page.
 - **Test a locator**: type any CSS selector or XPath (e.g. `mat-label` or `//button[@type='submit']`) and see how many elements match — no picking required. CSS vs XPath is auto-detected.
   - **Highlight** outlines and numbers **every** match on the page (not just a count), updating live as you edit the selector, with **‹ ›** to scroll through them one at a time. Answers "my selector matches 7 — but _which_ 7?". A broad selector is capped at the first 200 boxes (the true count is still shown); top frame only.
@@ -57,8 +57,11 @@ panel's full height; **← Tools** goes back.
 | **Region**          | Make page JS read another country's clock, timezone, locale and geolocation (client-side).                                                                                                                                                                                                           |
 | **Harden selector** | Scores a pasted selector's robustness, names why it will break, and gives the recommended replacement.                                                                                                                                                                                               |
 | **JWT decoder**     | Decodes a pasted JWT's header and claims locally, with a live expiry countdown. Needs no page access, so it works everywhere.                                                                                                                                                                        |
+| **JSON Formatter**  | Pretty-prints or minifies pasted JSON and explores it as a collapsible, colour-coded tree. Strict JSON only; parse errors are shown. Needs no page access.                                                                                                                                           |
 | **Query params**    | Copies the record `id` (or any named param) out of the current URL, and rebuilds it with edited params to open in a new tab or this one.                                                                                                                                                             |
 | **Logical names**   | Labels every field, tab and section on a Dynamics 365 / Power Apps form with its logical (schema) name — the identifier the Web API and `data-id` selectors use. Ported from [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM).                                     |
+| **Open in Web API** | Resolves the current Dynamics 365 / Dataverse record to its Web API URL and opens it in a new tab. Ported from **God Mode**'s "Open Record in Web Api" button in [Level Up for Dynamics CRM](https://github.com/rajyraman/Levelup-for-Dynamics-CRM).                                                 |
+| **Auto refresh**    | Reloads the tab you started it on every N seconds (presets 5/10/30/60s, or custom). Keeps running while you use other panel tools; stops on **Stop** or when you close the panel.                                                                                                                    |
 
 Each tool states its own limits in the panel rather than in a footnote. Shared
 ones for the page-inspection tools: **top frame only** (cross-origin iframes are
@@ -68,7 +71,9 @@ is the exception — it reads no page, so it runs anywhere.
 
 > **Status:** shipped — **Bypass**, **Site data**, **Measure**, **Colour**,
 > **Tab order**, **Accessibility**, **Fonts**, **Assertions**, **Stacking**,
-> **Validation**, **Region**, **Harden selector** and the **JWT decoder**.
+> **Validation**, **Region**, **Harden selector**, the **JWT decoder**, the
+> **JSON Formatter**, **Query params**, **Logical names**, **Open in Web API**
+> and **Auto refresh**.
 
 ### Region — detail
 
@@ -205,6 +210,11 @@ Everything is a pure `URL`/`URLSearchParams` transform (`query-params.ts`), so
 duplicate names survive, values are re-encoded correctly, a blank value is kept
 (`&flag=`) and a blank NAME is dropped.
 
+- **Saved sets** — **+ Save this set** writes the whole builder (base URL,
+  every row, and the hash) to a named preset, shown as a chip; clicking it
+  loads the whole combination back into the builder in one step, rather than
+  refilling each param by hand.
+
 **Limits**: reads the address bar only — it never touches the page. It needs a
 reachable page, so it is gated on `chrome://` and the Web Store (which is also
 what tells you the panel's own full-page view is the active tab).
@@ -238,6 +248,31 @@ tool shows you.
 **Limits**: top frame only; a control on a tab that is not open has no box to
 label (the panel reports "labelled N of M"); labels are cleared when the form
 re-renders; capped at 500 controls.
+
+### Open in Web API — detail
+
+Dynamics 365 / Power Apps only. Resolves the record open in the current form to
+its **Dataverse Web API URL** — e.g.
+`https://org.crm.dynamics.com/api/data/v9.2/accounts(11111111-1111-1111-1111-111111111111)`
+— and offers it to copy or open in a new tab. Ported from **God Mode**'s "Open
+Record in Web Api" button, a mode of Level Up for Dynamics CRM.
+
+- **Detection is capability-based**, not a hostname match, same as Logical
+  names: it asks whether `window.Xrm` exists, so on-prem orgs on arbitrary
+  domains work, and an ordinary page is told plainly that it is not a Dynamics
+  form.
+- **The entity set name is resolved, not guessed.** `getEntityName()` returns
+  the entity's _logical_ name (e.g. `account`), which is not what the Web API
+  path needs — some entity set names are irregular, not just a naive plural.
+  The tool calls `Xrm.Utility.getEntityMetadata` for the real `EntitySetName`
+  (e.g. `accounts`) instead of hand-rolling pluralization.
+- **Runs in the page's MAIN world**, like Bypass Dynamics and Logical names,
+  because `window.Xrm` only exists there — a real injected function, never a
+  code string, and it returns plain JSON.
+
+**Limits**: needs a saved record — a new, unsaved form has no id and is
+reported as such; on-prem deployments must expose the Web API at the standard
+`/api/data/v9.2/` path (older orgs on `v9.1` or earlier are not detected).
 
 ### JWT decoder — detail
 
@@ -444,6 +479,27 @@ the `Xrm` client API — `setRequiredLevel('none')`, `setVisible`/`setDisabled` 
 controls, and `setVisible` on tabs and sections. This is what Level Up for
 Dynamics CRM does, and no DOM-level pass can reach it, because the model lives
 in the page's JavaScript rather than in its markup.
+
+### JSON Formatter — detail
+
+Paste JSON to pretty-print or minify it, and explore it as a collapsible,
+colour-coded tree.
+
+- **Strict JSON only** — no comments or trailing commas; a parse error is shown
+  in place rather than guessed at.
+- Needs no page access, so it runs on any tab (including `chrome://`); nothing
+  is sent anywhere.
+
+### Auto refresh — detail
+
+Reloads **one tab** — the one active when you press Start — every N seconds
+(presets 5 / 10 / 30 / 60 s, or a custom interval), so you can watch a page pick
+up server-side changes without doing it by hand.
+
+- **Targets the tab it started on**, not whatever tab is focused later, and
+  keeps ticking while you switch to other panel tools.
+- **Stop**, or closing the panel, ends it — there is no background timer once
+  the panel is gone.
 
 ### How it is wired
 

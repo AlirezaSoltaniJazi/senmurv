@@ -11,76 +11,89 @@
 ## Test Setup
 
 ```typescript
-// tests/setup.ts
+// tests/setup.ts (the real file — trimmed of comments for space)
 
-import { vi } from 'vitest';
+import { beforeEach, vi } from 'vitest';
 
-// Mock chrome.* APIs globally
+type Listener = (...args: unknown[]) => unknown;
+
+// A minimal capturing chrome event mock with a `dispatch` test helper — this is
+// what makes it possible to drive the service worker's onMessage/onInstalled
+// listeners from a test (see "Testing Message Handlers" below).
+function makeEvent() {
+  const listeners = new Set<Listener>();
+  return {
+    addListener: vi.fn((fn: Listener) => listeners.add(fn)),
+    removeListener: vi.fn((fn: Listener) => listeners.delete(fn)),
+    hasListener: vi.fn((fn: Listener) => listeners.has(fn)),
+    dispatch: (...args: unknown[]): unknown[] => Array.from(listeners).map((fn) => fn(...args)),
+    clearListeners: (): void => listeners.clear(),
+  };
+}
+
+// In-memory chrome.storage.local backing store.
+const store: Record<string, unknown> = {};
+
 const chromeMock = {
   runtime: {
-    id: 'test-extension-id',
+    onMessage: makeEvent(),
+    onInstalled: makeEvent(),
+    onStartup: makeEvent(),
+    onConnect: makeEvent(),
     sendMessage: vi.fn(),
-    onMessage: {
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      hasListener: vi.fn(),
-    },
-    onInstalled: {
-      addListener: vi.fn(),
-    },
-    onStartup: {
-      addListener: vi.fn(),
-    },
-    lastError: null as chrome.runtime.LastError | null,
-    getURL: vi.fn((path: string) => `chrome-extension://test-id/${path}`),
+    getURL: (path: string): string => `chrome-extension://test/${path}`,
+    getManifest: () => ({ content_scripts: [{ js: ['assets/picker.js'] }] }),
+    lastError: undefined as chrome.runtime.LastError | undefined,
+    id: 'test-extension',
   },
   storage: {
     local: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-      remove: vi.fn().mockResolvedValue(undefined),
-      getBytesInUse: vi.fn().mockResolvedValue(0),
+      get: vi.fn(async (key?: string | string[] | null) => {
+        if (key === undefined || key === null) return { ...store };
+        if (typeof key === 'string') return { [key]: store[key] };
+        const out: Record<string, unknown> = {};
+        for (const k of key) out[k] = store[k];
+        return out;
+      }),
+      set: vi.fn(async (items: Record<string, unknown>) => {
+        Object.assign(store, items);
+      }),
+      remove: vi.fn(async (key: string) => {
+        delete store[key];
+      }),
+      clear: vi.fn(async () => {
+        for (const k of Object.keys(store)) delete store[k];
+      }),
     },
-    sync: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-    },
-    session: {
-      get: vi.fn().mockResolvedValue({}),
-      set: vi.fn().mockResolvedValue(undefined),
-    },
-    onChanged: {
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-    },
-  },
-  sidePanel: {
-    setPanelBehavior: vi.fn().mockResolvedValue(undefined),
-    setOptions: vi.fn().mockResolvedValue(undefined),
-  },
-  scripting: {
-    executeScript: vi.fn().mockResolvedValue([{ result: undefined }]),
   },
   tabs: {
-    query: vi.fn().mockResolvedValue([]),
-    sendMessage: vi.fn().mockResolvedValue(undefined),
+    query: vi.fn(async () => [{ id: 1, url: 'https://example.com', active: true }]),
+    sendMessage: vi.fn(async (): Promise<unknown> => undefined),
+    reload: vi.fn(async () => undefined),
   },
-  action: {
-    onClicked: {
-      addListener: vi.fn(),
-    },
+  sidePanel: {
+    setPanelBehavior: vi.fn(async () => undefined),
+    setOptions: vi.fn(async () => undefined),
+  },
+  scripting: {
+    executeScript: vi.fn(async (): Promise<{ result?: unknown }[]> => [{ result: { ok: true } }]),
+    insertCSS: vi.fn(async () => undefined),
+    removeCSS: vi.fn(async () => undefined),
   },
 };
 
-// Assign to global
-Object.assign(globalThis, { chrome: chromeMock });
+vi.stubGlobal('chrome', chromeMock);
 
-// Reset mocks between tests
 beforeEach(() => {
-  vi.clearAllMocks();
-  chromeMock.runtime.lastError = null;
+  for (const k of Object.keys(store)) delete store[k];
 });
+
+export { chromeMock, store };
 ```
+
+> `chrome.cookies` is NOT mocked here — no unit test currently drives the Cookies tab's
+> service-worker handlers. Add a `cookies: { getAll, set, remove }` mock (`vi.fn()`) to
+> `chromeMock` first if you write one.
 
 ---
 
@@ -99,8 +112,9 @@ export default defineConfig({
     setupFiles: ['./tests/setup.ts'],
     coverage: {
       provider: 'v8',
-      include: ['src/**/*.ts'],
-      exclude: ['src/**/*.d.ts', 'src/**/index.html'],
+      reporter: ['text', 'lcov'],
+      include: ['src/**/*.{ts,tsx}'],
+      exclude: ['src/**/*.d.ts', 'src/**/*.html'],
     },
   },
   resolve: {
@@ -121,7 +135,7 @@ export default defineConfig({
 // tests/shared/storage.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { getScripts, setScripts } from '@/shared/storage';
+import { getScripts, saveScripts } from '@/shared/storage';
 import { STORAGE_KEYS } from '@/shared/constants';
 
 describe('storage helpers', () => {
@@ -147,11 +161,11 @@ describe('storage helpers', () => {
     });
   });
 
-  describe('setScripts', () => {
+  describe('saveScripts', () => {
     it('persists scripts to storage', async () => {
       const scripts = [{ id: 'scr_1', name: 'noop', code: '' }];
 
-      await setScripts(scripts);
+      await saveScripts(scripts);
 
       expect(chrome.storage.local.set).toHaveBeenCalledWith({
         [STORAGE_KEYS.SCRIPTS]: scripts,
@@ -163,33 +177,50 @@ describe('storage helpers', () => {
 
 ### Testing Message Handlers
 
+The service worker has no separately-exported `handleMessage` function — the whole
+hub is one `chrome.runtime.onMessage.addListener(...)` registered as a side effect of
+importing the module. The real pattern (see `tests/background/service-worker.test.ts`)
+imports the module for that side effect, then dispatches through the `tests/setup.ts`
+mock's capturing `onMessage.addListener`/`dispatch` helper:
+
 ```typescript
-// tests/background/message-handler.test.ts
+// tests/background/service-worker.test.ts
 
 import { describe, it, expect } from 'vitest';
-import { handleMessage } from '@/background/service-worker';
-import { MESSAGE_TYPES } from '@/shared/messages';
+import { MESSAGE_TYPES } from '@/shared/constants';
+import { chromeMock } from '../setup';
+import '@/background/service-worker'; // registers the onMessage listener as a side effect
 
-describe('handleMessage', () => {
-  it('handles SAVE_SCRIPT message', async () => {
-    const script = { name: 'log title', code: 'console.log(document.title)' };
+interface Response {
+  ok: boolean;
+  value?: unknown;
+  error?: string;
+}
 
-    const result = await handleMessage({
-      type: MESSAGE_TYPES.SAVE_SCRIPT,
-      payload: { script },
-    });
+/** Dispatch a runtime message and resolve with the handler's sendResponse value. */
+function send(message: unknown): Promise<Response | undefined> {
+  return new Promise((resolve) => {
+    const results = chromeMock.runtime.onMessage.dispatch(message, {}, (resp: Response) =>
+      resolve(resp)
+    );
+    if (!results.some((r) => r === true)) resolve(undefined);
+  });
+}
 
-    expect(result.success).toBe(true);
-    expect(result.data).toMatchObject({ name: 'log title' });
+describe('SAVE_SCRIPT', () => {
+  it('upserts and returns the new list', async () => {
+    const script = { id: 'scr_1', name: 'log title', code: 'console.log(document.title)' };
+
+    const result = await send({ type: MESSAGE_TYPES.SAVE_SCRIPT, payload: { script } });
+
+    expect(result?.ok).toBe(true);
+    expect(result?.value).toContainEqual(expect.objectContaining({ name: 'log title' }));
   });
 
-  it('rejects unknown message types', async () => {
-    const result = await handleMessage({
-      type: 'UNKNOWN_TYPE' as any,
-    });
+  it('ignores an unknown message type (no listener responds)', async () => {
+    const result = await send({ type: 'UNKNOWN_TYPE' });
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain('Unhandled message');
+    expect(result).toBeUndefined();
   });
 });
 ```
@@ -200,9 +231,9 @@ describe('handleMessage', () => {
 // tests/shared/locators.test.ts
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { generateLocatorSet } from '@/shared/locators';
+import { buildLocatorSet } from '@/shared/locators';
 
-describe('generateLocatorSet', () => {
+describe('buildLocatorSet', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
   });
@@ -211,23 +242,25 @@ describe('generateLocatorSet', () => {
     document.body.innerHTML = `<button id="b1" data-testid="submit">Go</button>`;
     const el = document.querySelector('button')!;
 
-    const set = generateLocatorSet(el);
+    const set = buildLocatorSet(el);
 
-    // LOCATOR_PRIORITY: data-testid > id > role+name > CSS > XPath
+    // LOCATOR_PRIORITY: testId > formControl > id > attr > ariaLabel > roleName > css > xpath
     expect(set.suggestions[0]).toMatchObject({
-      strategy: 'data-testid',
+      strategy: 'testId',
+      label: 'data-testid',
       value: 'submit',
     });
   });
 
-  it('emits per-framework snippets (WDIO, Playwright, Cypress, Selenium)', () => {
+  it('emits per-framework snippets (snippets is an array of {framework, label, code})', () => {
     document.body.innerHTML = `<input data-testid="email" />`;
     const el = document.querySelector('input')!;
 
-    const set = generateLocatorSet(el);
+    const set = buildLocatorSet(el);
+    const frameworks = set.suggestions[0]?.snippets.map((s) => s.framework);
 
-    expect(set.suggestions[0].snippets).toHaveProperty('playwright');
-    expect(set.suggestions[0].snippets).toHaveProperty('wdio');
+    expect(frameworks).toContain('playwright');
+    expect(frameworks).toContain('wdio');
   });
 });
 ```
@@ -262,28 +295,34 @@ describe('generateTestData', () => {
 
 ## Picker DOM Testing
 
+The overlay lives in `src/content/overlay.ts` (not `picker.ts`) and has no
+`showOverlay`/`removeOverlay` pair — `drawBoxes` lazily mounts the host on first
+draw, and `destroyOverlay` tears it down. The host uses an **open** shadow root
+(`mode: 'open'`), so `.shadowRoot` is reachable directly from the test:
+
 ```typescript
-// tests/content/picker.test.ts
+// tests/content/overlay.test.ts
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { showOverlay, removeOverlay } from '@/content/picker';
+import { destroyOverlay, drawBoxes } from '@/content/overlay';
 
 describe('picker overlay', () => {
   beforeEach(() => {
     document.body.innerHTML = '';
+    destroyOverlay(); // drop any host a previous test left mounted
   });
 
-  it('injects the overlay host in shadow DOM', () => {
-    showOverlay();
+  it('injects the overlay host in (open) shadow DOM on first draw', () => {
+    drawBoxes([{ left: 0, top: 0, width: 10, height: 10 }]);
 
     const host = document.querySelector('senmurv-picker-overlay');
     expect(host).not.toBeNull();
-    expect(host?.shadowRoot).not.toBeNull(); // closed shadow — test via side effects
+    expect(host?.shadowRoot).not.toBeNull();
   });
 
   it('removes the overlay cleanly', () => {
-    showOverlay();
-    removeOverlay();
+    drawBoxes([{ left: 0, top: 0, width: 10, height: 10 }]);
+    destroyOverlay();
 
     const host = document.querySelector('senmurv-picker-overlay');
     expect(host).toBeNull();
@@ -295,37 +334,29 @@ describe('picker overlay', () => {
 
 ## E2E Testing with Playwright
 
-```typescript
-// tests/e2e/extension.spec.ts
+senmurv's actual E2E harness is **Python** Playwright (not a Node/Vitest
+`tests/e2e/` suite — there isn't one). See the `runInChrome` skill for the full
+recipe (loading `dist/` unpacked, resolving the service-worker's extension id,
+driving the panel as a background tab). Sketch of the same check in that
+harness:
 
-import { test, expect, chromium } from '@anthropic-ai/playwright';
-import path from 'path';
+```python
+# via the runInChrome skill — see its assets/verify-example.py
+ctx = p.chromium.launch_persistent_context(
+    tempfile.mkdtemp(), headless=False,
+    args=[f"--disable-extensions-except={DIST}", f"--load-extension={DIST}", "--no-first-run"])
 
-const extensionPath = path.resolve(__dirname, '../../dist');
+sw = ctx.service_workers[0] if ctx.service_workers else ctx.wait_for_event("serviceworker", timeout=15000)
+ext_id = sw.url.split("/")[2]
 
-test.describe('senmurv extension', () => {
-  test('side panel opens and shows the three tabs', async () => {
-    const context = await chromium.launchPersistentContext('', {
-      headless: false,
-      args: [`--disable-extensions-except=${extensionPath}`, `--load-extension=${extensionPath}`],
-    });
+panel = ctx.new_page()
+panel.goto(f"chrome-extension://{ext_id}/src/sidepanel/index.html")
 
-    // Get extension ID
-    const [background] = context.serviceWorkers();
-    const extensionId = background.url().split('/')[2];
+# Tab routing renders plain-text buttons, not data-testid — assert by role/name
+for name in ("Data", "Locator", "Recorder", "Scripts", "Tools"):
+    assert panel.get_by_role("button", name=name).is_visible()
 
-    // Open the Side Panel page directly
-    const panel = await context.newPage();
-    await panel.goto(`chrome-extension://${extensionId}/src/sidepanel/index.html`);
-
-    // Verify the tab routing rendered
-    await expect(panel.locator('[data-testid="tab-data"]')).toBeVisible();
-    await expect(panel.locator('[data-testid="tab-locator"]')).toBeVisible();
-    await expect(panel.locator('[data-testid="tab-scripts"]')).toBeVisible();
-
-    await context.close();
-  });
-});
+ctx.close()
 ```
 
 ---

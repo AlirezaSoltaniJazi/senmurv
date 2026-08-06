@@ -5,16 +5,19 @@ import {
   deleteChecklist,
   deleteNote,
   deleteProfile,
+  deleteQueryParamSet,
   deleteScript,
   deleteTask,
   getChecklists,
   getNotes,
   getPrefs,
   getProfiles,
+  getQueryParamSets,
   getScripts,
   getTasks,
   isChecklist,
   isNote,
+  isQueryParamSet,
   isSavedScript,
   isTimeEntry,
   isValueProfile,
@@ -22,10 +25,12 @@ import {
   upsertChecklist,
   upsertNote,
   upsertProfileStored,
+  upsertQueryParamSet,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
 import type { Checklist, Note, SavedScript, TimeEntry, ValueProfile } from '@/shared/types';
+import type { QueryParamSet } from '@/shared/tools/query-params';
 import { store } from '../setup';
 
 function makeScript(overrides: Partial<SavedScript> = {}): SavedScript {
@@ -70,6 +75,22 @@ function makeNote(overrides: Partial<Note> = {}): Note {
     id: 'note_1',
     title: 'Standup',
     body: 'Discuss the release plan.',
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeSet(overrides: Partial<QueryParamSet> = {}): QueryParamSet {
+  return {
+    id: 'qps_1',
+    name: 'Account record',
+    base: 'https://org.crm4.dynamics.com/main.aspx',
+    params: [
+      { name: 'etn', value: 'account' },
+      { name: 'pagetype', value: 'entityrecord' },
+    ],
+    hash: '',
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -258,6 +279,43 @@ describe('note storage', () => {
   });
 });
 
+describe('isQueryParamSet', () => {
+  it('accepts a well-formed set and rejects junk', () => {
+    expect(isQueryParamSet(makeSet())).toBe(true);
+    expect(isQueryParamSet({ ...makeSet(), params: [{ name: 'a' }] })).toBe(false);
+    expect(isQueryParamSet({ ...makeSet(), base: 5 })).toBe(false);
+    expect(isQueryParamSet(null)).toBe(false);
+  });
+});
+
+describe('query param set storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getQueryParamSets()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.QUERY_PARAM_SETS] = [makeSet(), { id: 'bad' }];
+    expect(await getQueryParamSets()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertQueryParamSet(makeSet());
+    let all = await getQueryParamSets();
+    expect(all).toHaveLength(1);
+
+    all = await upsertQueryParamSet(makeSet({ name: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.name).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertQueryParamSet(makeSet());
+    await upsertQueryParamSet(makeSet({ id: 'qps_2' }));
+    const remaining = await deleteQueryParamSet('qps_1');
+    expect(remaining.map((s) => s.id)).toEqual(['qps_2']);
+  });
+});
+
 describe('value profiles storage', () => {
   function mk(over: Partial<ValueProfile> = {}): ValueProfile {
     return {
@@ -405,6 +463,26 @@ describe('prefs storage', () => {
     // A non-boolean is ignored rather than coerced.
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', autoReloadOnChange: 'yes' };
     expect((await getPrefs()).autoReloadOnChange).toBeUndefined();
+  });
+
+  it('reads pinnedTools: dedupes and caps at MAX_PINNED_TOOLS', async () => {
+    // This layer only checks shape (string, non-empty, deduped, capped) — not
+    // whether an entry is still a real ToolKey. That check is deliberately
+    // done by the sidepanel's validPinnedTools (shared/tools.test.ts), not
+    // here, so the service worker's bundle never needs a value import of the
+    // TOOLS registry (see the comment on readPinnedTools).
+    store[STORAGE_KEYS.PREFS] = {
+      fontSize: 'medium',
+      pinnedTools: ['bypass', 'bypass', 'measure', 'color', 'a11y', 'font', 'assert'],
+    };
+    expect((await getPrefs()).pinnedTools).toEqual(['bypass', 'measure', 'color', 'a11y', 'font']);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).pinnedTools).toBeUndefined();
+
+    // A non-array is ignored rather than coerced.
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', pinnedTools: 'bypass' };
+    expect((await getPrefs()).pinnedTools).toBeUndefined();
   });
 
   it('falls back to the default hudSeconds when absent or non-numeric', async () => {

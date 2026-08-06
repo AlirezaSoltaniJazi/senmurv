@@ -184,6 +184,64 @@ describe('Bypass', () => {
   });
 });
 
+describe('Web API URL', () => {
+  const RECORD = {
+    entityLogicalName: 'account',
+    entitySetName: 'accounts',
+    recordId: '11111111-1111-1111-1111-111111111111',
+    url: 'https://org.crm.dynamics.com/api/data/v9.2/accounts(11111111-1111-1111-1111-111111111111)',
+  };
+
+  it('resolves the record in the MAIN world as a function, never a code string', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { ok: true, value: RECORD } },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.GET_XRM_WEB_API_URL });
+    expect(res).toEqual({ ok: true, value: RECORD });
+
+    const [injection] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
+      { world: string; func: unknown; args?: unknown[] },
+    ];
+    expect(injection.world).toBe('MAIN');
+    // A function, not a string — this is why it does not widen the sanctioned
+    // `new Function` exception in runUserScript.
+    expect(typeof injection.func).toBe('function');
+    expect(injection.args).toBeUndefined();
+  });
+
+  it('surfaces the page’s message when there is no Dynamics form', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { ok: false, error: 'No Dynamics form here — window.Xrm is not present.' } },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.GET_XRM_WEB_API_URL });
+    expect(res?.ok).toBe(false);
+    expect(res?.error).toMatch(/window\.Xrm/);
+  });
+
+  it('surfaces the page’s message when the record is unsaved', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      {
+        result: {
+          ok: false,
+          error: 'This record has not been saved yet — it has no id to open in the Web API.',
+        },
+      },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.GET_XRM_WEB_API_URL });
+    expect(res?.ok).toBe(false);
+    expect(res?.error).toMatch(/not been saved/);
+  });
+
+  it('refuses to resolve on a blocked page', async () => {
+    chromeMock.tabs.query.mockResolvedValueOnce([
+      { id: 2, url: 'chrome://extensions', active: true },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.GET_XRM_WEB_API_URL });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+});
+
 describe('Site data', () => {
   const PROBE = {
     origin: 'https://example.com',

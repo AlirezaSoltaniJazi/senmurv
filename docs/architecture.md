@@ -4,12 +4,12 @@ Senmurv is a Manifest V3 extension with four execution contexts. Business logic 
 
 ## Contexts
 
-| Context         | File                               | Role                                                                                                                            |
-| --------------- | ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Service worker  | `src/background/service-worker.ts` | Coordinator — side-panel behavior, onInstalled seeding, message hub, runs scripts via `chrome.scripting`, relays picker results |
-| Side panel (UI) | `src/sidepanel/*`                  | React app with three tabs; sends typed messages, renders results                                                                |
-| Content script  | `src/content/picker.ts`            | Idle until asked for a mode; owns the mode arbiter, the Shadow-DOM overlay, and a lazily-imported chunk for the Tools modes     |
-| Page MAIN world | injected by `chrome.scripting`     | Where saved user scripts run (governed by the page's CSP)                                                                       |
+| Context         | File                               | Role                                                                                                                                                             |
+| --------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Service worker  | `src/background/service-worker.ts` | Coordinator — side-panel behavior, message hub, runs scripts via `chrome.scripting`, relays picker results (nothing is seeded on install — storage starts empty) |
+| Side panel (UI) | `src/sidepanel/*`                  | React app with tab routing (Data, Locator, Recorder, Scripts, Tools, Cookies, Storage, Track, My Tasks, Notes, Settings); sends typed messages, renders results  |
+| Content script  | `src/content/picker.ts`            | Idle until asked for a mode; owns the mode arbiter, the Shadow-DOM overlay, and a lazily-imported chunk for the Tools modes                                      |
+| Page MAIN world | injected by `chrome.scripting`     | Where saved user scripts run (governed by the page's CSP)                                                                                                        |
 
 ## Message flow
 
@@ -31,8 +31,9 @@ All messages are a discriminated union (`RuntimeMessage`) keyed on a `type` fiel
 ## In-page modes
 
 The content script can be in exactly one mode at a time — `idle`, `pick-locator`,
-`pick-fields`, `record`, or one of the Tools modes (`measure`, `color`, `font`,
-`taborder`). Every transition goes through the arbiter in `picker.ts`:
+`pick-fields`, `record`, `match` (Locator tab's highlight-matches mode), or one
+of the Tools modes (`measure`, `color`, `font`, `taborder`, `assert`, `stack`,
+`validation`, `logicalnames`). Every transition goes through the arbiter in `picker.ts`:
 
 ```
 enterMode(next) → stopCurrentMode() → set pageMode → applyCursor(next) → start(next)
@@ -65,8 +66,8 @@ asserts this against `dist/` after a build.
 
 - `shared/locators.ts` — pure locator generation, uniqueness checks (`querySelectorAll(...).length === 1`), ranking by `LOCATOR_PRIORITY`, and WDIO/Playwright/Cypress/Selenium formatters.
 - `shared/faker-data.ts` — locale → faker instance map; `generateTestData()`.
-- `shared/storage.ts` — typed `chrome.storage.local` wrapper for `SavedScript[]`.
-- `shared/messages.ts` — message union + `sendMessage` helper + type guards.
+- `shared/storage.ts` — typed `chrome.storage.local` wrapper for scripts, tasks, checklists, notes, prefs and value profiles.
+- `shared/messages.ts` — message union + `sendRuntimeMessage`/`sendTabMessage` helpers + type guards.
 
 ## Storage
 

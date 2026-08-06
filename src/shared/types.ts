@@ -1,4 +1,5 @@
 import type { FRAMEWORKS, SUPPORTED_LOCALES } from '@/shared/constants';
+import type { ToolKey } from '@/shared/tools';
 
 /** A supported faker locale code. */
 export type Locale = (typeof SUPPORTED_LOCALES)[number];
@@ -616,6 +617,14 @@ export interface XrmReport {
   readonly sections: number;
 }
 
+/** The current Dynamics record, resolved to its Dataverse Web API URL. */
+export interface XrmWebApiRecord {
+  readonly entityLogicalName: string;
+  readonly entitySetName: string;
+  readonly recordId: string;
+  readonly url: string;
+}
+
 /** Which level of a Dynamics form a logical name belongs to. */
 export type LogicalNameKind = 'field' | 'tab' | 'section';
 
@@ -790,6 +799,11 @@ export interface Prefs {
    * Toggled from the Cookies and Storage tabs; off by default.
    */
   autoReloadOnChange?: boolean;
+  /**
+   * Tools pinned to the top of the Tools launcher, in the order they were
+   * pinned. Capped at MAX_PINNED_TOOLS; omitted when none are pinned.
+   */
+  pinnedTools?: ToolKey[];
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,7 @@ import type {
   ValueProfile,
   WcagLevel,
 } from '@/shared/types';
+import type { QueryParamSet } from '@/shared/tools/query-params';
 import type { RecordedStep } from '@/shared/workflow';
 
 /**
@@ -103,6 +104,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.GET_BYPASS_STATE }
   | { type: typeof MESSAGE_TYPES.BYPASS_XRM }
   | { type: typeof MESSAGE_TYPES.BYPASS_STATE_CHANGED; payload: { report: BypassReport } }
+  // Web API URL — worker-local like BYPASS_XRM: resolves the current Dynamics
+  // record into its Dataverse Web API URL (God Mode's "Open record in Web API").
+  | { type: typeof MESSAGE_TYPES.GET_XRM_WEB_API_URL }
   // Site data. Both are worker-local: the worker injects into the page rather
   // than routing through the content script, so no new permission is needed.
   | { type: typeof MESSAGE_TYPES.PROBE_SITE_STORAGE }
@@ -142,7 +146,11 @@ export type RuntimeMessage =
   // Value profiles (shared by both tabs)
   | { type: typeof MESSAGE_TYPES.GET_PROFILES }
   | { type: typeof MESSAGE_TYPES.SAVE_PROFILE; payload: { profile: ValueProfile } }
-  | { type: typeof MESSAGE_TYPES.DELETE_PROFILE; payload: { id: string } };
+  | { type: typeof MESSAGE_TYPES.DELETE_PROFILE; payload: { id: string } }
+  // Query param sets (Query params tool)
+  | { type: typeof MESSAGE_TYPES.GET_QUERY_PARAM_SETS }
+  | { type: typeof MESSAGE_TYPES.SAVE_QUERY_PARAM_SET; payload: { set: QueryParamSet } }
+  | { type: typeof MESSAGE_TYPES.DELETE_QUERY_PARAM_SET; payload: { id: string } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

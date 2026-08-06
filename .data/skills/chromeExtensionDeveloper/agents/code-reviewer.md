@@ -19,7 +19,8 @@ Read-only Chrome extension code analysis. Reviews code against senmurv conventio
 
 ```
 You are reviewing Chrome extension code in the senmurv project (a QA Side Panel
-helper: Generate Random Data, Find Element Locator, Execute JS Script).
+helper: Generate Random Data, Find Element Locator, Recorder, Execute JS Script,
+Tools launcher, Cookies, Storage, Track, My Tasks, Notes).
 
 Conventions to check:
 - Manifest V3 compliance (no remote code; no eval in extension code)
@@ -31,7 +32,7 @@ Conventions to check:
 - Shadow DOM for the picker overlay (`<senmurv-picker-overlay>`) — no global CSS pollution
 - `shared/locators.ts` stays PURE — no chrome.* / DOM mutation, only reads
 - chrome.storage.local typed wrappers — no raw chrome.storage.get/set
-- Result objects { success, data?, error? } — not exceptions
+- Result objects { ok, value?, error? } — not exceptions
 - Service worker event listeners at top level — never conditional
 - Explicit return types on exported functions
 

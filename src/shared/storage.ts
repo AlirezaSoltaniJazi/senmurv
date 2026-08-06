@@ -7,9 +7,11 @@ import {
   HUD_SECONDS_DEFAULT,
   HUD_SECONDS_MAX,
   HUD_SECONDS_MIN,
+  MAX_PINNED_TOOLS,
   STORAGE_KEYS,
 } from '@/shared/constants';
 import { TAG_COLOR_COUNT } from '@/shared/tasks';
+import type { ToolKey } from '@/shared/tools';
 import type {
   Checklist,
   FontSize,
@@ -21,6 +23,7 @@ import type {
   TimeInterval,
   ValueProfile,
 } from '@/shared/types';
+import type { QueryParamSet } from '@/shared/tools/query-params';
 
 // ---------------------------------------------------------------------------
 // Per-key write serialization
@@ -345,6 +348,61 @@ export async function deleteProfile(id: string): Promise<ValueProfile[]> {
 }
 
 // ---------------------------------------------------------------------------
+// Query param sets (Query params tool)
+// ---------------------------------------------------------------------------
+
+/** Type guard for a stored query-param set (rejects corrupt / legacy data). */
+export function isQueryParamSet(value: unknown): value is QueryParamSet {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    typeof v.base === 'string' &&
+    Array.isArray(v.params) &&
+    v.params.every(
+      (p) =>
+        typeof p === 'object' &&
+        p !== null &&
+        typeof (p as Record<string, unknown>).name === 'string' &&
+        typeof (p as Record<string, unknown>).value === 'string'
+    ) &&
+    typeof v.hash === 'string' &&
+    typeof v.createdAt === 'number' &&
+    typeof v.updatedAt === 'number'
+  );
+}
+
+/** Read all query-param sets (silently drops anything that fails validation). */
+export async function getQueryParamSets(): Promise<QueryParamSet[]> {
+  const result = await chrome.storage.local.get(STORAGE_KEYS.QUERY_PARAM_SETS);
+  const raw = result[STORAGE_KEYS.QUERY_PARAM_SETS];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isQueryParamSet);
+}
+
+/** Insert or update a query-param set by id; returns the new list. */
+export async function upsertQueryParamSet(set: QueryParamSet): Promise<QueryParamSet[]> {
+  return withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, async () => {
+    const sets = await getQueryParamSets();
+    const exists = sets.some((s) => s.id === set.id);
+    const next = exists ? sets.map((s) => (s.id === set.id ? set : s)) : [...sets, set];
+    await chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
+    return next;
+  });
+}
+
+/** Remove a query-param set by id; returns the new list. */
+export async function deleteQueryParamSet(id: string): Promise<QueryParamSet[]> {
+  return withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, async () => {
+    const sets = await getQueryParamSets();
+    const next = sets.filter((s) => s.id !== id);
+    await chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
 // User preferences (single object, not a list)
 // ---------------------------------------------------------------------------
 
@@ -356,6 +414,29 @@ export const DEFAULT_PREFS: Prefs = {
 
 function isFontSize(value: unknown): value is FontSize {
   return value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge';
+}
+
+/**
+ * Validate a stored pinned-tools list: keep deduplicated, non-empty string
+ * entries, in their stored order, capped at MAX_PINNED_TOOLS. This layer only
+ * checks shape — whether an entry is still a REAL ToolKey (vs. a stale key
+ * from a renamed/removed tool) is filtered by the sidepanel's validPinnedTools
+ * (shared/tools.ts), which already has the live TOOLS registry in its own
+ * bundle. A value import of TOOLS here would pull shared/tools.ts into the
+ * service worker's bundle too, forking it into a shared chunk that collides
+ * in name with content/tools.ts's lazy Tools chunk (see
+ * tests/build/bundle-placement.test.ts).
+ */
+function readPinnedTools(value: unknown): ToolKey[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const out: ToolKey[] = [];
+  for (const v of value) {
+    if (typeof v === 'string' && v.length > 0 && !out.includes(v as ToolKey)) {
+      out.push(v as ToolKey);
+    }
+    if (out.length >= MAX_PINNED_TOOLS) break;
+  }
+  return out.length > 0 ? out : undefined;
 }
 
 /** Validate a stored tag→palette-index map, keeping only well-formed entries. */
@@ -399,6 +480,8 @@ export async function getPrefs(): Promise<Prefs> {
   const tagColors = readTagColors(v.tagColors);
   if (tagColors) prefs.tagColors = tagColors;
   if (typeof v.autoReloadOnChange === 'boolean') prefs.autoReloadOnChange = v.autoReloadOnChange;
+  const pinnedTools = readPinnedTools(v.pinnedTools);
+  if (pinnedTools) prefs.pinnedTools = pinnedTools;
   return prefs;
 }
 

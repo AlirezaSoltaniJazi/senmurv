@@ -1,9 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { Note, Result } from '@/shared/types';
 import { newId } from '@/utils/id';
+
+/** How long a title/body field must sit idle before an in-progress draft autosaves. */
+const DRAFT_AUTOSAVE_MS = 1200;
 
 interface Props {
   /** Bumped by the header refresh button to re-pull data from storage. */
@@ -30,6 +33,13 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // The id a brand-new, never-yet-saved draft is allocated the first time it
+  // autosaves, so every later flush of the same draft updates it in place
+  // instead of creating duplicates. A ref (not state) so it never fights with
+  // editingId's "am I editing a pre-existing note" meaning.
+  const draftIdRef = useRef<string | null>(null);
+  const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // Load on mount and whenever the refresh button bumps the nonce.
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +59,78 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
     return () => clearTimeout(id);
   }, [status]);
 
+  // Debounced autosave: persist an in-progress draft ~1.2s after the user
+  // stops typing, so unsaved text is safe well before any close could happen.
+  // Panel close cannot be caught directly — see the lifecycle-port note in
+  // sidepanel/main.tsx — so this (not a close handler) is the actual guard.
+  // Clearing the timeout on every re-run (title/body change, or unmount) is
+  // what both restarts the debounce and cancels it cleanly on unmount.
+  useEffect(() => {
+    if (!title.trim() && !body.trim()) return undefined;
+    const timerId = setTimeout(() => {
+      void persistNote(activeDraftId()).then((res) => {
+        if (res.ok) setNotes(res.value);
+      });
+    }, DRAFT_AUTOSAVE_MS);
+    draftTimerRef.current = timerId;
+    return () => clearTimeout(timerId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, body]);
+
+  // Best-effort extra: also flush a non-empty draft the moment the panel is
+  // hidden (tab switch, closing). Defense in depth on top of the debounce
+  // above, not a replacement — visibilitychange isn't guaranteed either, so
+  // this fires-and-forgets and swallows any failure (the panel may already
+  // be torn down by the time the message would resolve).
+  useEffect(() => {
+    function onVisibilityChange(): void {
+      if (!document.hidden) return;
+      if (!title.trim() && !body.trim()) return;
+      void persistNote(activeDraftId()).catch(() => {
+        // Best-effort — nothing to do if the panel is already gone.
+      });
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, body, editingId]);
+
+  /** The id the current draft is (or would be) saved under, allocating one on first use. */
+  function activeDraftId(): string {
+    if (editingId) return editingId;
+    if (!draftIdRef.current) draftIdRef.current = newId('note_');
+    return draftIdRef.current;
+  }
+
+  /** Build the Note to persist for `id` from the current form fields. */
+  function buildNote(id: string): Note {
+    const at = nowMs();
+    const existing = notes.find((n) => n.id === id);
+    return existing
+      ? { ...existing, title: title.trim(), body, updatedAt: at }
+      : { id, title: title.trim(), body, createdAt: at, updatedAt: at };
+  }
+
+  /** Upsert the current form content under `id` — the one path a manual Save
+   *  and the autosave debounce both go through. */
+  async function persistNote(id: string): Promise<Result<Note[]>> {
+    return sendRuntimeMessage<Result<Note[]>>({
+      type: MESSAGE_TYPES.SAVE_NOTE,
+      payload: { note: buildNote(id) },
+    });
+  }
+
+  /** Cancel any pending autosave and forget the in-progress draft's allocated id. */
+  function clearDraftTimer(): void {
+    if (draftTimerRef.current !== null) {
+      clearTimeout(draftTimerRef.current);
+      draftTimerRef.current = null;
+    }
+    draftIdRef.current = null;
+  }
+
   function resetEditor(): void {
+    clearDraftTimer();
     setEditingId(null);
     setTitle('');
     setBody('');
@@ -57,6 +138,7 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
   }
 
   function editNote(note: Note): void {
+    clearDraftTimer();
     setEditingId(note.id);
     setTitle(note.title);
     setBody(note.body);
@@ -71,22 +153,23 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
       setError('Write a title or some text first.');
       return;
     }
-    const at = nowMs();
-    const existing = notes.find((n) => n.id === editingId);
-    const note: Note = existing
-      ? { ...existing, title: title.trim(), body, updatedAt: at }
-      : { id: newId('note_'), title: title.trim(), body, createdAt: at, updatedAt: at };
-    const res = await sendRuntimeMessage<Result<Note[]>>({
-      type: MESSAGE_TYPES.SAVE_NOTE,
-      payload: { note },
-    });
+    const wasEditingExisting = editingId !== null;
+    const id = activeDraftId();
+    const res = await persistNote(id);
     if (!res.ok) {
       setError(res.error);
       return;
     }
     setNotes(res.value);
-    setEditingId(note.id);
-    setStatus('Saved.');
+    if (wasEditingExisting) {
+      setEditingId(id);
+      setStatus('Saved.');
+    } else {
+      // A brand-new note: clear the form back to blank instead of silently
+      // flipping into edit mode (also cancels any pending autosave timer).
+      resetEditor();
+      setStatus('Saved.');
+    }
   }
 
   async function remove(id: string): Promise<void> {

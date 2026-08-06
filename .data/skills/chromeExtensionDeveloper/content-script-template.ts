@@ -4,11 +4,13 @@
  */
 
 // Type imports
-import type { RuntimeMessage, MessageResponse } from '@/shared/types';
+import type { RuntimeMessage } from '@/shared/messages';
+import type { Result } from '@/shared/types';
 
 // Value imports
-import { MESSAGE_TYPES, sendMessage } from '@/shared/messages';
-import { generateLocatorSet } from '@/shared/locators';
+import { sendRuntimeMessage } from '@/shared/messages';
+import { MESSAGE_TYPES } from '@/shared/constants';
+import { buildLocatorSet } from '@/shared/locators';
 
 // Constants
 const HOST_ELEMENT_TAG = 'senmurv-picker-overlay';
@@ -35,12 +37,12 @@ function init(): void {
 function handleMessage(
   message: RuntimeMessage,
   _sender: chrome.runtime.MessageSender,
-  sendResponse: (response: MessageResponse) => void,
+  sendResponse: (response: Result<void>) => void,
 ): boolean {
   switch (message.type) {
     case MESSAGE_TYPES.START_PICK:
       startPicking();
-      sendResponse({ success: true });
+      sendResponse({ ok: true, value: undefined });
       return false; // Synchronous response
 
     default:
@@ -60,8 +62,10 @@ function injectUI(): void {
   // Create host element with custom tag (won't conflict with page)
   hostElement = document.createElement(HOST_ELEMENT_TAG);
 
-  // Closed shadow — page cannot access our DOM
-  shadowRoot = hostElement.attachShadow({ mode: 'closed' });
+  // Open shadow (matches the real overlay in src/content/overlay.ts) — styles
+  // stay isolated from the page either way; open just keeps `.shadowRoot`
+  // reachable for tests and devtools.
+  shadowRoot = hostElement.attachShadow({ mode: 'open' });
 
   // Scoped styles — won't leak to page
   const styles = document.createElement('style');
@@ -116,10 +120,11 @@ function onClick(event: MouseEvent): void {
   const target = event.target as Element | null;
   if (!target) return;
 
-  // generateLocatorSet is PURE — defined in @/shared/locators
-  void sendMessage({
+  // buildLocatorSet is PURE — defined in @/shared/locators. The payload IS the
+  // LocatorSet directly (not wrapped in a `{ locators }` object).
+  void sendRuntimeMessage({
     type: MESSAGE_TYPES.ELEMENT_PICKED,
-    payload: { locators: generateLocatorSet(target) },
+    payload: buildLocatorSet(target),
   });
 
   cleanup(); // Stop picking after one capture

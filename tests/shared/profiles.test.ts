@@ -4,6 +4,7 @@ import {
   findProfileFor,
   newProfile,
   parseValues,
+  PROFILE_TARGET_LABELS,
   profileFromEntry,
   profilesFor,
   profilesForAny,
@@ -28,6 +29,14 @@ function mk(over: Partial<ValueProfile> = {}): ValueProfile {
     ...over,
   };
 }
+
+describe('PROFILE_TARGET_LABELS', () => {
+  it('has a non-empty label for every target', () => {
+    expect(PROFILE_TARGET_LABELS.cookie.length).toBeGreaterThan(0);
+    expect(PROFILE_TARGET_LABELS.local.length).toBeGreaterThan(0);
+    expect(PROFILE_TARGET_LABELS.session.length).toBeGreaterThan(0);
+  });
+});
 
 describe('wrapValue', () => {
   it('returns the raw value when nothing wraps it', () => {

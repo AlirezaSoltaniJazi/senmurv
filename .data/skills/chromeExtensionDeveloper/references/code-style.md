@@ -13,13 +13,13 @@ Four groups, separated by blank lines. Auto-sorted within each group:
 import type { Runtime } from 'chrome';
 
 // 2. External packages
-import { crx } from '@anthropic-ai/crxjs-vite-plugin';
+import { crx } from '@crxjs/vite-plugin';
 
 // 3. Path alias imports (@/)
-import { sendMessage, MESSAGE_TYPES } from '@/shared/messages';
-import { generateLocatorSet } from '@/shared/locators';
+import { sendRuntimeMessage } from '@/shared/messages';
+import { buildLocatorSet } from '@/shared/locators';
 import type { SavedScript, LocatorSuggestion } from '@/shared/types';
-import { STORAGE_KEYS } from '@/shared/constants';
+import { MESSAGE_TYPES, STORAGE_KEYS } from '@/shared/constants';
 
 // 4. Relative imports (only within same feature directory)
 import { ScriptsTab } from './components/ScriptsTab';
@@ -66,15 +66,12 @@ export async function getScripts(): Promise<SavedScript[]> {
 // ✅ Correct — discriminated union for messages
 export interface RunScriptMessage {
   type: 'RUN_SCRIPT';
-  payload: { scriptId: string };
+  payload: { code: string };
 }
 
-// ✅ Correct — result type for fallible operations
-export interface Result<T> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
+// ✅ Correct — result type for fallible operations (the project's actual shape,
+// src/shared/types.ts)
+export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 // ❌ Wrong — any type
 function handleMessage(message: any): any { ... }
@@ -92,13 +89,13 @@ type Message = { script?: SavedScript; scriptId?: string; status?: string };
 
 | Category           | Style                   | Examples                                                  |
 | ------------------ | ----------------------- | --------------------------------------------------------- |
-| Files (modules)    | `kebab-case.ts`         | `faker-data.ts`, `sample-scripts.ts`, `service-worker.ts` |
+| Files (modules)    | `kebab-case.ts`         | `faker-data.ts`, `cookie-url.ts`, `service-worker.ts`     |
 | Files (components) | `PascalCase.tsx`        | `GenerateDataTab.tsx`, `LocatorTab.tsx`, `ScriptsTab.tsx` |
 | Interfaces         | `PascalCase`            | `SavedScript`, `GeneratedData`, `LocatorSuggestion`       |
 | Type aliases       | `PascalCase`            | `Locale`, `LocatorStrategy`, `MessageType`                |
 | Enums              | `PascalCase`            | rarely used — prefer `as const` unions                    |
 | Enum values        | `SCREAMING_SNAKE`       | when an enum is needed, `SCREAMING_SNAKE` members         |
-| Functions          | `camelCase`             | `generateTestData`, `handleMessage`, `generateLocatorSet` |
+| Functions          | `camelCase`             | `generateTestData`, `handleMessage`, `buildLocatorSet`    |
 | Private funcs      | `camelCase` (no prefix) | Internal to module — not exported = private               |
 | Constants          | `SCREAMING_SNAKE_CASE`  | `STORAGE_KEYS`, `MESSAGE_TYPES`, `LOCATOR_PRIORITY`       |
 | Variables          | `camelCase`             | `scriptCount`, `isPicking`, `currentTab`                  |
@@ -132,15 +129,15 @@ export async function saveScript(
     const scripts = await getScripts();
 
     if (!input.name.trim()) {
-      return { success: false, error: 'Script name is required' };
+      return { ok: false, error: 'Script name is required' };
     }
 
     const newScript: SavedScript = { id: newId('scr_'), ...input };
-    await setScripts([...scripts, newScript]);
-    return { success: true, data: newScript };
+    await saveScripts([...scripts, newScript]);
+    return { ok: true, value: newScript };
   } catch (error) {
     return {
-      success: false,
+      ok: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
@@ -205,10 +202,9 @@ function validateScript(input: SavedScriptInput): string | null {
 {
   "semi": true,
   "singleQuote": true,
-  "trailingComma": "all",
+  "trailingComma": "es5",
+  "printWidth": 100,
   "tabWidth": 2,
-  "printWidth": 80,
-  "bracketSpacing": true,
   "arrowParens": "always"
 }
 ```

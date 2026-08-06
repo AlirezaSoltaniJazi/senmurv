@@ -2,11 +2,16 @@
 
 ## What This Is
 
-Chrome extension (Manifest V3) that gives QA / test-automation engineers three tools inside a **Chrome Side Panel**:
+Chrome extension (Manifest V3) that gives QA / test-automation engineers a set of tools inside a **Chrome Side Panel**, routed as tabs in `src/sidepanel/App.tsx`:
 
-1. **Generate Random Data** — realistic, locale-aware test data (first/last name, phone, address, postal code, email, date of birth) via `@faker-js/faker`, with a locale switcher (default `en_GB`), copy-to-clipboard, and regenerate.
-2. **Find Element Locator** — an in-page element picker (hover-highlight, click-capture) that produces ranked locator suggestions (data-testid › id › role+name › CSS › XPath), each with its live **match count / uniqueness**, plus copy-ready snippets for **Playwright, WebdriverIO, Cypress, Selenium, and Robot Framework**. Also includes a "Test a locator" box to count matches for any CSS/XPath.
-3. **Execute JS Script** — save / edit / import (`javascript:` bookmarklets) JS scripts in `chrome.storage.local` and run a chosen script in the page's **MAIN world** via `chrome.scripting`.
+1. **Generate Random Data** — realistic, locale-aware test data (first/last name, phone, address, postal code, region/county, email, date of birth) via `@faker-js/faker`, with a locale switcher (default `en_GB`), copy-to-clipboard, and regenerate.
+2. **Find Element Locator** — an in-page element picker (hover-highlight, click-capture) that produces ranked locator suggestions (data-testid › id › role+name › CSS › XPath), each with its live **match count / uniqueness**, plus copy-ready snippets for **Playwright, WebdriverIO, Cypress, Selenium, and Robot Framework**. Also includes a "Test a locator" box (with match-highlighting) to count matches for any CSS/XPath.
+3. **Recorder** — record clicks/inputs/selects into an editable step list (or build by hand), then run/run-from-step/stop, save as a script, or export as a spec for the frameworks above.
+4. **Execute JS Script** — save / edit / import (`javascript:` bookmarklets) JS scripts in `chrome.storage.local` and run a chosen script in the page's **MAIN world** via `chrome.scripting`.
+5. **Tools** — a launcher of page-inspection/utility tools (Bypass, Site data, Measure, Colour, Tab order, Accessibility, Fonts, Assertions, Stacking, Validation, Region, Harden selector, JWT decoder, JSON Formatter, Query params, Logical names, Auto refresh) — registry in `src/shared/tools.ts`.
+6. **Cookies** / **Storage** — view and edit the current site's cookies (incl. HttpOnly) and localStorage/sessionStorage, with saved **value profiles** for values you switch between often.
+7. **Track**, **My Tasks**, **Notes** — a tagged time-tracking stopwatch, checklist tasks with deadlines, and free-form notes.
+8. **Settings** — panel font size, Flow/HUD timings, and Track-tag management.
 
 Built with TypeScript (strict, no `any`), React 19, Vite + CRXJS.
 
@@ -22,6 +27,7 @@ Built with TypeScript (strict, no `any`), React 19, Vite + CRXJS.
 | Runtime  | Chrome Extension Manifest V3                       |
 | Surface  | Side Panel (`chrome.sidePanel`)                    |
 | Storage  | `chrome.storage.local` (typed wrappers)            |
+| Cookies  | `chrome.cookies` (Cookies tab)                     |
 | Scripts  | `chrome.scripting.executeScript` (`world: 'MAIN'`) |
 
 ## Project Structure
@@ -35,13 +41,17 @@ src/
 │   ├── context.ts          # contextAlive + notify (terminal) / notifyQuiet (streams)
 │   ├── overlay.ts          # the one Shadow-DOM overlay: rect pool, tones, isOurHost
 │   ├── recorder.ts         # passive interaction recorder
-│   └── tools.ts            # DYNAMIC-import entry for the Tools-tab in-page modes
+│   ├── match-highlight.ts  # Locator tab's "highlight every match" in-page mode
+│   ├── raf-throttle.ts     # rAF-throttled hover/scroll handlers shared by Tools modes
+│   ├── tools.ts            # DYNAMIC-import entry for the Tools-tab in-page modes
+│   └── tools/               # per-tool in-page bridges (bypass, measure, a11y, stacking, …)
 ├── sidepanel/
 │   ├── index.html
 │   ├── main.tsx            # React root
-│   ├── App.tsx             # tab routing: Data | Locator | Scripts
-│   └── components/         # GenerateDataTab, LocatorTab, ScriptsTab
-├── shared/                 # types, messages, constants, locators, faker-data, storage, bookmarklet
+│   ├── App.tsx             # tab routing: Data | Locator | Recorder | Scripts | Tools | Cookies | Storage | Track | My Tasks | Notes | Settings
+│   └── components/         # GenerateDataTab, LocatorTab, RecorderTab, ScriptsTab, ToolsTab, CookiesTab, StorageTab, TrackTab, MyTasksTab, NotesTab, SettingsTab, tools/*
+├── shared/                 # types, messages, constants, locators, faker-data, storage, bookmarklet,
+│                           # profiles, tasks, checklists, cookie-url, csv, workflow, tools/*
 └── utils/                  # id generation
 tests/                      # Vitest tests mirroring src/ structure
 docs/                       # getting-started, architecture, tools
@@ -116,21 +126,21 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 
 ## Files To Know
 
-| File                               | Purpose                                                                        |
-| ---------------------------------- | ------------------------------------------------------------------------------ |
-| `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting |
-| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader            |
-| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                     |
-| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                    |
-| `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting              |
-| `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                            |
-| `src/shared/messages.ts`           | `RuntimeMessage` union, `sendMessage` helper, type guards                      |
-| `src/shared/constants.ts`          | `STORAGE_KEYS`, `MESSAGE_TYPES`, locales, `LOCATOR_PRIORITY`                   |
-| `src/shared/storage.ts`            | Typed `chrome.storage.local` wrapper for saved scripts                         |
-| `src/sidepanel/App.tsx`            | Side panel React app with tab routing                                          |
-| `manifest.json`                    | MV3 manifest — permissions, entry points, side_panel                           |
-| `vite.config.ts`                   | Build config — CRXJS plugin, path aliases                                      |
-| `tests/setup.ts`                   | Chrome API mocks for all test files                                            |
+| File                               | Purpose                                                                                              |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting                       |
+| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader                                  |
+| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                                           |
+| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                                          |
+| `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting                                    |
+| `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                                                  |
+| `src/shared/messages.ts`           | `RuntimeMessage` union, `sendRuntimeMessage`/`sendTabMessage` helpers, type guards                   |
+| `src/shared/constants.ts`          | `STORAGE_KEYS`, `MESSAGE_TYPES`, locales, `LOCATOR_PRIORITY`                                         |
+| `src/shared/storage.ts`            | Typed `chrome.storage.local` wrapper for scripts, tasks, checklists, notes, prefs and value profiles |
+| `src/sidepanel/App.tsx`            | Side panel React app with tab routing                                                                |
+| `manifest.json`                    | MV3 manifest — permissions, entry points, side_panel                                                 |
+| `vite.config.ts`                   | Build config — CRXJS plugin, path aliases                                                            |
+| `tests/setup.ts`                   | Chrome API mocks for all test files                                                                  |
 
 ## Files To Never Touch
 
@@ -142,7 +152,8 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 
 - No `eval()` / `new Function()` in extension code — **except** the one sanctioned site below.
 - **Sanctioned exception — the script runner:** the Execute JS Script tool runs user-provided code in the page's MAIN world via `chrome.scripting.executeScript({ target, world: 'MAIN', func: runUserScript, args: [code] })`. The injected `runUserScript(code)` calls `new Function(code)()`. This is the extension's purpose and runs under the **page's** CSP — exactly like a `javascript:` bookmarklet — never under the extension's CSP. Extension pages keep `script-src 'self'`. It is isolated to that one injected function and suppressed with an inline `// eslint-disable-next-line @typescript-eslint/no-implied-eval` and a justifying comment. **Do not widen this beyond the runner, and do not "fix" it away.**
-- **`world: 'MAIN'` is NOT the same as the exception.** `BYPASS_XRM` also injects into the MAIN world (`executeScript({ world: 'MAIN', func: xrmBypass })`) because the Dynamics `Xrm` client API only exists in the page's own realm. It passes a **serialized function, not a code string**, and uses neither `eval` nor `new Function` — so it does not widen the sanctioned exception above. The **Region emulator** (`APPLY_REGION` / `RESTORE_REGION` / `GET_REGION_STATE`, funcs `applyRegionShim` / `restoreRegionShim` / `regionStateShim`) is the same shape: MAIN-world `func` injections that override `Date` / `Intl` / `navigator` to emulate a region, passing real functions, never strings. **Logical names** (`SHOW_LOGICAL_NAMES`, func `readXrmLogicalNames`) is the same shape again: it reads the Dynamics `Xrm` form metadata in the MAIN world and returns plain JSON records — `executeScript` results must be serialisable, so it hands back names, never elements, and the content script re-resolves them against `[data-id]` to draw the overlay. Any future MAIN-world injection must clear the same bar: a real `func`, never a string.
+- **`world: 'MAIN'` is NOT the same as the exception.** `BYPASS_XRM` also injects into the MAIN world (`executeScript({ world: 'MAIN', func: xrmBypass })`) because the Dynamics `Xrm` client API only exists in the page's own realm. It passes a **serialized function, not a code string**, and uses neither `eval` nor `new Function` — so it does not widen the sanctioned exception above. The **Region emulator** (`APPLY_REGION` / `RESTORE_REGION` / `GET_REGION_STATE`, funcs `applyRegionShim` / `restoreRegionShim` / `regionStateShim`) is the same shape: MAIN-world `func` injections that override `Date` / `Intl` / `navigator` to emulate a region, passing real functions, never strings. **Logical names** (`SHOW_LOGICAL_NAMES`, func `readXrmLogicalNames`) is the same shape again: it reads the Dynamics `Xrm` form metadata in the MAIN world and returns plain JSON records — `executeScript` results must be serialisable, so it hands back names, never elements, and the content script re-resolves them against `[data-id]` to draw the overlay. **Open in Web API** (`GET_XRM_WEB_API_URL`, func `readXrmWebApiUrl`) is the same shape again: it resolves the current record's id and entity set name via the Dynamics `Xrm` API (async, since `Xrm.Utility.getEntityMetadata` is) and returns a plain JSON record — a Dataverse Web API URL, never a DOM reference. Any future MAIN-world injection must clear the same bar: a real `func`, never a string.
+- **`shared/workflow.ts`'s `PREAMBLE` is a text template, not a second instance.** The Recorder's exported flow script embeds a `runJs` helper whose body is `new Function(...)` — but that whole helper exists only as **text inside a template-literal string** assembled by `buildWorkflowScript()`. The generated script runs like any other saved script, through the one sanctioned runner above; nothing in `workflow.ts` itself executes `new Function` at the extension-code level. A text search (e.g. `grep -rn "new Function" src/`) will still match this string plus prose comments discussing the exception — read the matches, don't just count them.
 - Validate all messages and stored data with type guards before processing.
 - Block script injection / picking on `chrome://`, Chrome Web Store, and `about:` URLs.
 - Shadow DOM isolation for the picker overlay.

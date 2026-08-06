@@ -9,7 +9,9 @@
 All messages use a discriminated union pattern (`RuntimeMessage`) with a `type` field:
 
 ```typescript
-// src/shared/messages.ts
+// MESSAGE_TYPES lives in src/shared/constants.ts; the RuntimeMessage union +
+// sendRuntimeMessage/sendTabMessage helpers live in src/shared/messages.ts.
+// Shown together here for one illustrative view of the whole pattern.
 
 export const MESSAGE_TYPES = {
   START_PICK: 'START_PICK',
@@ -27,19 +29,20 @@ export interface StartPickMessage {
   type: typeof MESSAGE_TYPES.START_PICK;
 }
 
-// Content picker -> side panel: an element was clicked, here are its locators
+// Content picker -> side panel: an element was clicked, here are its locators.
+// The payload IS the LocatorSet directly — it is not wrapped in a `{ locators }` object.
 export interface ElementPickedMessage {
   type: typeof MESSAGE_TYPES.ELEMENT_PICKED;
-  payload: {
-    locators: LocatorSet;
-  };
+  payload: LocatorSet;
 }
 
-// Side panel -> service worker: run a saved script in the page's MAIN world
+// Side panel -> service worker: run script code in the page's MAIN world.
+// The panel resolves the saved script and sends its CODE — the service worker
+// never looks a script up by id.
 export interface RunScriptMessage {
   type: typeof MESSAGE_TYPES.RUN_SCRIPT;
   payload: {
-    scriptId: string;
+    code: string;
   };
 }
 
@@ -51,23 +54,19 @@ export interface GetScriptsMessage {
 export interface SaveScriptMessage {
   type: typeof MESSAGE_TYPES.SAVE_SCRIPT;
   payload: {
-    script: SavedScriptInput;
+    script: SavedScript;
   };
 }
 
 export interface DeleteScriptMessage {
   type: typeof MESSAGE_TYPES.DELETE_SCRIPT;
   payload: {
-    scriptId: string;
+    id: string;
   };
 }
 
-// Response type
-export interface MessageResponse<T = unknown> {
-  success: boolean;
-  data?: T;
-  error?: string;
-}
+// Response type — the project's actual fallible-op shape (src/shared/types.ts)
+export type Result<T> = { ok: true; value: T } | { ok: false; error: string };
 
 // Union of all messages
 export type RuntimeMessage =
@@ -84,34 +83,26 @@ export type RuntimeMessage =
 ## Sending Messages (Side Panel -> Service Worker)
 
 ```typescript
-// src/shared/messages.ts — helper function
+// src/shared/messages.ts — the actual helper (a thin pass-through, no
+// try/catch and no lastError check — callers type T as a Result<...> and
+// check `.ok` themselves; see the usage below)
 
-export async function sendMessage<T>(message: RuntimeMessage): Promise<MessageResponse<T>> {
-  try {
-    const response = await chrome.runtime.sendMessage(message);
-    if (chrome.runtime.lastError) {
-      return { success: false, error: chrome.runtime.lastError.message };
-    }
-    return response as MessageResponse<T>;
-  } catch (error) {
-    return {
-      success: false,
-      error: error instanceof Error ? error.message : 'Unknown error',
-    };
-  }
+export async function sendRuntimeMessage<T = unknown>(message: RuntimeMessage): Promise<T> {
+  return chrome.runtime.sendMessage(message) as Promise<T>;
 }
 
-// Usage in a Side Panel tab
-import { sendMessage, MESSAGE_TYPES } from '@/shared/messages';
+// Usage in a Side Panel tab — T is the RESPONSE shape, typically a Result<...>
+import { sendRuntimeMessage } from '@/shared/messages';
+import { MESSAGE_TYPES } from '@/shared/constants';
 
-const response = await sendMessage<SavedScript[]>({
+const response = await sendRuntimeMessage<Result<SavedScript[]>>({
   type: MESSAGE_TYPES.GET_SCRIPTS,
 });
 
-if (response.success) {
-  renderScripts(response.data!);
+if (response.ok) {
+  renderScripts(response.value);
 } else {
-  showError(response.error!);
+  showError(response.error);
 }
 ```
 
@@ -122,17 +113,18 @@ if (response.success) {
 ```typescript
 // src/background/service-worker.ts
 
-import { type RuntimeMessage, MESSAGE_TYPES } from '@/shared/messages';
+import { type RuntimeMessage } from '@/shared/messages';
+import { MESSAGE_TYPES } from '@/shared/constants';
 
 chrome.runtime.onMessage.addListener(
   (
     message: RuntimeMessage,
     sender: chrome.runtime.MessageSender,
-    sendResponse: (response: MessageResponse) => void
+    sendResponse: (response: Result<unknown>) => void
   ) => {
     // Type guard — reject unknown messages
     if (!message || !message.type || !(message.type in MESSAGE_TYPES)) {
-      sendResponse({ success: false, error: 'Unknown message type' });
+      sendResponse({ ok: false, error: 'Unknown message type' });
       return false;
     }
 
@@ -141,7 +133,7 @@ chrome.runtime.onMessage.addListener(
       .then(sendResponse)
       .catch((error) => {
         sendResponse({
-          success: false,
+          ok: false,
           error: error instanceof Error ? error.message : 'Handler failed',
         });
       });
@@ -153,18 +145,18 @@ chrome.runtime.onMessage.addListener(
 async function handleMessage(
   message: RuntimeMessage,
   sender: chrome.runtime.MessageSender
-): Promise<MessageResponse> {
+): Promise<Result<unknown>> {
   switch (message.type) {
     case MESSAGE_TYPES.RUN_SCRIPT:
-      return handleRunScript(message.payload.scriptId);
+      return handleRunScript(message.payload.code);
     case MESSAGE_TYPES.GET_SCRIPTS:
       return handleGetScripts();
     case MESSAGE_TYPES.SAVE_SCRIPT:
       return handleSaveScript(message.payload.script);
     case MESSAGE_TYPES.DELETE_SCRIPT:
-      return handleDeleteScript(message.payload.scriptId);
+      return handleDeleteScript(message.payload.id);
     default:
-      return { success: false, error: `Unhandled message: ${message.type}` };
+      return { ok: false, error: `Unhandled message: ${message.type}` };
   }
 }
 ```
@@ -173,29 +165,32 @@ async function handleMessage(
 
 ## Side Panel <-> Content Picker Communication
 
-The locator picker is reached by messaging the **active tab** directly (the picker is the content script). It replies via the `ELEMENT_PICKED` message routed back to the side panel.
+The side panel never messages the tab directly — it always sends `sendRuntimeMessage` to
+the service worker, which resolves the active tab and relays to the content script
+(`reachTab`/`sendTabMessage`, injecting the picker first if a pre-existing tab doesn't
+have it yet). The picker's reply falls back through the service worker to the panel via
+the `ELEMENT_PICKED` message.
 
 ```typescript
-// src/sidepanel/components/LocatorTab.tsx — start picking on the active tab
+// src/sidepanel/components/LocatorTab.tsx — start picking
 
-import { MESSAGE_TYPES } from '@/shared/messages';
+import { MESSAGE_TYPES } from '@/shared/constants';
+import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
+import type { Result } from '@/shared/types';
 
 async function startPicking(): Promise<void> {
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return;
-
-  try {
-    // Side panel -> content picker (targeted at the active tab)
-    await chrome.tabs.sendMessage(tab.id, { type: MESSAGE_TYPES.START_PICK });
-  } catch {
-    // No picker on this tab (e.g. chrome:// page) — surface a hint to the user
+  // Side panel -> service worker (which resolves the active tab and relays to the picker)
+  const res = await sendRuntimeMessage<Result<void>>({ type: MESSAGE_TYPES.START_PICK });
+  if (!res.ok) {
+    // e.g. a chrome:// page, or the tab could not be reached — surface res.error
   }
 }
 
-// Listen for the picked element coming back from the picker
-chrome.runtime.onMessage.addListener((message: RuntimeMessage) => {
+// Listen for the picked element coming back from the picker (payload IS the LocatorSet)
+chrome.runtime.onMessage.addListener((message: unknown) => {
+  if (!isRuntimeMessage(message)) return;
   if (message.type === MESSAGE_TYPES.ELEMENT_PICKED) {
-    renderLocators(message.payload.locators);
+    renderLocators(message.payload);
   }
 });
 ```
@@ -203,14 +198,16 @@ chrome.runtime.onMessage.addListener((message: RuntimeMessage) => {
 ```typescript
 // src/content/picker.ts — after the user clicks an element
 
-import { sendMessage, MESSAGE_TYPES } from '@/shared/messages';
-import { generateLocatorSet } from '@/shared/locators';
+import { MESSAGE_TYPES } from '@/shared/constants';
+import { sendRuntimeMessage } from '@/shared/messages';
+import { buildLocatorSet } from '@/shared/locators';
 
 function onElementClicked(target: Element): void {
-  const locators = generateLocatorSet(target); // PURE — no chrome/DOM side effects beyond reading
-  void sendMessage({
+  // buildLocatorSet is PURE — no chrome/DOM side effects beyond reading.
+  // The payload IS the LocatorSet directly, not wrapped in a `{ locators }` object.
+  void sendRuntimeMessage({
     type: MESSAGE_TYPES.ELEMENT_PICKED,
-    payload: { locators },
+    payload: buildLocatorSet(target),
   });
 }
 ```
@@ -219,26 +216,20 @@ function onElementClicked(target: Element): void {
 
 ## Service Worker -> Page (MAIN-World Script Run)
 
-`RUN_SCRIPT` does not go to the content script — the service worker injects the runner into the page's MAIN world via `chrome.scripting`:
+`RUN_SCRIPT` does not go to the content script — the service worker injects the runner into the page's MAIN world via `chrome.scripting`. The panel already resolved the script and sends its **code** directly; the service worker never looks a script up by id:
 
 ```typescript
-// src/background/service-worker.ts
+// src/background/service-worker.ts (simplified from the real withActiveRunnableTab flow)
 
-async function handleRunScript(scriptId: string): Promise<MessageResponse> {
-  const script = (await getScripts()).find((s) => s.id === scriptId);
-  if (!script) return { success: false, error: 'Script not found' };
-
-  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-  if (!tab?.id) return { success: false, error: 'No active tab' };
-
+async function runScriptInPage(tabId: number, code: string): Promise<Result<void>> {
   await chrome.scripting.executeScript({
-    target: { tabId: tab.id },
+    target: { tabId },
     world: 'MAIN',
     func: runUserScript,
-    args: [script.code],
+    args: [code],
   });
 
-  return { success: true };
+  return { ok: true, value: undefined };
 }
 ```
 

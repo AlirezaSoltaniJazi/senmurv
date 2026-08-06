@@ -2,15 +2,18 @@
 name: chromeExtensionDeveloper
 description: >-
   Chrome extension development skill for the senmurv project — a QA /
-  test-automation helper with three Side Panel tools: Generate Random Data
-  (@faker-js/faker), Find Element Locator (in-page picker), and Execute JS
-  Script (run saved scripts in the page's MAIN world). Covers Manifest V3,
-  service worker lifecycle, the content picker script, chrome.sidePanel,
-  chrome.scripting, message passing, chrome.storage.local patterns, build
-  tooling, and testing. Activates when editing manifest.json, writing the
-  service worker or content picker, configuring permissions, implementing
-  chrome.* APIs (sidePanel, scripting, storage, tabs), building Side Panel UI,
-  the locator picker, or the script runner, or debugging extension behavior.
+  test-automation helper with a multi-tab Side Panel: Generate Random Data
+  (@faker-js/faker), Find Element Locator (in-page picker), Recorder,
+  Execute JS Script (run saved scripts in the page's MAIN world), a Tools
+  launcher (Bypass, Measure, Colour, Accessibility, Region, JWT decoder, and
+  more), Cookies, Storage, Track, My Tasks, Notes, and Settings. Covers
+  Manifest V3, service worker lifecycle, the content picker script,
+  chrome.sidePanel, chrome.scripting, chrome.cookies, message passing,
+  chrome.storage.local patterns, build tooling, and testing. Activates when
+  editing manifest.json, writing the service worker or content picker,
+  configuring permissions, implementing chrome.* APIs (sidePanel, scripting,
+  storage, tabs, cookies), building Side Panel UI, the locator picker, or the
+  script runner, or debugging extension behavior.
 compatibility: 'Chrome MV3, TypeScript 5+, Vite + CRXJS, Vitest, ESLint, Prettier'
 metadata:
   author: senmurv
@@ -31,7 +34,7 @@ allowed-tools: Read Edit Write Bash(npm:*) Bash(npx:*) Bash(node:*) Glob Grep Ag
 
 1. Writing or modifying `manifest.json`, the service worker, or the content picker
 2. Implementing chrome.\* API calls (sidePanel, scripting, storage.local, tabs, runtime)
-3. Building Side Panel UI components (Data / Locator / Scripts tabs)
+3. Building Side Panel UI components (Data / Locator / Recorder / Scripts / Tools / Cookies / Storage / Track / My Tasks / Notes / Settings tabs)
 4. Working on the element-locator picker or the MAIN-world script runner
 5. Setting up message passing between extension contexts (content <-> service worker <-> side panel)
 6. Configuring permissions, host_permissions, or CSP policies
@@ -50,21 +53,24 @@ senmurv/
 ├── manifest.json                     # MV3 manifest — permissions, side_panel, service_worker, content_scripts
 ├── src/
 │   ├── background/
-│   │   └── service-worker.ts         # sidePanel behavior, onInstalled seeding, message hub, runs scripts via chrome.scripting
+│   │   └── service-worker.ts         # sidePanel behavior, message hub, runs scripts via chrome.scripting (no data is seeded — storage starts empty)
 │   ├── content/
-│   │   └── picker.ts                 # idle until START_PICK; hover-highlight overlay (Shadow DOM, <senmurv-picker-overlay>), click-capture, computes locators
+│   │   ├── picker.ts                 # idle until START_PICK; mode arbiter; hover-highlight overlay (Shadow DOM, <senmurv-picker-overlay>), click-capture, computes locators
+│   │   └── tools/                    # per-tool in-page bridges, lazily loaded via picker.ts's import('./tools')
 │   ├── sidepanel/
 │   │   ├── index.html                # Side Panel entry HTML
 │   │   ├── main.tsx                  # React mount
-│   │   ├── App.tsx                   # tab routing: Data | Locator | Scripts
-│   │   └── components/               # GenerateDataTab, LocatorTab, ScriptsTab
+│   │   ├── App.tsx                   # tab routing: Data | Locator | Recorder | Scripts | Tools | Cookies | Storage | Track | My Tasks | Notes | Settings
+│   │   └── components/               # GenerateDataTab, LocatorTab, RecorderTab, ScriptsTab, ToolsTab, CookiesTab, StorageTab, TrackTab, MyTasksTab, NotesTab, SettingsTab, tools/*
 │   ├── shared/
-│   │   ├── types.ts                  # SavedScript, GeneratedData, Locale, LocatorStrategy, LocatorSuggestion, LocatorSet
-│   │   ├── messages.ts               # RuntimeMessage discriminated union + sendMessage helper + type guards
+│   │   ├── types.ts                  # SavedScript, GeneratedData, Locale, LocatorStrategy, LocatorSuggestion, LocatorSet, PageMode, Result<T>
+│   │   ├── messages.ts               # RuntimeMessage discriminated union + sendRuntimeMessage/sendTabMessage helpers + type guards
 │   │   ├── constants.ts              # STORAGE_KEYS, MESSAGE_TYPES, DEFAULT_LOCALE, SUPPORTED_LOCALES, LOCATOR_PRIORITY
 │   │   ├── locators.ts               # PURE locator generation + ranking + per-framework snippet formatting
 │   │   ├── faker-data.ts             # generateTestData(locale) via @faker-js/faker
-│   │   ├── sample-scripts.ts         # seeded sample script
+│   │   ├── tools.ts                  # TOOLS registry backing the Tools launcher
+│   │   ├── tools/                    # per-tool PURE logic (bypass, measure, a11y, stacking, region, jwt, …)
+│   │   ├── profiles.ts               # value profiles — saved Cookie/Storage value switchers
 │   │   └── storage.ts                # typed chrome.storage.local wrapper
 │   └── utils/
 │       └── id.ts                     # newId('scr_') prefixed UUID
@@ -76,23 +82,23 @@ senmurv/
 └── package.json                      # Dependencies, scripts, dev tools
 ```
 
-**Data flow**: Side Panel UI (Data / Locator / Scripts tab) -> `RuntimeMessage` to service worker -> service worker runs scripts via `chrome.scripting.executeScript` or queries/messages tabs via `chrome.tabs` -> content picker captures an element and sends `ELEMENT_PICKED` back to the side panel. Scripts persist in `chrome.storage.local`.
+**Data flow**: Side Panel UI (any tab) -> `RuntimeMessage` to service worker -> service worker runs scripts via `chrome.scripting.executeScript`, reads/writes `chrome.cookies`, or queries/messages tabs via `chrome.tabs` -> content picker captures an element and sends `ELEMENT_PICKED` back to the side panel. Scripts, tasks, notes, checklists, prefs and value profiles persist in `chrome.storage.local`.
 
-**Core purpose**: A QA / test-automation helper surfaced in a Chrome Side Panel — generate realistic test data, find robust element locators via an in-page picker, and save/run JS scripts in the page's MAIN world.
+**Core purpose**: A QA / test-automation helper surfaced in a Chrome Side Panel — generate realistic test data, find robust element locators via an in-page picker, record/replay flows, save/run JS scripts in the page's MAIN world, inspect/manipulate the page via the Tools launcher, edit cookies and site storage, and track time and tasks.
 
 ## Key Patterns
 
-| Pattern                  | Approach                                             | Key Rule                                               |
-| ------------------------ | ---------------------------------------------------- | ------------------------------------------------------ |
-| Side Panel surface       | `chrome.sidePanel.setPanelBehavior` + `setOptions`   | Open on action click; one panel HTML, React-rendered   |
-| Script execution         | `chrome.scripting.executeScript({ world: 'MAIN' })`  | Inject one runner func; see sanctioned exception below |
-| State management         | `chrome.storage.local` with typed wrappers           | Always use typed get/set helpers, never raw API        |
-| Message passing          | Typed schemas via `chrome.runtime.sendMessage`       | Every message has `type` discriminant + typed payload  |
-| Service worker lifecycle | Event-driven; seed on `onInstalled`, recover on wake | Never assume SW stays alive — re-read storage on wake  |
-| Content picker UI        | Shadow DOM isolation (`<senmurv-picker-overlay>`)    | Never pollute page global styles or namespace          |
-| Side Panel communication | One-time messages to service worker / tabs           | Always handle `chrome.runtime.lastError`               |
-| Locator generation       | PURE functions in `shared/locators.ts`               | Rank by `LOCATOR_PRIORITY`; no DOM/chrome in pure code |
-| Error handling           | Result objects `{ success, data?, error? }`          | Never throw in async chrome API callbacks              |
+| Pattern                  | Approach                                                                                                                                                     | Key Rule                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| Side Panel surface       | `chrome.sidePanel.setPanelBehavior` + `setOptions`                                                                                                           | Open on action click; one panel HTML, React-rendered                                |
+| Script execution         | `chrome.scripting.executeScript({ world: 'MAIN' })`                                                                                                          | Inject one runner func; see sanctioned exception below                              |
+| State management         | `chrome.storage.local` with typed wrappers                                                                                                                   | Always use typed get/set helpers, never raw API                                     |
+| Message passing          | Typed schemas via `chrome.runtime.sendMessage`                                                                                                               | Every message has `type` discriminant + typed payload                               |
+| Service worker lifecycle | Event-driven; re-assert `sidePanel` behavior via an unconditional top-level call (re-runs on every wake) plus `onInstalled` — no `onStartup` listener needed | Never assume SW stays alive — re-read storage on wake; nothing is seeded on install |
+| Content picker UI        | Shadow DOM isolation (`<senmurv-picker-overlay>`)                                                                                                            | Never pollute page global styles or namespace                                       |
+| Side Panel communication | One-time messages to service worker / tabs                                                                                                                   | Always handle `chrome.runtime.lastError`                                            |
+| Locator generation       | PURE functions in `shared/locators.ts`                                                                                                                       | Rank by `LOCATOR_PRIORITY`; no DOM/chrome in pure code                              |
+| Error handling           | Result objects `{ ok, value?, error? }`                                                                                                                      | Never throw in async chrome API callbacks                                           |
 
 See [references/manifest-patterns.md](references/manifest-patterns.md) for full code examples.
 
@@ -120,7 +126,7 @@ See [references/code-style.md](references/code-style.md) for full formatting exa
 
 ## Common Recipes
 
-1. **Add a sample/seeded script**: Add entry in `shared/sample-scripts.ts` -> seed it on `onInstalled` in `background/service-worker.ts` -> persist via the `shared/storage.ts` wrapper to `chrome.storage.local`
+1. **Add a Tools sub-tool**: PURE logic in `shared/tools/<tool>.ts` -> in-page bridge in `content/tools/<tool>.ts` registered in the `HANDLERS` map in `content/tools.ts` -> UI in `sidepanel/components/tools/<Tool>Tool.tsx` -> flip `isReady: true` in `shared/tools.ts` -> test in `tests/shared/tools/<tool>.test.ts` (note: nothing is seeded on install — the Scripts list and storage all start empty)
 2. **Add a locator strategy**: Add the strategy to `LocatorStrategy` in `shared/types.ts` -> add it to `LOCATOR_PRIORITY` in `shared/constants.ts` -> implement its PURE generation/ranking in `shared/locators.ts` -> add a per-framework snippet formatter -> test in `tests/shared/locators.test.ts`
 3. **Add a new chrome API permission**: Add to `manifest.json` permissions array -> add justification comment -> update `references/manifest-patterns.md` -> test in isolation
 4. **Add a Side Panel tab**: Create `sidepanel/components/FeatureTab.tsx` -> register it in `App.tsx` tab routing -> add any new message type it needs to `shared/messages.ts`
@@ -131,11 +137,11 @@ See [references/code-style.md](references/code-style.md) for full formatting exa
 
 | Rule             | Convention                                                                                        |
 | ---------------- | ------------------------------------------------------------------------------------------------- |
-| Framework        | Vitest with `@anthropic-ai/chrome-types` or `jest-chrome` mocks                                   |
+| Framework        | Vitest with hand-rolled `chrome.*` mocks (`tests/setup.ts`) + `@types/chrome`                     |
 | Test file naming | `*.test.ts` co-located or in `tests/` mirror                                                      |
 | Chrome API mocks | Global mock setup in `tests/setup.ts`                                                             |
 | DOM testing      | `happy-dom` for picker / DOM-dependent tests                                                      |
-| E2E              | Playwright with `--load-extension` for integration                                                |
+| E2E              | Python Playwright with `--load-extension` against `dist/` — see the `runInChrome` skill           |
 | What to mock     | All chrome.\* APIs (sidePanel, scripting, storage.local, tabs, runtime), DOM when expensive       |
 | What NOT to mock | Pure functions (`shared/locators.ts`, `shared/faker-data.ts`), type construction, message schemas |
 | Coverage target  | Service worker logic 80%+, message handlers 90%+; pure modules (locators, faker-data) 90%+        |

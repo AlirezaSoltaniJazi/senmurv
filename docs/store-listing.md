@@ -4,15 +4,6 @@ Source of truth for the **Detailed description** field on the Senmurv Chrome Web
 Store listing. Update this file when features change, then paste the "Current
 listing" block into the CWS dashboard.
 
-> Note: the archived listing below predated the **Tools** tab, the Recorder's
-> **Export as spec**, and the Locator's **Highlight matches**. The current listing
-> adds those plus the newest work — **Region / County** data, the **JSON
-> Formatter** and **Auto refresh** tools, the Fill/Recorder generator options
-> (digit-count numbers, name-synced email), the **Settings** flow timings and
-> **Track-tag** management, and the Scripts **Run/Stop** toggle with folder
-> grouping. Performance/reliability work is not user-facing copy, so it is
-> intentionally not listed here.
-
 ---
 
 ## Current listing
@@ -32,6 +23,14 @@ Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 – Author tests: Assertions (snapshot an element's state into copy-ready framework assertions), Validation (read a field's client-side rules + a boundary-test checklist), Stacking (find the overlay intercepting a click), and Harden Selector (score a fragile selector and get a robust replacement).
 – Drive & simulate: Bypass (unlock disabled / hidden / read-only fields), Region (make the page read another country's clock, timezone, locale & geolocation), Site data (clear this origin's storage), and Auto refresh (reload the tab on a timer).
 – Format & decode: JWT decoder, and JSON Formatter (pretty-print / minify with a collapsible tree view).
+– Dynamics 365 / Power Apps: Logical names (label every field, tab and section with its schema name).
+– Address bar: Query params (copy the record id or any param out of the current URL, edit params, and open the rebuilt URL).
+
+• Cookies — view and edit every cookie for the current site, including the HttpOnly ones a page can't show you.
+
+• Storage — view and edit the site's localStorage and sessionStorage.
+
+• Value profiles (Cookies / Storage) — save the values you keep switching between while testing (locales, feature flags, logins) and apply one in a click.
 
 • Track — a stopwatch for your work: start / pause / resume / stop tagged tasks, run several at once, clear them all in one go, and review time by day in a list or calendar.
 
@@ -42,5 +41,3 @@ Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 • Settings — panel font size, the flow-run popup auto-close and element-find timeout, and Track-tag management (rename / recolour / delete); plus Refresh and Open-in-full-page from the toolbar.
 
 All data and settings stay in your browser. Senmurv does not collect or transmit any data.
-
----
