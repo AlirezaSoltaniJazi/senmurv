@@ -18,13 +18,13 @@ Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 
 • Recorder — record a flow of clicks, inputs, and selects on the page (or build it by hand), then replay it, run from any step, stop a run mid-flow, save it as a script, or export it as a ready-to-run spec for Playwright, Cypress, WebdriverIO, Selenium, or Robot Framework. Steps include click, fill, select, checkbox, radio, wait, wait-for-element, press key, and run JS; fill steps can auto-generate realistic values (names, an email synced to the person, numbers by digit count, region/county, dates); a live on-page HUD (with a configurable auto-close) shows each step pass or fail.
 
-• Tools — a toolbox of in-page inspectors and utilities:
+• Tools — a searchable, pinnable toolbox of in-page inspectors and utilities, each with its own icon; pin up to 5 favourites to the top of the list:
 – Inspect: Measure (box model & distances), Colour (every format + WCAG contrast), Fonts (the actually-rendered typeface), Tab order, and Accessibility (WCAG A / AA / AAA audit).
 – Author tests: Assertions (snapshot an element's state into copy-ready framework assertions), Validation (read a field's client-side rules + a boundary-test checklist), Stacking (find the overlay intercepting a click), and Harden Selector (score a fragile selector and get a robust replacement).
 – Drive & simulate: Bypass (unlock disabled / hidden / read-only fields), Region (make the page read another country's clock, timezone, locale & geolocation), Site data (clear this origin's storage), and Auto refresh (reload the tab on a timer).
 – Format & decode: JWT decoder, and JSON Formatter (pretty-print / minify with a collapsible tree view).
-– Dynamics 365 / Power Apps: Logical names (label every field, tab and section with its schema name).
-– Address bar: Query params (copy the record id or any param out of the current URL, edit params, and open the rebuilt URL).
+– Dynamics 365 / Power Apps: Logical names (label every field, tab and section with its schema name), and Open in Web API (resolve the current record to its Dataverse Web API URL and open it in a new tab).
+– Address bar: Query params (copy the record id or any param out of the current URL, edit params, save a whole combination as a named preset to reapply in one click, and open the rebuilt URL).
 
 • Cookies — view and edit every cookie for the current site, including the HttpOnly ones a page can't show you.
 
@@ -36,8 +36,8 @@ Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 
 • My Tasks — checklists with subtasks, completion %, and deadlines (with days remaining) — and start a Track timer on any task from here.
 
-• Notes — quick free-form notes.
+• Notes — quick free-form notes; saving clears the form for the next one, and unsaved text auto-saves as you type so closing the panel never loses it.
 
-• Settings — panel font size, the flow-run popup auto-close and element-find timeout, and Track-tag management (rename / recolour / delete); plus Refresh and Open-in-full-page from the toolbar.
+• Settings — panel font size (also adjustable with Cmd/Ctrl +/-, and reset with Cmd/Ctrl 0), the flow-run popup auto-close and element-find timeout, and Track-tag management (rename / recolour / delete); plus Refresh and Open-in-full-page from the toolbar.
 
 All data and settings stay in your browser. Senmurv does not collect or transmit any data.
