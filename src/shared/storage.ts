@@ -324,6 +324,13 @@ export async function getProfiles(): Promise<ValueProfile[]> {
   return raw.filter(isValueProfile);
 }
 
+/** Overwrite the full profile list. */
+export async function saveProfiles(profiles: ValueProfile[]): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.PROFILES, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: profiles })
+  );
+}
+
 /** Insert or update a profile by id; returns the new list. */
 export async function upsertProfileStored(profile: ValueProfile): Promise<ValueProfile[]> {
   return withKeyLock(STORAGE_KEYS.PROFILES, async () => {
@@ -379,6 +386,13 @@ export async function getQueryParamSets(): Promise<QueryParamSet[]> {
   const raw = result[STORAGE_KEYS.QUERY_PARAM_SETS];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isQueryParamSet);
+}
+
+/** Overwrite the full query-param set list. */
+export async function saveQueryParamSets(sets: QueryParamSet[]): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: sets })
+  );
 }
 
 /** Insert or update a query-param set by id; returns the new list. */

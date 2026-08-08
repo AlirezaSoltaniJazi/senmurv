@@ -13,10 +13,12 @@ export interface GeneratedData {
   lastName: string;
   phone: string;
   address: string;
+  city: string;
   postalCode: string;
   region: string;
   email: string;
   dateOfBirth: string;
+  uuid: string;
 }
 
 /** A script handed to the Scripts tab from another tool, to load into its editor once. */

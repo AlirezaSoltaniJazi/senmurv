@@ -19,10 +19,12 @@ const REQUIRED_FIELDS: (keyof GeneratedData)[] = [
   'lastName',
   'phone',
   'address',
+  'city',
   'postalCode',
   'region',
   'email',
   'dateOfBirth',
+  'uuid',
 ];
 
 describe('generateTestData', () => {
@@ -47,6 +49,12 @@ describe('generateTestData', () => {
   it('honours the phoneWithCode option', () => {
     expect(generateTestData('en_GB', { phoneWithCode: true }).phone.startsWith('+44')).toBe(true);
     expect(generateTestData('en_GB', { phoneWithCode: false }).phone.startsWith('+')).toBe(false);
+  });
+
+  it('generates a well-formed UUID', () => {
+    expect(generateTestData('en_GB').uuid).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    );
   });
 });
 

@@ -1561,6 +1561,13 @@ input[type='checkbox'] {
   word-break: break-word;
 }
 
+.note-body.collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
+}
+
 /* Tools tab — launcher list (base `button` already supplies panel/border/radius) */
 .tool-list {
   list-style: none;

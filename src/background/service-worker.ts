@@ -15,6 +15,10 @@ import {
   getQueryParamSets,
   getScripts,
   getTasks,
+  saveChecklists,
+  saveNotes,
+  saveProfiles,
+  saveQueryParamSets,
   saveScripts,
   saveTasks,
   savePrefs,
@@ -1594,6 +1598,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
+      case MESSAGE_TYPES.SET_CHECKLISTS:
+        saveChecklists(message.payload.checklists)
+          .then(() => sendResponse({ ok: true, value: message.payload.checklists }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
       case MESSAGE_TYPES.DELETE_CHECKLIST:
         deleteChecklist(message.payload.id)
           .then((value) => sendResponse({ ok: true, value }))
@@ -1609,6 +1619,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.SAVE_NOTE:
         upsertNote(message.payload.note)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_NOTES:
+        saveNotes(message.payload.notes)
+          .then(() => sendResponse({ ok: true, value: message.payload.notes }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
@@ -1639,6 +1655,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.SAVE_QUERY_PARAM_SET:
         upsertQueryParamSet(message.payload.set)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_QUERY_PARAM_SETS:
+        saveQueryParamSets(message.payload.sets)
+          .then(() => sendResponse({ ok: true, value: message.payload.sets }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
@@ -1793,6 +1815,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.SAVE_PROFILE:
         upsertProfileStored(message.payload.profile)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_PROFILES:
+        saveProfiles(message.payload.profiles)
+          .then(() => sendResponse({ ok: true, value: message.payload.profiles }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 

@@ -53,6 +53,9 @@ export function QueryParamsTool(): ReactElement {
   const [sets, setSets] = useState<QueryParamSet[]>([]);
   // null = the "+ Save this set" button; a string = the naming input is open.
   const [savingName, setSavingName] = useState<string | null>(null);
+  // Inline rename of a saved set.
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   const refresh = useCallback((): void => {
     readActiveUrl(setCurrentUrl);
@@ -171,6 +174,24 @@ export function QueryParamsTool(): ReactElement {
     const res = await sendRuntimeMessage<Result<QueryParamSet[]>>({
       type: MESSAGE_TYPES.DELETE_QUERY_PARAM_SET,
       payload: { id: set.id },
+    });
+    if (res.ok) setSets(res.value);
+    else setError(res.error);
+  }
+
+  function startRename(set: QueryParamSet): void {
+    setRenamingId(set.id);
+    setRenameValue(set.name);
+  }
+
+  async function saveRename(id: string): Promise<void> {
+    const name = renameValue.trim();
+    setRenamingId(null);
+    const set = sets.find((s) => s.id === id);
+    if (!set || name === '' || name === set.name) return;
+    const res = await sendRuntimeMessage<Result<QueryParamSet[]>>({
+      type: MESSAGE_TYPES.SAVE_QUERY_PARAM_SET,
+      payload: { set: { ...set, name, updatedAt: nowMs() } },
     });
     if (res.ok) setSets(res.value);
     else setError(res.error);
@@ -342,13 +363,36 @@ export function QueryParamsTool(): ReactElement {
         <div className="chips">
           {sets.map((set) => (
             <Fragment key={set.id}>
+              {renamingId === set.id ? (
+                <input
+                  className="name-input"
+                  autoFocus
+                  value={renameValue}
+                  onChange={(e) => setRenameValue(e.target.value)}
+                  onBlur={() => void saveRename(set.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') void saveRename(set.id);
+                    else if (e.key === 'Escape') setRenamingId(null);
+                  }}
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="chip"
+                  title={`Load base + ${set.params.length} param(s)${set.hash ? ' + hash' : ''}`}
+                  onClick={() => applySet(set)}
+                >
+                  {set.name}
+                </button>
+              )}
               <button
                 type="button"
                 className="chip"
-                title={`Load base + ${set.params.length} param(s)${set.hash ? ' + hash' : ''}`}
-                onClick={() => applySet(set)}
+                title={`Rename “${set.name}”`}
+                aria-label={`Rename saved set ${set.name}`}
+                onClick={() => startRename(set)}
               >
-                {set.name}
+                ✎
               </button>
               <button
                 type="button"

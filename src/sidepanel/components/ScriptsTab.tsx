@@ -1,22 +1,19 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
-import type { ChangeEvent, DragEvent, ReactElement } from 'react';
+import type { DragEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { decodeBookmarklet } from '@/shared/bookmarklet';
 import { isFillScript, parseFillScript } from '@/shared/generators';
 import {
-  applyScriptImport,
   buildScriptTree,
   deleteFolder,
-  importConflicts,
+  filterScriptTree,
   moveScriptBefore,
   nestScript,
   newFolder,
-  parseScriptsImport,
-  serializeScripts,
   ungroupScript,
 } from '@/shared/script-io';
-import type { ImportedScript, ImportMode } from '@/shared/script-io';
+import { configForRegion, findRegion, REGIONS } from '@/shared/tools/region';
 import {
   fieldToStep,
   isWorkflowScript,
@@ -53,14 +50,12 @@ export function ScriptsTab({
   const [code, setCode] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   // Bumped on each Run and on Stop, so a stale RUN_SCRIPT response (from a run the
   // user has since stopped or superseded) can't clear a newer row's toggle.
   const runTokenRef = useRef(0);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
-  const [pending, setPending] = useState<ImportedScript[] | null>(null);
-  const [pendingSel, setPendingSel] = useState<boolean[]>([]);
-  const [importMode, setImportMode] = useState<ImportMode>('overwrite');
+  const [query, setQuery] = useState('');
+  // 'none', or a REGIONS id — applied before RUN_SCRIPT and restored after.
+  const [regionId, setRegionId] = useState<string>('none');
   // Drag-to-group/reorder: which row is being dragged, which it's over, and whether
   // dropping would nest under it (pointer in the row body) or reorder before it
   // (pointer near the top edge).
@@ -171,12 +166,6 @@ export function ScriptsTab({
     });
     if (res.ok) {
       setScripts(res.value);
-      setSelected((prev) => {
-        if (!prev.has(id)) return prev;
-        const next = new Set(prev);
-        next.delete(id);
-        return next;
-      });
       if (editingId === id) resetEditor();
     }
   }
@@ -193,7 +182,6 @@ export function ScriptsTab({
       return;
     }
     setScripts([]);
-    setSelected(new Set());
     resetEditor();
     setStatus('Deleted all scripts.');
   }
@@ -202,11 +190,29 @@ export function ScriptsTab({
     setError(null);
     setStatus(null);
     const token = ++runTokenRef.current;
+    let regionApplied = false;
+    if (regionId !== 'none') {
+      const region = findRegion(regionId);
+      if (region) {
+        const regionRes = await sendRuntimeMessage<Result<void>>({
+          type: MESSAGE_TYPES.APPLY_REGION,
+          payload: { config: configForRegion(region, true) },
+        });
+        if (!regionRes.ok) {
+          setError(regionRes.error);
+          return;
+        }
+        regionApplied = true;
+      }
+    }
     setRunningId(script.id); // toggle this row's Run → Stop
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code: toAwaitableScript(script.code) },
     });
+    if (regionApplied) {
+      await sendRuntimeMessage({ type: MESSAGE_TYPES.RESTORE_REGION });
+    }
     // A Flow's response arrives when its steps FINISH (the runner awaits the flow
     // promise); a plain script's arrives when it returns. Either way, the run is
     // over — revert the toggle. Skip a stale result the user already stopped/re-ran.
@@ -250,15 +256,6 @@ export function ScriptsTab({
     } catch (err) {
       setError(`Could not format: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }
-
-  function toggleSelect(id: string): void {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
   }
 
   // ── Drag to group (nest) or reorder ─────────────────────────────────────────
@@ -347,66 +344,6 @@ export function ScriptsTab({
         : `Delete folder “${folder?.name}”?`;
     if (!window.confirm(msg)) return;
     await persistScripts(deleteFolder(scripts, id), 'Folder deleted.');
-  }
-
-  function exportScripts(): void {
-    setError(null);
-    const picked = scripts.filter((s) => selected.has(s.id));
-    // Folders are organisation, not scripts — never exported.
-    const chosen = (picked.length ? picked : scripts).filter((s) => !s.isFolder);
-    const blob = new Blob([serializeScripts(chosen)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'senmurv-scripts.json';
-    a.click();
-    URL.revokeObjectURL(url);
-    setStatus(`Exported ${chosen.length} script(s).`);
-  }
-
-  async function onImportFile(e: ChangeEvent<HTMLInputElement>): Promise<void> {
-    setError(null);
-    setStatus(null);
-    const file = e.target.files?.[0];
-    e.target.value = ''; // allow re-importing the same file
-    if (!file) return;
-    const parsed = parseScriptsImport(await file.text());
-    if (!parsed.ok) {
-      setError(parsed.error);
-      return;
-    }
-    setPending(parsed.value);
-    setPendingSel(parsed.value.map(() => true));
-  }
-
-  function togglePending(i: number): void {
-    setPendingSel((prev) => prev.map((v, idx) => (idx === i ? !v : v)));
-  }
-
-  function cancelImport(): void {
-    setPending(null);
-    setPendingSel([]);
-  }
-
-  async function confirmImport(): Promise<void> {
-    if (!pending) return;
-    const chosen = pending.filter((_, i) => pendingSel[i]);
-    if (chosen.length === 0) {
-      cancelImport();
-      return;
-    }
-    const next = applyScriptImport(scripts, chosen, importMode, Date.now());
-    const res = await sendRuntimeMessage<Result<SavedScript[]>>({
-      type: MESSAGE_TYPES.SET_SCRIPTS,
-      payload: { scripts: next },
-    });
-    if (!res.ok) {
-      setError(res.error);
-      return;
-    }
-    setScripts(res.value);
-    cancelImport();
-    setStatus(`Imported ${chosen.length} script(s) (${importMode}).`);
   }
 
   /** Row className string; `canNest` gates the nest-drop highlight. */
@@ -524,12 +461,6 @@ export function ScriptsTab({
         {/* Top-level scripts get the caret-column spacer to align under a folder;
             children are already indented, so they skip it (no wasted lead-in gap). */}
         {!isChild && <span className="tree-caret-spacer" aria-hidden="true" />}
-        <input
-          type="checkbox"
-          checked={selected.has(s.id)}
-          onChange={() => toggleSelect(s.id)}
-          title="Select for export"
-        />
         <span className="script-name">{s.name}</span>
         <span className="script-actions">
           {isChild && (
@@ -603,20 +534,13 @@ export function ScriptsTab({
     );
   }
 
-  const selectedCount = scripts.filter((s) => selected.has(s.id)).length;
-  const hasConflicts = pending?.some((imp) => importConflicts(scripts, imp)) ?? false;
+  const shown = filterScriptTree(buildScriptTree(scripts), query);
 
   return (
     <div className="tab">
       <div className="row">
         <button type="button" className="primary" onClick={() => void createFolder()}>
           + New folder
-        </button>
-        <button type="button" onClick={exportScripts} disabled={scripts.length === 0}>
-          Export{selectedCount ? ` (${selectedCount})` : ''}
-        </button>
-        <button type="button" onClick={() => fileInputRef.current?.click()}>
-          Import
         </button>
         <button
           type="button"
@@ -626,68 +550,40 @@ export function ScriptsTab({
         >
           Delete all
         </button>
+        <label className="field-label" htmlFor="scripts-region">
+          Run in region
+        </label>
+        <select
+          id="scripts-region"
+          value={regionId}
+          onChange={(e) => setRegionId(e.target.value)}
+          title="Emulate a region's clock, timezone and locale for the duration of the run"
+        >
+          <option value="none">None</option>
+          {REGIONS.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.flag} {r.label}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="row">
         <input
-          ref={fileInputRef}
-          type="file"
-          accept="application/json,.json"
-          className="hidden-file"
-          onChange={(e) => void onImportFile(e)}
+          className="name-input"
+          placeholder="Search scripts"
+          aria-label="Search scripts"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
         />
       </div>
 
-      {pending && (
-        <div className="import-panel">
-          <h3 className="section-title">Import {pending.length} script(s)</h3>
-          {hasConflicts && (
-            <div className="row">
-              <span className="field-label">Some names already exist:</span>
-              <label className="checkbox-inline">
-                <input
-                  type="radio"
-                  name="import-mode"
-                  checked={importMode === 'overwrite'}
-                  onChange={() => setImportMode('overwrite')}
-                />
-                Overwrite existing
-              </label>
-              <label className="checkbox-inline">
-                <input
-                  type="radio"
-                  name="import-mode"
-                  checked={importMode === 'keep-both'}
-                  onChange={() => setImportMode('keep-both')}
-                />
-                Keep both
-              </label>
-            </div>
-          )}
-          <ul className="script-list">
-            {pending.map((imp, i) => (
-              <li key={`${imp.name}-${i}`} className="script-row">
-                <input
-                  type="checkbox"
-                  checked={pendingSel[i] ?? false}
-                  onChange={() => togglePending(i)}
-                />
-                <span className="script-name">{imp.name}</span>
-                {importConflicts(scripts, imp) && <span className="badge conflict">exists</span>}
-              </li>
-            ))}
-          </ul>
-          <div className="row">
-            <button type="button" className="primary" onClick={() => void confirmImport()}>
-              Import {pendingSel.filter(Boolean).length}
-            </button>
-            <button type="button" onClick={cancelImport}>
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       <ul className="script-list">
         {scripts.length === 0 && <li className="hint">No saved scripts yet.</li>}
-        {buildScriptTree(scripts).map((g) => (
+        {scripts.length > 0 && shown.length === 0 && (
+          <li className="hint">No scripts match your search.</li>
+        )}
+        {shown.map((g) => (
           <Fragment key={g.parent.id}>
             {g.parent.isFolder
               ? renderFolder(g.parent, g.children.length)

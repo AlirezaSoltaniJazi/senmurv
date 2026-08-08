@@ -21,6 +21,7 @@ import {
 import type { PersonName } from '@/shared/generators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
+import { configForRegion, findRegion, REGIONS } from '@/shared/tools/region';
 import {
   buildWorkflowScript,
   describeStep,
@@ -150,6 +151,7 @@ export function RecorderTab({
   // so this just gates the Stop button; the user clears it via Stop.
   const [running, setRunning] = useState(false);
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
+  const [regionId, setRegionId] = useState<string>('none');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adhocOpen, setAdhocOpen] = useState(false);
@@ -401,11 +403,29 @@ export function RecorderTab({
       setError('Add or record some steps first.');
       return;
     }
+    let regionApplied = false;
+    if (regionId !== 'none') {
+      const region = findRegion(regionId);
+      if (region) {
+        const regionRes = await sendRuntimeMessage<Result<void>>({
+          type: MESSAGE_TYPES.APPLY_REGION,
+          payload: { config: configForRegion(region, true) },
+        });
+        if (!regionRes.ok) {
+          setError(regionRes.error);
+          return;
+        }
+        regionApplied = true;
+      }
+    }
     setRunning(true);
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
       payload: { code: buildScriptFor(list) },
     });
+    if (regionApplied) {
+      await sendRuntimeMessage({ type: MESSAGE_TYPES.RESTORE_REGION });
+    }
     if (res.ok) setStatus(done);
     else {
       setError(res.error);
@@ -574,6 +594,22 @@ export function RecorderTab({
           {SUPPORTED_LOCALES.map((l) => (
             <option key={l} value={l}>
               {LOCALE_LABELS[l] ?? l}
+            </option>
+          ))}
+        </select>
+        <label className="field-label" htmlFor="recorder-region">
+          Run in region
+        </label>
+        <select
+          id="recorder-region"
+          value={regionId}
+          onChange={(e) => setRegionId(e.target.value)}
+          title="Emulate a region's clock, timezone and locale for the duration of the run"
+        >
+          <option value="none">None</option>
+          {REGIONS.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.flag} {r.label}
             </option>
           ))}
         </select>

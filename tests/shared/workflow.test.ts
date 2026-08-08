@@ -404,6 +404,24 @@ describe('region + shared-person runner', () => {
     expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'region' });
   });
 
+  it('emits a {random:city} token and the in-page resolver knows it', () => {
+    const code = buildWorkflowScript([
+      { id: 'c', kind: 'fill', selector: '#city', generator: 'city' },
+    ]);
+    expect(code).toContain('"value": "{random:city}"');
+    expect(code).toContain("case 'city'");
+    expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'city' });
+  });
+
+  it('emits a {random:uuid} token and the in-page resolver knows it', () => {
+    const code = buildWorkflowScript([
+      { id: 'u', kind: 'fill', selector: '#uuid', generator: 'uuid' },
+    ]);
+    expect(code).toContain('"value": "{random:uuid}"');
+    expect(code).toContain("case 'uuid'");
+    expect(parseWorkflowScript(code)![0]).toMatchObject({ kind: 'fill', generator: 'uuid' });
+  });
+
   it('embeds one shared person so name fields and a synced email agree at run time', () => {
     const code = buildWorkflowScript([
       { id: '1', kind: 'fill', selector: '#f', generator: 'firstName' },

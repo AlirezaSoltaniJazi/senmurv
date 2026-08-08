@@ -10,10 +10,12 @@ const FIELDS: { key: keyof GeneratedData; label: string }[] = [
   { key: 'lastName', label: 'Last name' },
   { key: 'phone', label: 'Phone' },
   { key: 'address', label: 'Address' },
+  { key: 'city', label: 'City' },
   { key: 'postalCode', label: 'Postal code' },
   { key: 'region', label: 'Region / County' },
   { key: 'email', label: 'Email' },
   { key: 'dateOfBirth', label: 'Date of birth' },
+  { key: 'uuid', label: 'UUID' },
 ];
 
 export function GenerateDataTab(): ReactElement {

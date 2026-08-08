@@ -67,6 +67,7 @@ let hostEl: HTMLElement | null = null;
 let shadowEl: ShadowRoot | null = null;
 const boxPool: HTMLDivElement[] = [];
 const labelPool: HTMLDivElement[] = [];
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Is this node one of Senmurv's own injected hosts? */
 export function isOurHost(node: Node | null): boolean {
@@ -164,8 +165,10 @@ export function flashOverlay(): void {
   if (!el) return;
   const previous = el.style.borderColor;
   el.style.borderColor = TONE_COLORS.good;
-  setTimeout(() => {
+  if (flashTimer !== null) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
     el.style.borderColor = previous;
+    flashTimer = null;
   }, 200);
 }
 
@@ -182,6 +185,10 @@ export function destroyOverlay(): void {
   shadowEl = null;
   boxPool.length = 0;
   labelPool.length = 0;
+  if (flashTimer !== null) {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+  }
 }
 
 /** The real page element at a point — our host is pointer-events:none, so it is skipped. */

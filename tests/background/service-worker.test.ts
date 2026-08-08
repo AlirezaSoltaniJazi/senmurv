@@ -453,6 +453,154 @@ describe('picking + scripts CRUD', () => {
   });
 });
 
+describe('bulk overwrite messages (SET_*)', () => {
+  it('SET_PROFILES overwrites the stored profile list', async () => {
+    const profiles = [
+      {
+        id: 'prof_1',
+        name: 'Locale',
+        target: 'local',
+        key: 'localeKey',
+        values: ['en_GB'],
+        enabled: true,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const res = await send({ type: MESSAGE_TYPES.SET_PROFILES, payload: { profiles } });
+    expect(res).toEqual({ ok: true, value: profiles });
+    expect(store[STORAGE_KEYS.PROFILES]).toEqual(profiles);
+  });
+
+  it('SET_QUERY_PARAM_SETS overwrites the stored set list', async () => {
+    const sets = [
+      {
+        id: 'qps_1',
+        name: 'Account record',
+        base: 'https://org.crm4.dynamics.com/main.aspx',
+        params: [{ name: 'etn', value: 'account' }],
+        hash: '',
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const res = await send({ type: MESSAGE_TYPES.SET_QUERY_PARAM_SETS, payload: { sets } });
+    expect(res).toEqual({ ok: true, value: sets });
+    expect(store[STORAGE_KEYS.QUERY_PARAM_SETS]).toEqual(sets);
+  });
+
+  it('SET_NOTES overwrites the stored note list', async () => {
+    const notes = [{ id: 'note_1', title: 'Standup', body: 'x', createdAt: 1, updatedAt: 1 }];
+    const res = await send({ type: MESSAGE_TYPES.SET_NOTES, payload: { notes } });
+    expect(res).toEqual({ ok: true, value: notes });
+    expect(store[STORAGE_KEYS.NOTES]).toEqual(notes);
+  });
+
+  it('SET_CHECKLISTS overwrites the stored checklist list', async () => {
+    const checklists = [
+      {
+        id: 'chk_1',
+        title: 'Release v1.0',
+        subtasks: [],
+        done: false,
+        deadline: null,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+    ];
+    const res = await send({ type: MESSAGE_TYPES.SET_CHECKLISTS, payload: { checklists } });
+    expect(res).toEqual({ ok: true, value: checklists });
+    expect(store[STORAGE_KEYS.CHECKLISTS]).toEqual(checklists);
+  });
+});
+
+describe('Region emulator', () => {
+  const CONFIG = {
+    timezone: 'Europe/Paris',
+    locale: 'fr-FR',
+    coords: { lat: 48.8566, lon: 2.3522 },
+  };
+
+  it('applies the region shim in the MAIN world as a function, never a code string', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([{ result: { ok: true } }]);
+    const res = await send({ type: MESSAGE_TYPES.APPLY_REGION, payload: { config: CONFIG } });
+    expect(res).toEqual({ ok: true, value: undefined });
+
+    const [injection] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
+      { world: string; target: { tabId: number }; func: unknown; args?: unknown[] },
+    ];
+    expect(injection.world).toBe('MAIN');
+    expect(injection.target).toEqual({ tabId: 1 });
+    // A function, not a string — this is why it does not widen the sanctioned
+    // `new Function` exception in runUserScript.
+    expect(typeof injection.func).toBe('function');
+    expect(injection.args).toEqual([CONFIG]);
+  });
+
+  it('surfaces an error thrown by the region shim', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { ok: false, error: 'boom' } },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.APPLY_REGION, payload: { config: CONFIG } });
+    expect(res).toEqual({ ok: false, error: 'boom' });
+  });
+
+  it('refuses to apply a region on a blocked page', async () => {
+    chromeMock.tabs.query.mockResolvedValueOnce([
+      { id: 2, url: 'chrome://extensions', active: true },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.APPLY_REGION, payload: { config: CONFIG } });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('restores the region shim in the MAIN world as a function, never a code string', async () => {
+    const res = await send({ type: MESSAGE_TYPES.RESTORE_REGION });
+    expect(res).toEqual({ ok: true, value: undefined });
+
+    const [injection] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
+      { world: string; target: { tabId: number }; func: unknown; args?: unknown[] },
+    ];
+    expect(injection.world).toBe('MAIN');
+    expect(injection.target).toEqual({ tabId: 1 });
+    expect(typeof injection.func).toBe('function');
+    expect(injection.args).toBeUndefined();
+  });
+
+  it('reads the region state in the MAIN world as a function, never a code string', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { active: true, config: CONFIG } },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.GET_REGION_STATE });
+    expect(res).toEqual({ ok: true, value: { active: true, config: CONFIG } });
+
+    const [injection] = chromeMock.scripting.executeScript.mock.calls[0] as unknown as [
+      { world: string; target: { tabId: number }; func: unknown; args?: unknown[] },
+    ];
+    expect(injection.world).toBe('MAIN');
+    expect(injection.target).toEqual({ tabId: 1 });
+    expect(typeof injection.func).toBe('function');
+    expect(injection.args).toBeUndefined();
+  });
+
+  it('reports inactive state when nothing is applied', async () => {
+    chromeMock.scripting.executeScript.mockResolvedValueOnce([
+      { result: { active: false, config: null } },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.GET_REGION_STATE });
+    expect(res).toEqual({ ok: true, value: { active: false, config: null } });
+  });
+
+  it('refuses to read region state on a blocked page', async () => {
+    chromeMock.tabs.query.mockResolvedValueOnce([
+      { id: 2, url: 'chrome://extensions', active: true },
+    ]);
+    const res = await send({ type: MESSAGE_TYPES.GET_REGION_STATE });
+    expect(res?.ok).toBe(false);
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+});
+
 describe('never hangs the caller', () => {
   it('answers with an error for a valid-type message with a missing payload (sync branch)', async () => {
     // isRuntimeMessage passes on `type` alone; reading message.payload.script

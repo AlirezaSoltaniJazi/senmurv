@@ -78,3 +78,16 @@ export function deadlineStatus(
   if (days <= 2) return 'soon';
   return 'ok';
 }
+
+/** Case-insensitive match of a checklist against a search box query: its own title, or any subtask's. */
+export function matchesChecklistQuery(
+  checklist: Pick<Checklist, 'title' | 'subtasks'>,
+  query: string
+): boolean {
+  const q = query.trim().toLowerCase();
+  if (q === '') return true;
+  return (
+    checklist.title.toLowerCase().includes(q) ||
+    checklist.subtasks.some((s) => s.title.toLowerCase().includes(q))
+  );
+}

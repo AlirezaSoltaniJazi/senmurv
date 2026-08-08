@@ -2,7 +2,12 @@ import { useEffect, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
-import { isComplete, overallProgress, progressBar } from '@/shared/checklists';
+import {
+  isComplete,
+  matchesChecklistQuery,
+  overallProgress,
+  progressBar,
+} from '@/shared/checklists';
 import { fromLocalInputValue, isActive, isRunning } from '@/shared/tasks';
 import type { Checklist, Result, Subtask, TimeEntry } from '@/shared/types';
 import { newId } from '@/utils/id';
@@ -23,6 +28,7 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
   const [timeEntries, setTimeEntries] = useState<TimeEntry[]>([]);
   const [title, setTitle] = useState('');
   const [deadline, setDeadline] = useState('');
+  const [query, setQuery] = useState('');
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [editingId, setEditingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -238,6 +244,7 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
   const sorted = [...checklists].sort(
     (a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || b.createdAt - a.createdAt
   );
+  const filtered = sorted.filter((list) => matchesChecklistQuery(list, query));
 
   return (
     <div className="tab">
@@ -273,11 +280,25 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
         </div>
       )}
 
-      {sorted.length === 0 ? (
-        <p className="hint">No tasks yet. Add one above.</p>
+      <div className="row">
+        <input
+          className="name-input"
+          placeholder="Search tasks and subtasks"
+          aria-label="Search tasks"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="hint">
+          {checklists.length === 0
+            ? 'No tasks yet. Add one above.'
+            : 'Nothing matches your search.'}
+        </p>
       ) : (
         <div className="checklist-list">
-          {sorted.map((list) => (
+          {filtered.map((list) => (
             <ChecklistCard
               key={list.id}
               list={list}

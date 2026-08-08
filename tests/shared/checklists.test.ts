@@ -5,6 +5,7 @@ import {
   deadlineLabel,
   deadlineStatus,
   isComplete,
+  matchesChecklistQuery,
   overallProgress,
   progressBar,
 } from '@/shared/checklists';
@@ -121,5 +122,32 @@ describe('progressBar', () => {
     expect(progressBar(100)).toEqual({ filled: 10, empty: 0 });
     expect(progressBar(55)).toEqual({ filled: 6, empty: 4 }); // rounds
     expect(progressBar(150)).toEqual({ filled: 10, empty: 0 }); // clamped
+  });
+});
+
+describe('matchesChecklistQuery', () => {
+  const list = makeList({
+    title: 'Release v1.0',
+    subtasks: [
+      sub({ id: 'sub_1', title: 'Write changelog' }),
+      sub({ id: 'sub_2', title: 'Tag build' }),
+    ],
+  });
+
+  it('matches an empty query', () => {
+    expect(matchesChecklistQuery(list, '')).toBe(true);
+    expect(matchesChecklistQuery(list, '   ')).toBe(true);
+  });
+
+  it('matches the checklist title', () => {
+    expect(matchesChecklistQuery(list, 'release')).toBe(true);
+  });
+
+  it('matches a subtask title even when the checklist title does not match', () => {
+    expect(matchesChecklistQuery(list, 'changelog')).toBe(true);
+  });
+
+  it('does not match unrelated text', () => {
+    expect(matchesChecklistQuery(list, 'nope')).toBe(false);
   });
 });

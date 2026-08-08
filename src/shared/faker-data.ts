@@ -212,9 +212,11 @@ export function generateTestData(
     lastName,
     phone: generatePhone(locale, options.phoneWithCode ?? true),
     address: faker.location.streetAddress(),
+    city: faker.location.city(),
     postalCode: faker.location.zipCode(),
     region: regionOf(faker),
     email: faker.internet.email({ firstName, lastName }),
     dateOfBirth: faker.date.birthdate().toLocaleDateString('en-GB'),
+    uuid: faker.string.uuid(),
   };
 }

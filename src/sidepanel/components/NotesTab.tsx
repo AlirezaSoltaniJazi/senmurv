@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
+import { matchesNoteQuery } from '@/shared/notes';
 import type { Note, Result } from '@/shared/types';
 import { newId } from '@/utils/id';
 
@@ -32,6 +33,8 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
   const [body, setBody] = useState('');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   // The id a brand-new, never-yet-saved draft is allocated the first time it
   // autosaves, so every later flush of the same draft updates it in place
@@ -186,7 +189,35 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
     }
   }
 
+  function toggleExpand(id: string): void {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   const sorted = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
+  const shown = sorted.filter((note) => matchesNoteQuery(note, query));
+
+  /** Expand every currently-shown (i.e. search-filtered) note, leaving hidden ones untouched. */
+  function expandAll(): void {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const note of shown) next.add(note.id);
+      return next;
+    });
+  }
+
+  /** Collapse every currently-shown (i.e. search-filtered) note, leaving hidden ones untouched. */
+  function collapseAll(): void {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      for (const note of shown) next.delete(note.id);
+      return next;
+    });
+  }
 
   return (
     <div className="tab">
@@ -212,24 +243,66 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
         </button>
       </div>
 
+      <div className="row">
+        <input
+          className="name-input"
+          placeholder="Search notes"
+          aria-label="Search notes"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
+      </div>
+
+      {sorted.length > 0 && (
+        <div className="row">
+          <button type="button" onClick={expandAll}>
+            Expand all
+          </button>
+          <button type="button" onClick={collapseAll}>
+            Collapse all
+          </button>
+        </div>
+      )}
+
       <ul className="note-list">
-        {sorted.length === 0 && <li className="hint">No notes yet.</li>}
-        {sorted.map((note) => (
-          <li key={note.id} className="note-card">
-            <div className="note-head">
-              <span className="note-title">{noteHeading(note)}</span>
-              <span className="note-actions">
-                <button type="button" onClick={() => editNote(note)}>
-                  Edit
-                </button>
-                <button type="button" className="danger" onClick={() => void remove(note.id)}>
-                  Delete
-                </button>
-              </span>
-            </div>
-            {note.body.trim() && <p className="note-body">{note.body}</p>}
+        {shown.length === 0 && (
+          <li className="hint">
+            {notes.length === 0 ? 'No notes yet.' : 'No note matches that search.'}
           </li>
-        ))}
+        )}
+        {shown.map((note) => {
+          const isExpanded = expanded.has(note.id);
+          const hasBody = note.body.trim() !== '';
+          return (
+            <li key={note.id} className="note-card">
+              <div className="note-head">
+                {hasBody && (
+                  <button
+                    type="button"
+                    className="expand-toggle"
+                    onClick={() => toggleExpand(note.id)}
+                    aria-expanded={isExpanded}
+                    aria-label={isExpanded ? 'Collapse note' : 'Expand note'}
+                  >
+                    {isExpanded ? '▾' : '▸'}
+                  </button>
+                )}
+                <span className="note-title">{noteHeading(note)}</span>
+                <span className="note-actions">
+                  <button type="button" onClick={() => editNote(note)}>
+                    Edit
+                  </button>
+                  <button type="button" className="danger" onClick={() => void remove(note.id)}>
+                    Delete
+                  </button>
+                </span>
+              </div>
+              {hasBody && (
+                <p className={isExpanded ? 'note-body' : 'note-body collapsed'}>{note.body}</p>
+              )}
+            </li>
+          );
+        })}
       </ul>
 
       {status && <p className="status">{status}</p>}
