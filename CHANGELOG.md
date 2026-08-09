@@ -6,6 +6,38 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Data → Generate UUID / Generate City** — two new generated fields, also
+  available wherever the Recorder/Scripts fill-generator menus already offer
+  names, email, region and the rest.
+- **Recorder / Scripts → Run in region** — apply one of the Region emulator's
+  presets right before a run, and restore it automatically the moment the run
+  finishes.
+- **Export/Import tab** — a new tab after Settings for exporting or importing
+  Scripts (with folders), Cookie/Storage value profiles, Query params saved
+  sets, Notes, and My Tasks. Select one or several items; importing a name
+  that already exists lets you **Overwrite** or **Keep both** (the latter
+  auto-numbers the new one).
+- **Tools → Query params → Saved sets → Rename** — rename a saved set in
+  place without touching its URL, params or hash.
+- **Search** — Notes, My Tasks, and Scripts each have a search box now;
+  Scripts search keeps a matching script's folder visible even when the
+  folder's own name doesn't match.
+- **Notes → Collapse** — notes clip to 5 lines by default, with a per-note
+  expand toggle and **Expand all** / **Collapse all**.
+
+### Changed
+
+- **Scripts → Export/Import** moved to the new Export/Import tab (see Added,
+  above) — the Scripts tab itself no longer has its own Export/Import buttons.
+
+### Fixed
+
+- Two small memory leaks: a copy-button's "Copied" reset timer and an
+  in-page highlight's flash-revert timer could each fire after the component
+  that started them was already gone. Both are now cancelled properly.
+
 ## [0.8.0] - 2026-08-06
 
 ### Added
