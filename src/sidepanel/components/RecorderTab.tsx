@@ -23,6 +23,7 @@ import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
 import { configForRegion, findRegion, REGIONS } from '@/shared/tools/region';
 import {
+  buildLocalePool,
   buildWorkflowScript,
   describeStep,
   fieldToStep,
@@ -389,11 +390,16 @@ export function RecorderTab({
   }
 
   // Fill generators are emitted as in-page `{random:…}` tokens (see workflow.ts),
-  // so a saved/copied flow re-randomizes on every run — no faker needed in the page.
-  function buildScriptFor(list: WorkflowStep[]): string {
-    return buildWorkflowScript(list, { hudSeconds, findTimeoutSeconds });
+  // so a saved/copied flow re-randomizes on every run — no faker needed in the
+  // page. A pool of `locale`-correct samples (for the kinds this flow actually
+  // uses) is pre-generated here and baked in alongside them, so the token
+  // resolves to real `locale` data on every future run instead of the fixed
+  // UK-biased in-page fallback.
+  async function buildScriptFor(list: WorkflowStep[]): Promise<string> {
+    const localePool = await buildLocalePool(list, locale);
+    return buildWorkflowScript(list, { hudSeconds, findTimeoutSeconds, localePool });
   }
-  function buildFlow(): string {
+  async function buildFlow(): Promise<string> {
     return buildScriptFor(steps);
   }
   async function runSteps(list: WorkflowStep[], done: string): Promise<void> {
@@ -421,7 +427,7 @@ export function RecorderTab({
     setRunning(true);
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
-      payload: { code: buildScriptFor(list) },
+      payload: { code: await buildScriptFor(list) },
     });
     if (regionApplied) {
       await sendRuntimeMessage({ type: MESSAGE_TYPES.RESTORE_REGION });
@@ -449,7 +455,7 @@ export function RecorderTab({
   async function copyFlow(): Promise<void> {
     if (!steps.length) return;
     try {
-      await navigator.clipboard.writeText(buildFlow());
+      await navigator.clipboard.writeText(await buildFlow());
       setStatus('Flow script copied to clipboard.');
     } catch {
       setError('Could not access the clipboard.');
@@ -470,7 +476,7 @@ export function RecorderTab({
     });
     const existing = listRes.ok ? listRes.value : [];
     const clash = existing.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
-    const code = buildFlow();
+    const code = await buildFlow();
     const now = nowMs();
 
     if (clash) {

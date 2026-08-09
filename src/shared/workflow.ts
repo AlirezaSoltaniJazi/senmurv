@@ -1,5 +1,7 @@
 import { FIND_TIMEOUT_SECONDS_DEFAULT, HUD_SECONDS_DEFAULT } from '@/shared/constants';
-import type { GeneratorId, PickedField } from '@/shared/types';
+import { ensureFaker } from '@/shared/faker-data';
+import { generateValue } from '@/shared/generators';
+import type { GeneratorId, Locale, PickedField } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 /** What the Scripts "Customize" button hands to the Recorder tab. */
@@ -207,6 +209,73 @@ export function randomToken(generator: GeneratorId, arg?: string): string {
   return arg ? `{random:${generator}:${arg}}` : `{random:${generator}}`;
 }
 
+/**
+ * Generator kinds where locale actually changes the shape of the value
+ * (a Japanese city/postcode/phone looks nothing like a UK one). Kinds like
+ * `number`/`uuid`/`word`/`date` are locale-neutral in this app and always
+ * fall back to the in-page PREAMBLE's fixed data — no pool needed for them.
+ */
+const LOCALE_POOL_GENERATORS: GeneratorId[] = [
+  'firstName',
+  'lastName',
+  'streetAddress',
+  'city',
+  'postalCode',
+  'region',
+  'country',
+  'company',
+  'phone',
+  'phoneNational',
+  'phoneIntl',
+];
+
+/** How many pre-generated samples to bake in per pooled generator kind. */
+const LOCALE_POOL_SIZE = 24;
+
+/** A saved script's baked-in locale sample data, embedded as `RND_POOL`. */
+export type LocalePool = Partial<Record<GeneratorId, string[]>>;
+
+/**
+ * Pre-generate a small pool of `locale`-correct sample values (via the real,
+ * faker-backed `generateValue`) for every locale-sensitive generator kind a
+ * flow's `fill` steps actually use, so the SAVED script's in-page
+ * `{random:…}` resolver can draw from real `locale` data on every future run
+ * instead of the fixed, UK-biased fallback baked into the PREAMBLE. Faker
+ * can't run in the page itself, so this pool is generated once, here, at
+ * build time (Save / Run / Copy), and frozen into the script's own text —
+ * exactly like `HUD_MS`/`FIND_MS` already are.
+ *
+ * `fullName`/`email` don't get their own pool entries — both resolve through
+ * the PREAMBLE's shared `person()` (so a flow's name fields all agree), so
+ * using either one pulls in `firstName`+`lastName` instead.
+ */
+export async function buildLocalePool(steps: WorkflowStep[], locale: Locale): Promise<LocalePool> {
+  const used = new Set<GeneratorId>();
+  for (const step of steps) {
+    if (step.kind !== 'fill' || !step.generator) continue;
+    const g = step.generator;
+    if (g === 'firstName' || g === 'lastName' || g === 'fullName' || g === 'email') {
+      used.add('firstName');
+      used.add('lastName');
+    } else if (LOCALE_POOL_GENERATORS.includes(g)) {
+      used.add(g);
+    }
+  }
+  if (used.size === 0) return {};
+
+  await ensureFaker(locale);
+  const pool: LocalePool = {};
+  for (const kind of used) {
+    const values = new Set<string>();
+    for (let i = 0; i < LOCALE_POOL_SIZE; i += 1) {
+      const v = generateValue(kind, locale);
+      if (v) values.add(v);
+    }
+    pool[kind] = [...values];
+  }
+  return pool;
+}
+
 function serializeStep(s: WorkflowStep): Record<string, unknown> {
   const o: Record<string, unknown> = { kind: s.kind };
   // Set before the per-kind branches (which each mutate and return this same `o`)
@@ -364,6 +433,12 @@ const PREAMBLE = `const stopRequested = () => !!window.__senmurvFlowStop;
   };
   var rint = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
   var pick = (arr) => arr[rint(0, arr.length - 1)];
+  // RND_POOL holds locale-correct samples baked in at build time (see
+  // buildLocalePool in workflow.ts) for whichever kinds this flow actually
+  // uses — empty/absent for a kind that wasn't pooled, or for a script built
+  // before this existed. Every locale-sensitive case below tries the pool
+  // first and falls back to the fixed, UK-biased RND data below otherwise.
+  var poolPick = (kind) => { var p = RND_POOL[kind]; return p && p.length ? pick(p) : null; };
   var rHex = (n) => { var s = ''; for (var i = 0; i < n; i += 1) s += '0123456789abcdef'.charAt(rint(0, 15)); return s; };
   var rDigits = (n) => { var s = ''; for (var i = 0; i < n; i += 1) s += rint(0, 9); return s; };
   var rLetters = (n, upper) => { var s = '', base = upper ? 65 : 97; for (var i = 0; i < n; i += 1) s += String.fromCharCode(base + rint(0, 25)); return s; };
@@ -371,7 +446,7 @@ const PREAMBLE = `const stopRequested = () => !!window.__senmurvFlowStop;
   // One person per run: firstName / lastName / fullName / a name-synced email all
   // draw from this same {first,last}, so every name field in the flow matches.
   var __person = null;
-  var person = () => { if (!__person) __person = { first: pick(RND.first), last: pick(RND.last) }; return __person; };
+  var person = () => { if (!__person) __person = { first: poolPick('firstName') || pick(RND.first), last: poolPick('lastName') || pick(RND.last) }; return __person; };
   // Build an email. arg holds which name parts to sync: 'f' / 'l' / 'fl'. Synced
   // parts come from person() (so the email matches the filled name); with no arg
   // it is a fresh random first.last (independent of the name fields).
@@ -379,7 +454,7 @@ const PREAMBLE = `const stopRequested = () => !!window.__senmurvFlowStop;
     var parts = [];
     if (arg && arg.indexOf('f') !== -1) parts.push(person().first.toLowerCase());
     if (arg && arg.indexOf('l') !== -1) parts.push(person().last.toLowerCase());
-    if (!parts.length) { parts.push(pick(RND.first).toLowerCase()); parts.push(pick(RND.last).toLowerCase()); }
+    if (!parts.length) { parts.push((poolPick('firstName') || pick(RND.first)).toLowerCase()); parts.push((poolPick('lastName') || pick(RND.last)).toLowerCase()); }
     return parts.join('.') + '.' + rint(1, 999) + '@example.com';
   };
   // A number with a digit count in [min,max] (arg 'dMIN-MAX'); else a value in the
@@ -406,18 +481,18 @@ const PREAMBLE = `const stopRequested = () => !!window.__senmurvFlowStop;
       case 'lastName': return person().last;
       case 'fullName': return person().first + ' ' + person().last;
       case 'email': return emailValue(arg);
-      case 'phone': return '+44 7' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
-      case 'phoneNational': return '07' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
+      case 'phone': return poolPick('phone') || ('+44 7' + pick(['4', '5', '7', '8', '9']) + rDigits(8));
+      case 'phoneNational': return poolPick('phoneNational') || ('07' + pick(['4', '5', '7', '8', '9']) + rDigits(8));
       // International NSN (no trunk 0) for a +code field: a valid, assignable UK
       // mobile (074/075/077/078/079 + 8 digits) so strict server-side validators
       // (libphonenumber is_valid_number) accept it on submit.
-      case 'phoneIntl': return '7' + pick(['4', '5', '7', '8', '9']) + rDigits(8);
-      case 'streetAddress': return rint(1, 199) + ' ' + pick(RND.streets);
-      case 'city': return pick(RND.cities);
-      case 'postalCode': return rLetters(rint(1, 2), true) + rint(1, 9) + ' ' + rint(1, 9) + rLetters(2, true);
-      case 'region': return pick(RND.regions);
-      case 'country': return pick(RND.countries);
-      case 'company': return pick(RND.companies) + ' ' + pick(RND.suffix);
+      case 'phoneIntl': return poolPick('phoneIntl') || ('7' + pick(['4', '5', '7', '8', '9']) + rDigits(8));
+      case 'streetAddress': return poolPick('streetAddress') || (rint(1, 199) + ' ' + pick(RND.streets));
+      case 'city': return poolPick('city') || pick(RND.cities);
+      case 'postalCode': return poolPick('postalCode') || (rLetters(rint(1, 2), true) + rint(1, 9) + ' ' + rint(1, 9) + rLetters(2, true));
+      case 'region': return poolPick('region') || pick(RND.regions);
+      case 'country': return poolPick('country') || pick(RND.countries);
+      case 'company': return poolPick('company') || (pick(RND.companies) + ' ' + pick(RND.suffix));
       case 'word': return pick(RND.words);
       case 'sentence': { var n = rint(4, 8), w = []; for (var i = 0; i < n; i += 1) w.push(pick(RND.words)); var s = w.join(' '); return s.charAt(0).toUpperCase() + s.slice(1) + '.'; }
       case 'number': return numberValue(arg);
@@ -622,6 +697,8 @@ export interface WorkflowScriptOptions {
   hudSeconds?: number;
   /** Seconds a step waits for its element before giving up (waitFor default). */
   findTimeoutSeconds?: number;
+  /** Locale sample data (see {@link buildLocalePool}), baked in as `RND_POOL`. */
+  localePool?: LocalePool;
 }
 
 /**
@@ -636,6 +713,7 @@ export function buildWorkflowScript(steps: WorkflowStep[], opts?: WorkflowScript
     1000,
     Math.round((opts?.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000)
   );
+  const poolData = JSON.stringify(opts?.localePool ?? {});
   // The IIFE's promise is published on a global so the MAIN-world runner can AWAIT
   // it — that way RUN_SCRIPT settles when the flow FINISHES (not when it starts),
   // letting the Scripts tab revert its Run/Stop toggle. Assigning a global is a
@@ -644,6 +722,7 @@ export function buildWorkflowScript(steps: WorkflowStep[], opts?: WorkflowScript
   const STEPS = ${data};
   const HUD_MS = ${hudMs};
   const FIND_MS = ${findMs};
+  const RND_POOL = ${poolData};
   ${PREAMBLE}
   // Reset the cross-realm Stop flag at the start of every run, so a Stop click
   // from a PREVIOUS run can never abort this fresh one. A separate MAIN-world

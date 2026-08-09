@@ -1,6 +1,7 @@
 import vm from 'node:vm';
 import { describe, expect, it } from 'vitest';
 import {
+  buildLocalePool,
   buildWorkflowScript,
   fieldToStep,
   isWorkflowScript,
@@ -27,6 +28,63 @@ describe('newStep', () => {
     expect(newStep('select').optionMode).toBe('text');
     expect(newStep('check').checked).toBe(true);
     expect(newStep('click').text).toBe('');
+  });
+});
+
+describe('buildLocalePool', () => {
+  it('returns an empty pool when no step uses a locale-sensitive generator', async () => {
+    const pool = await buildLocalePool(
+      [
+        { id: 'a', kind: 'click', text: 'Continue' },
+        { id: 'b', kind: 'fill', selector: '#x', value: 'static text' },
+        { id: 'c', kind: 'fill', selector: '#n', generator: 'uuid' },
+      ],
+      'en_GB'
+    );
+    expect(pool).toEqual({});
+  });
+
+  it('pools every locale-sensitive generator kind actually used, and only those', async () => {
+    const pool = await buildLocalePool(
+      [
+        { id: 'a', kind: 'fill', selector: '#city', generator: 'city' },
+        { id: 'b', kind: 'fill', selector: '#post', generator: 'postalCode' },
+        { id: 'c', kind: 'fill', selector: '#num', generator: 'number' }, // not locale-sensitive
+      ],
+      'en_GB'
+    );
+    expect(Object.keys(pool).sort()).toEqual(['city', 'postalCode']);
+    expect(pool.city!.length).toBeGreaterThan(0);
+    expect(pool.city!.every((v) => typeof v === 'string' && v.length > 0)).toBe(true);
+    expect(pool.postalCode!.length).toBeGreaterThan(0);
+  });
+
+  it('pools firstName + lastName for fullName or email steps, not a "fullName"/"email" key', async () => {
+    const pool = await buildLocalePool(
+      [{ id: 'a', kind: 'fill', selector: '#name', generator: 'fullName' }],
+      'en_GB'
+    );
+    expect(Object.keys(pool).sort()).toEqual(['firstName', 'lastName']);
+
+    const emailPool = await buildLocalePool(
+      [{ id: 'a', kind: 'fill', selector: '#email', generator: 'email', genArg: 'fl' }],
+      'en_GB'
+    );
+    expect(Object.keys(emailPool).sort()).toEqual(['firstName', 'lastName']);
+  });
+
+  it('draws from the requested locale (a different locale yields a different-shaped sample set)', async () => {
+    const gb = await buildLocalePool(
+      [{ id: 'a', kind: 'fill', selector: '#c', generator: 'city' }],
+      'en_GB'
+    );
+    const de = await buildLocalePool(
+      [{ id: 'a', kind: 'fill', selector: '#c', generator: 'city' }],
+      'de'
+    );
+    // Not asserting exact values (faker's own data, not ours to pin down) —
+    // just that the two locales don't produce the identical sample set.
+    expect(gb.city).not.toEqual(de.city);
   });
 });
 
@@ -283,6 +341,24 @@ describe('parseWorkflowScript', () => {
     expect(code).toContain('"value": "{random:email}"');
     expect(code).toContain('function randomValue');
     expect(code).toContain('random:([a-zA-Z]+)');
+  });
+
+  it('bakes an empty RND_POOL when no localePool option is given', () => {
+    const code = buildWorkflowScript([
+      { id: '1', kind: 'fill', selector: '#c', generator: 'city' },
+    ]);
+    expect(code).toContain('const RND_POOL = {};');
+    expect(code).toContain('poolPick');
+    expect(() => new vm.Script(code)).not.toThrow();
+  });
+
+  it('bakes a given localePool as RND_POOL, so a saved script carries its own locale data', () => {
+    const code = buildWorkflowScript(
+      [{ id: '1', kind: 'fill', selector: '#c', generator: 'city' }],
+      { localePool: { city: ['Tokyo', 'Osaka', 'Kyoto'] } }
+    );
+    expect(code).toContain('"city":["Tokyo","Osaka","Kyoto"]');
+    expect(() => new vm.Script(code)).not.toThrow();
   });
 });
 
