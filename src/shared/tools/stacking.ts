@@ -36,7 +36,7 @@ export function analyzeStack(
   const out: StackLayer[] = layers.map((l, i) => ({ ...l, relation: relate(i) }));
   const hit = hitIndex >= 0 ? out[hitIndex] : undefined;
   const interceptsInteractive =
-    hit !== undefined && !hit.interactive && out.slice(hitIndex + 1).some((l) => l.interactive);
+    hit !== undefined && !hit.interactive && out.some((l, i) => i > hitIndex && l.interactive);
 
   return { layers: out, hitIndex, interceptsInteractive, point };
 }

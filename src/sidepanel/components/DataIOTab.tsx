@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
@@ -556,7 +556,14 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
     }
   }
 
-  const rows = pending ? pendingRows(pending) : [];
+  // pendingRows() rebuilds the tree/conflict-checks for the whole staged batch
+  // (buildScriptTree + an O(n) conflict scan per item) — memoized so toggling
+  // one checkbox, or any other unrelated re-render, doesn't redo that work.
+  const rows = useMemo(
+    () => (pending ? pendingRows(pending) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [pending, scripts, profiles, sets, notes, checklists]
+  );
   const hasConflicts = rows.some((r) => r.conflict);
   const selectedInPending = pendingSel.filter(Boolean).length;
 

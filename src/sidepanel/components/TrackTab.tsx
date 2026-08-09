@@ -196,6 +196,7 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
     if (res.ok) {
       setEntries(res.value);
       setEditingId(null);
+      setExpanded(new Set());
       setStatus('Cleared all tracked tasks.');
     } else {
       setError(res.error);
@@ -212,6 +213,19 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
     if (res.ok) {
       setEntries(res.value);
       if (editingId === id) setEditingId(null);
+      // expanded is keyed `${dayKey}|${rootId}` (see TaskBlockView) — drop any
+      // block key rooted at the deleted entry; a no-op if it was a non-root child.
+      setExpanded((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const key of prev) {
+          if (key.endsWith(`|${id}`)) {
+            next.delete(key);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     } else {
       setError(res.error);
     }

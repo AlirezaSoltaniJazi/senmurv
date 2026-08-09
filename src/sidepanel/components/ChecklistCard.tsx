@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   checklistProgress,
-  deadlineLabel,
-  deadlineStatus,
+  daysUntil,
+  deadlineLabelFromDays,
+  deadlineStatusFromDays,
   isComplete,
   progressBar,
 } from '@/shared/checklists';
@@ -139,7 +140,10 @@ export function ChecklistCard({
   }
 
   const { filled, empty } = progressBar(progress.percent);
-  const status = deadlineStatus(list.deadline, now);
+  // Computed once and shared by the status badge's colour and its label,
+  // instead of each independently re-deriving it from list.deadline/now.
+  const days = list.deadline === null ? null : daysUntil(list.deadline, now);
+  const status = deadlineStatusFromDays(days);
 
   function addSubtask(): void {
     const trimmed = newSubtask.trim();
@@ -168,8 +172,8 @@ export function ChecklistCard({
           {isExpanded ? '▾' : '▸'}
         </button>
         <span className={complete ? 'checklist-title done' : 'checklist-title'}>{list.title}</span>
-        {list.deadline !== null && (
-          <span className={`deadline-badge is-${status}`}>{deadlineLabel(list.deadline, now)}</span>
+        {days !== null && (
+          <span className={`deadline-badge is-${status}`}>{deadlineLabelFromDays(days)}</span>
         )}
         <span className="task-actions">
           <button type="button" onClick={() => onStartEdit(list.id)}>

@@ -158,9 +158,9 @@ export function applyProfileImport(
   now: number
 ): ValueProfile[] {
   const byId = new Map(current.map((p) => [p.id, p]));
-  const names = new Set(current.map((p) => p.name));
 
   if (mode === 'keep-both') {
+    const names = new Set(current.map((p) => p.name));
     for (const imp of imported) {
       const id = newId('prof_');
       const name = uniqueName(imp.name, names);
@@ -200,7 +200,6 @@ export function applyProfileImport(
     if (imp.prefix !== undefined) profile.prefix = imp.prefix;
     if (imp.suffix !== undefined) profile.suffix = imp.suffix;
     byId.set(id, profile);
-    names.add(imp.name);
   }
   return [...byId.values()];
 }
@@ -353,9 +352,9 @@ export function applyQueryParamSetImport(
   now: number
 ): QueryParamSet[] {
   const byId = new Map(current.map((s) => [s.id, s]));
-  const names = new Set(current.map((s) => s.name));
 
   if (mode === 'keep-both') {
+    const names = new Set(current.map((s) => s.name));
     for (const imp of imported) {
       const id = newId('qps_');
       const name = uniqueName(imp.name, names);
@@ -385,7 +384,6 @@ export function applyQueryParamSetImport(
       createdAt: existing?.createdAt ?? imp.createdAt ?? now,
       updatedAt: now,
     });
-    names.add(imp.name);
   }
   return [...byId.values()];
 }
@@ -507,9 +505,9 @@ export function applyNoteImport(
   now: number
 ): Note[] {
   const byId = new Map(current.map((n) => [n.id, n]));
-  const titles = new Set(current.map((n) => n.title));
 
   if (mode === 'keep-both') {
+    const titles = new Set(current.map((n) => n.title));
     for (const imp of imported) {
       const id = newId('note_');
       const title = uniqueName(imp.title, titles);
@@ -529,7 +527,6 @@ export function applyNoteImport(
       createdAt: existing?.createdAt ?? imp.createdAt ?? now,
       updatedAt: now,
     });
-    titles.add(imp.title);
   }
   return [...byId.values()];
 }
@@ -707,9 +704,9 @@ export function applyChecklistImport(
   now: number
 ): Checklist[] {
   const byId = new Map(current.map((c) => [c.id, c]));
-  const titles = new Set(current.map((c) => c.title));
 
   if (mode === 'keep-both') {
+    const titles = new Set(current.map((c) => c.title));
     for (const imp of imported) {
       const id = newId('chk_');
       const title = uniqueName(imp.title, titles);
@@ -749,7 +746,6 @@ export function applyChecklistImport(
       createdAt: existing?.createdAt ?? imp.createdAt ?? now,
       updatedAt: now,
     });
-    titles.add(imp.title);
   }
   return [...byId.values()];
 }

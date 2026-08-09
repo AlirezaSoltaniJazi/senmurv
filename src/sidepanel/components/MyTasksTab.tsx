@@ -155,6 +155,12 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
     if (res.ok) {
       setChecklists(res.value);
       if (editingId === id) setEditingId(null);
+      setExpanded((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     } else {
       setError(res.error);
     }

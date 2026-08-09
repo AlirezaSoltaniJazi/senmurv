@@ -175,6 +175,22 @@ export async function deleteTask(id: string): Promise<TimeEntry[]> {
   });
 }
 
+/**
+ * Read-modify-write the whole task list under the same lock upsertTask/
+ * deleteTask use, so a bulk transform (e.g. renaming a tag across every
+ * entry) can't lose a concurrent write the way an unlocked getTasks() +
+ * saveTasks() pair would — the exact race withKeyLock exists to prevent.
+ */
+export async function transformTasks(
+  fn: (tasks: TimeEntry[]) => TimeEntry[]
+): Promise<TimeEntry[]> {
+  return withKeyLock(STORAGE_KEYS.TASKS, async () => {
+    const next = fn(await getTasks());
+    await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
+    return next;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // My Tasks (checklists)
 // ---------------------------------------------------------------------------

@@ -55,9 +55,8 @@ export function daysUntil(deadline: number, now: number): number {
   return Math.round((startOfDay(deadline) - startOfDay(now)) / 86_400_000);
 }
 
-/** Human remaining-time label for a deadline. */
-export function deadlineLabel(deadline: number, now: number): string {
-  const days = daysUntil(deadline, now);
+/** Human remaining-time label, from an already-computed day count. */
+export function deadlineLabelFromDays(days: number): string {
   if (days < 0) {
     const overdue = -days;
     return `Overdue by ${overdue} day${overdue === 1 ? '' : 's'}`;
@@ -67,16 +66,25 @@ export function deadlineLabel(deadline: number, now: number): string {
   return `${days} days left`;
 }
 
+/** Human remaining-time label for a deadline. */
+export function deadlineLabel(deadline: number, now: number): string {
+  return deadlineLabelFromDays(daysUntil(deadline, now));
+}
+
+/** Urgency bucket, from an already-computed day count (null = no deadline). */
+export function deadlineStatusFromDays(days: number | null): 'none' | 'overdue' | 'soon' | 'ok' {
+  if (days === null) return 'none';
+  if (days < 0) return 'overdue';
+  if (days <= 2) return 'soon';
+  return 'ok';
+}
+
 /** Urgency bucket for coloring a deadline badge. `soon` = due within 2 days. */
 export function deadlineStatus(
   deadline: number | null,
   now: number
 ): 'none' | 'overdue' | 'soon' | 'ok' {
-  if (deadline === null) return 'none';
-  const days = daysUntil(deadline, now);
-  if (days < 0) return 'overdue';
-  if (days <= 2) return 'soon';
-  return 'ok';
+  return deadlineStatusFromDays(deadline === null ? null : daysUntil(deadline, now));
 }
 
 /** Case-insensitive match of a checklist against a search box query: its own title, or any subtask's. */

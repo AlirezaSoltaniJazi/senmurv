@@ -43,6 +43,14 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
   const draftIdRef = useRef<string | null>(null);
   const draftTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Kept in sync with `notes` so the visibilitychange/debounce effects below —
+  // which deliberately don't list `notes` as a dependency — never read a stale
+  // array when they fire (see buildNote).
+  const notesRef = useRef<Note[]>(notes);
+  useEffect(() => {
+    notesRef.current = notes;
+  }, [notes]);
+
   // Load on mount and whenever the refresh button bumps the nonce.
   useEffect(() => {
     let cancelled = false;
@@ -108,7 +116,7 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
   /** Build the Note to persist for `id` from the current form fields. */
   function buildNote(id: string): Note {
     const at = nowMs();
-    const existing = notes.find((n) => n.id === id);
+    const existing = notesRef.current.find((n) => n.id === id);
     return existing
       ? { ...existing, title: title.trim(), body, updatedAt: at }
       : { id, title: title.trim(), body, createdAt: at, updatedAt: at };
@@ -184,6 +192,12 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
     if (res.ok) {
       setNotes(res.value);
       if (editingId === id) resetEditor();
+      setExpanded((prev) => {
+        if (!prev.has(id)) return prev;
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
     } else {
       setError(res.error);
     }

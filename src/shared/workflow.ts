@@ -768,6 +768,11 @@ const STEP_ESCAPES: Record<string, string> = {
   f: '\f',
 };
 
+// Hoisted so parseObjectArray's character scanners don't construct a fresh
+// RegExp on every character.
+const IDENT_CHAR = /[A-Za-z0-9_$]/;
+const NUM_CHAR = /[0-9.eE+-]/;
+
 /**
  * Read one array of flat objects (primitive values only) from the start of
  * `src`, tolerating what a HAND-WRITTEN `STEPS` array uses that JSON forbids:
@@ -827,7 +832,7 @@ function parseObjectArray(src: string): Record<string, unknown>[] | null {
 
   const parseIdent = (): string | null => {
     const start = i;
-    while (i < len && /[A-Za-z0-9_$]/.test(src.charAt(i))) i += 1;
+    while (i < len && IDENT_CHAR.test(src.charAt(i))) i += 1;
     return i > start ? src.slice(start, i) : null;
   };
 
@@ -841,7 +846,7 @@ function parseObjectArray(src: string): Record<string, unknown>[] | null {
     if (c === '-' || (c >= '0' && c <= '9')) {
       const start = i;
       i += 1;
-      while (i < len && /[0-9.eE+-]/.test(src.charAt(i))) i += 1;
+      while (i < len && NUM_CHAR.test(src.charAt(i))) i += 1;
       const num = Number(src.slice(start, i));
       return Number.isFinite(num) ? { value: num } : null;
     }

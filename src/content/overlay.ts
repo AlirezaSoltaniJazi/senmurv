@@ -16,6 +16,7 @@
  * module-level overlay is sufficient and keeps teardown in a single place.
  */
 
+import { rafThrottle } from '@/content/raf-throttle';
 import { SENMURV_HOST_TAGS } from '@/shared/constants';
 
 const HOST_TAG = 'senmurv-picker-overlay';
@@ -210,6 +211,7 @@ export interface CaptureHandlers {
 }
 
 let captureEl: HTMLDivElement | null = null;
+let captureMove: ReturnType<typeof rafThrottle> | null = null;
 
 /**
  * Mount a full-viewport `pointer-events: auto` layer that swallows the page's
@@ -231,7 +233,11 @@ export function enableCapture(handlers: CaptureHandlers): void {
     layer.setPointerCapture(e.pointerId);
     handlers.onDown(e.clientX, e.clientY);
   });
-  layer.addEventListener('pointermove', (e) => handlers.onMove(e.clientX, e.clientY));
+  // Coalesced to one call per frame, same as every other hover-driven mode —
+  // this was the one pointer path still writing to the overlay on every raw
+  // event instead of going through rafThrottle.
+  captureMove = rafThrottle((e) => handlers.onMove(e.clientX, e.clientY));
+  layer.addEventListener('pointermove', captureMove.handler);
   layer.addEventListener('pointerup', (e) => {
     handlers.onUp(e.clientX, e.clientY);
     if (layer.hasPointerCapture(e.pointerId)) layer.releasePointerCapture(e.pointerId);
@@ -243,6 +249,8 @@ export function enableCapture(handlers: CaptureHandlers): void {
 
 /** Remove the capture layer, restoring normal page interaction. */
 export function disableCapture(): void {
+  captureMove?.cancel();
+  captureMove = null;
   captureEl?.remove();
   captureEl = null;
 }

@@ -344,6 +344,12 @@ export function ScriptsTab({
         : `Delete folder “${folder?.name}”?`;
     if (!window.confirm(msg)) return;
     await persistScripts(deleteFolder(scripts, id), 'Folder deleted.');
+    setCollapsed((prev) => {
+      if (!prev.has(id)) return prev;
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
   }
 
   /** Row className string; `canNest` gates the nest-drop highlight. */

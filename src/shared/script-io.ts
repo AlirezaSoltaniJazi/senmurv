@@ -289,9 +289,11 @@ export function applyScriptImport(
   now: number
 ): SavedScript[] {
   const byId = new Map(current.map((s) => [s.id, s]));
-  const names = new Set(current.map((s) => s.name));
 
   if (mode === 'keep-both') {
+    // Only needed for this branch's uniqueName() dedup — the overwrite branch
+    // below never reads a name collision set.
+    const names = new Set(current.map((s) => s.name));
     const idMap = new Map<string, string>();
     for (const imp of imported) {
       if (imp.id !== undefined) idMap.set(imp.id, newId(imp.isFolder === true ? 'fld_' : 'scr_'));
@@ -323,7 +325,6 @@ export function applyScriptImport(
     if (imp.parentId !== undefined) record.parentId = imp.parentId;
     if (imp.isFolder !== undefined) record.isFolder = imp.isFolder;
     byId.set(id, record);
-    names.add(imp.name);
   }
   return [...byId.values()];
 }
