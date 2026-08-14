@@ -6,6 +6,8 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-08-14
+
 ### Added
 
 - **Data → Generate UUID / Generate City** — two new generated fields, also
@@ -523,7 +525,8 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
 
-[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.5.1...v0.6.0
