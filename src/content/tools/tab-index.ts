@@ -26,15 +26,28 @@ let observer: MutationObserver | null = null;
 let rafToken = 0;
 let staleTimer: ReturnType<typeof setTimeout> | undefined;
 
-/** A modal <dialog> makes everything outside it inert. */
-function coveredByModal(el: Element): boolean {
-  const dialogs = document.querySelectorAll('dialog[open]');
-  for (const dialog of Array.from(dialogs)) {
+// Open, :modal dialogs — recomputed once per scanTabOrder() call (see there)
+// rather than re-queried per candidate element. The scan is synchronous, so
+// the answer cannot change mid-computation and the cache is always fresh for
+// the whole walk it's used in.
+let modalDialogs: Element[] = [];
+
+function computeModalDialogs(): Element[] {
+  const modal: Element[] = [];
+  for (const dialog of Array.from(document.querySelectorAll('dialog[open]'))) {
     try {
-      if (dialog.matches(':modal') && !dialog.contains(el)) return true;
+      if (dialog.matches(':modal')) modal.push(dialog);
     } catch {
       // :modal unsupported — ignore.
     }
+  }
+  return modal;
+}
+
+/** A modal <dialog> makes everything outside it inert. */
+function coveredByModal(el: Element): boolean {
+  for (const dialog of modalDialogs) {
+    if (!dialog.contains(el)) return true;
   }
   return false;
 }
@@ -115,6 +128,7 @@ function markStale(): void {
 export function scanTabOrder(): TabOrderScan {
   active = true;
   selected = -1;
+  modalDialogs = computeModalDialogs();
   const result = computeTabOrder(document, BROWSER_ENV);
   elements = result.elements.slice(0, TAB_ORDER_MAX_STOPS);
   stops = result.stops.slice(0, TAB_ORDER_MAX_STOPS);

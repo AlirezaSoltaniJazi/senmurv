@@ -21,6 +21,10 @@ export interface ImportedScript {
   code: string;
   createdAt?: number;
   updatedAt?: number;
+  /** The id of the folder this script is grouped under (one level deep). */
+  parentId?: string;
+  /** When true, this is a folder (a named container), not a runnable script. */
+  isFolder?: boolean;
 }
 
 /** Serialize saved scripts to a versioned, timestamped JSON export bundle. */
@@ -50,6 +54,8 @@ function validateScript(value: unknown, index: number): Result<ImportedScript> {
   if (typeof v.id === 'string') out.id = v.id;
   if (typeof v.createdAt === 'number') out.createdAt = v.createdAt;
   if (typeof v.updatedAt === 'number') out.updatedAt = v.updatedAt;
+  if (typeof v.parentId === 'string') out.parentId = v.parentId;
+  if (typeof v.isFolder === 'boolean') out.isFolder = v.isFolder;
   return { ok: true, value: out };
 }
 
@@ -265,9 +271,15 @@ export function uniqueName(base: string, taken: Set<string>): string {
 /**
  * Merge imported scripts into the current list and return the new full list.
  * - `overwrite` (merge-by-id): items with a matching id replace it; others are
- *   added (keeping their id, or a fresh one if none).
+ *   added (keeping their id, or a fresh one if none). Ids pass through unchanged
+ *   so a child's `parentId` reference stays valid automatically.
  * - `keep-both` (append-as-new): every item gets a fresh id and a unique name,
- *   so nothing existing is touched.
+ *   so nothing existing is touched. A two-pass id remap keeps a re-imported
+ *   folder and its children grouped together: pass 1 assigns every imported
+ *   item (that had an id) a fresh id; pass 2 builds each record, mapping
+ *   `parentId` through that same table. A child whose folder wasn't part of
+ *   this import (no entry in the map) degrades to top-level rather than
+ *   dangling.
  * Mirrors phantom-mock's `applyImport` strategies, scoped to scripts.
  */
 export function applyScriptImport(
@@ -277,14 +289,25 @@ export function applyScriptImport(
   now: number
 ): SavedScript[] {
   const byId = new Map(current.map((s) => [s.id, s]));
-  const names = new Set(current.map((s) => s.name));
 
   if (mode === 'keep-both') {
+    // Only needed for this branch's uniqueName() dedup — the overwrite branch
+    // below never reads a name collision set.
+    const names = new Set(current.map((s) => s.name));
+    const idMap = new Map<string, string>();
     for (const imp of imported) {
-      const id = newId('scr_');
+      if (imp.id !== undefined) idMap.set(imp.id, newId(imp.isFolder === true ? 'fld_' : 'scr_'));
+    }
+    for (const imp of imported) {
+      const id =
+        imp.id !== undefined ? idMap.get(imp.id)! : newId(imp.isFolder === true ? 'fld_' : 'scr_');
       const name = uniqueName(imp.name, names);
       names.add(name);
-      byId.set(id, { id, name, code: imp.code, createdAt: now, updatedAt: now });
+      const record: SavedScript = { id, name, code: imp.code, createdAt: now, updatedAt: now };
+      const mappedParent = imp.parentId !== undefined ? idMap.get(imp.parentId) : undefined;
+      if (mappedParent !== undefined) record.parentId = mappedParent;
+      if (imp.isFolder !== undefined) record.isFolder = imp.isFolder;
+      byId.set(id, record);
     }
     return [...byId.values()];
   }
@@ -292,14 +315,51 @@ export function applyScriptImport(
   for (const imp of imported) {
     const id = imp.id ?? newId('scr_');
     const existing = byId.get(id);
-    byId.set(id, {
+    const record: SavedScript = {
       id,
       name: imp.name,
       code: imp.code,
       createdAt: existing?.createdAt ?? imp.createdAt ?? now,
       updatedAt: now,
-    });
-    names.add(imp.name);
+    };
+    if (imp.parentId !== undefined) record.parentId = imp.parentId;
+    if (imp.isFolder !== undefined) record.isFolder = imp.isFolder;
+    byId.set(id, record);
   }
   return [...byId.values()];
+}
+
+// ---------------------------------------------------------------------------
+// Search
+// ---------------------------------------------------------------------------
+
+/** True if `name` matches `query` (case-insensitive substring; a blank query matches everything). */
+export function matchesScriptQuery(name: string, query: string): boolean {
+  const q = query.trim().toLowerCase();
+  if (q === '') return true;
+  return name.toLowerCase().includes(q);
+}
+
+/**
+ * Filter an already-built `buildScriptTree()` result by `query`. Filtering the
+ * tree (rather than the flat array before grouping) matters: pre-filtering
+ * would silently orphan a matching child whose folder name doesn't match,
+ * since its `parentId` would no longer resolve to anything in the filtered
+ * set. A folder survives when its own name matches (all of its children are
+ * kept) or when at least one child matches (only the matching children are
+ * kept); a top-level script survives on its own name match.
+ */
+export function filterScriptTree(tree: ScriptGroup[], query: string): ScriptGroup[] {
+  const q = query.trim().toLowerCase();
+  if (q === '') return tree;
+  const out: ScriptGroup[] = [];
+  for (const group of tree) {
+    if (matchesScriptQuery(group.parent.name, q)) {
+      out.push(group);
+      continue;
+    }
+    const children = group.children.filter((c) => matchesScriptQuery(c.name, q));
+    if (children.length > 0) out.push({ parent: group.parent, children });
+  }
+  return out;
 }

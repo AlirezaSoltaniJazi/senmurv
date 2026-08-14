@@ -18,6 +18,7 @@ interface TaskListViewProps {
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
   onDelete: (id: string) => void;
+  onToggleImportant: (entry: TimeEntry) => void;
 }
 
 /** Day-grouped list of logged tasks, each day showing its total time. */
@@ -34,6 +35,7 @@ export function TaskListView({
   onCancelEdit,
   onSave,
   onDelete,
+  onToggleImportant,
 }: TaskListViewProps): ReactElement {
   if (days.length === 0) {
     return <p className="hint">No tasks logged yet. Start one above.</p>;
@@ -72,6 +74,7 @@ export function TaskListView({
                 onCancelEdit={onCancelEdit}
                 onSave={onSave}
                 onDelete={onDelete}
+                onToggleImportant={onToggleImportant}
               />
             ))}
           </div>

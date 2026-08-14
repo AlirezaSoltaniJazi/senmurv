@@ -78,9 +78,10 @@ function isDisabled(el: Element): boolean {
   return false;
 }
 
-/** Is this element a tab STOP (focusable AND in the sequence, i.e. tabindex ≥ 0)? */
-function isTabbable(el: Element, env: DomEnv): boolean {
-  const tab = effectiveTabIndex(el);
+/** Is this element a tab STOP (focusable AND in the sequence, i.e. tabindex ≥ 0)?
+ *  Takes the already-computed effective tabindex so a caller walking many
+ *  elements doesn't pay for effectiveTabIndex(el) a second time per element. */
+function isTabbableGiven(tab: number | null, el: Element, env: DomEnv): boolean {
   if (tab === null || tab < 0) return false;
   if (isDisabled(el)) return false;
   if (!env.isRendered(el)) return false;
@@ -141,25 +142,27 @@ function orderScope(scopeRoot: Element | ShadowRoot, env: DomEnv): Element[] {
   const walk = (node: Element | ShadowRoot): void => {
     for (const el of flattenedChildren(node)) {
       const shadow = el.shadowRoot;
+      const tab = effectiveTabIndex(el);
       if (shadow) {
         // A shadow host opens a child scope. Its light children are slotted into
         // that scope, so we do NOT walk them here.
-        const hostTab = effectiveTabIndex(el);
+        const hostTab = tab;
+        const hostTabbable = isTabbableGiven(tab, el, env);
         const childOrder = orderScope(shadow, env);
         const delegates = shadow.delegatesFocus === true;
         if (delegates) {
           // The whole subtree collapses to ONE stop: the host, reachable when
           // it or any descendant is focusable.
-          if ((hostTab !== null && hostTab >= 0 && isTabbable(el, env)) || childOrder.length > 0) {
-            const target = isTabbable(el, env) ? el : (childOrder[0] as Element);
+          if ((hostTab !== null && hostTab >= 0 && hostTabbable) || childOrder.length > 0) {
+            const target = hostTabbable ? el : (childOrder[0] as Element);
             items.push({ tab: hostTab ?? 0, el: target });
           }
         } else {
-          if (isTabbable(el, env)) items.push({ tab: hostTab as number, el });
+          if (hostTabbable) items.push({ tab: hostTab as number, el });
           if (childOrder.length > 0) items.push({ tab: hostTab ?? 0, group: childOrder });
         }
       } else {
-        if (isTabbable(el, env)) items.push({ tab: effectiveTabIndex(el) as number, el });
+        if (isTabbableGiven(tab, el, env)) items.push({ tab: tab as number, el });
         walk(el);
       }
     }

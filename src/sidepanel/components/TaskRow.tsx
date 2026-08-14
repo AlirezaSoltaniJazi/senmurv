@@ -11,7 +11,9 @@ import {
   toLocalInputValue,
 } from '@/shared/tasks';
 import type { TimeEntry, TimeInterval } from '@/shared/types';
+import { newId } from '@/utils/id';
 import { AutocompleteInput } from './AutocompleteInput';
+import { IconActionButton } from './IconActionButton';
 import { TagColorsContext } from './TagColorsContext';
 
 interface TaskRowProps {
@@ -25,6 +27,7 @@ interface TaskRowProps {
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
   onDelete: (id: string) => void;
+  onToggleImportant: (entry: TimeEntry) => void;
   /** When set, render as a child run: show this time-range label instead of tag+title. */
   runLabel?: string;
   /** When provided and the entry is stopped, show a Re-run button. */
@@ -32,6 +35,9 @@ interface TaskRowProps {
 }
 
 interface IntervalDraft {
+  /** Stable synthetic id — React's list key, so a row's DOM node (focus, IME
+   *  state) tracks the interval itself rather than its shifting array index. */
+  id: string;
   start: string;
   end: string;
 }
@@ -57,10 +63,11 @@ function TaskEditForm({
   const [rows, setRows] = useState<IntervalDraft[]>(() =>
     entry.intervals.length > 0
       ? entry.intervals.map((iv) => ({
+          id: newId('ivl_'),
           start: toLocalInputValue(iv.start),
           end: iv.end === null ? '' : toLocalInputValue(iv.end),
         }))
-      : [{ start: toLocalInputValue(entry.createdAt), end: '' }]
+      : [{ id: newId('ivl_'), start: toLocalInputValue(entry.createdAt), end: '' }]
   );
   const [rowError, setRowError] = useState<string | null>(null);
 
@@ -69,7 +76,7 @@ function TaskEditForm({
   }
 
   function addRow(): void {
-    setRows((rs) => [...rs, { start: '', end: '' }]);
+    setRows((rs) => [...rs, { id: newId('ivl_'), start: '', end: '' }]);
   }
 
   function removeRow(index: number): void {
@@ -141,7 +148,7 @@ function TaskEditForm({
       />
       <div className="task-intervals">
         {rows.map((row, i) => (
-          <div key={i} className="task-interval-row">
+          <div key={row.id} className="task-interval-row">
             <input
               className="datetime-input"
               type="datetime-local"
@@ -190,6 +197,7 @@ export function TaskRow({
   onCancelEdit,
   onSave,
   onDelete,
+  onToggleImportant,
   runLabel,
   onRerun,
 }: TaskRowProps): ReactElement {
@@ -212,6 +220,16 @@ export function TaskRow({
   const paused = isPaused(entry);
   return (
     <div className="task-row">
+      <button
+        type="button"
+        className={entry.important ? 'star-toggle active' : 'star-toggle'}
+        onClick={() => onToggleImportant(entry)}
+        aria-pressed={entry.important === true}
+        aria-label={entry.important ? 'Unmark as important' : 'Mark as important'}
+        title={entry.important ? 'Important' : 'Mark as important'}
+      >
+        {entry.important ? '★' : '☆'}
+      </button>
       {runLabel !== undefined ? (
         <span className="run-time">{runLabel}</span>
       ) : (
@@ -229,9 +247,7 @@ export function TaskRow({
       </span>
       <span className="task-actions">
         {onRerun && !isActive(entry) && (
-          <button type="button" onClick={() => onRerun(entry)}>
-            ↻ Re-run
-          </button>
+          <IconActionButton icon="↻" label="Re-run" onClick={() => onRerun(entry)} />
         )}
         <button type="button" onClick={() => onStartEdit(entry.id)}>
           Edit

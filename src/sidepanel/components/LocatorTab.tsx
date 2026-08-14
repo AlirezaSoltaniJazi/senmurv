@@ -4,6 +4,7 @@ import { MESSAGE_TYPES } from '@/shared/constants';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import type { LocatorKind, LocatorSet, MatchResult, Result } from '@/shared/types';
+import { IconActionButton } from './IconActionButton';
 import { FrameworkChips, LocatorSuggestions } from './LocatorSuggestions';
 import type { FrameworkFilter } from './LocatorSuggestions';
 
@@ -151,13 +152,19 @@ export function LocatorTab(): ReactElement {
     <div className="tab">
       <div className="row">
         {picking ? (
-          <button type="button" className="primary" onClick={() => void cancelPick()}>
-            Cancel pick (Esc)
-          </button>
+          <IconActionButton
+            icon="✕"
+            label="Cancel pick (Esc)"
+            className="primary"
+            onClick={() => void cancelPick()}
+          />
         ) : (
-          <button type="button" className="primary" onClick={() => void startPick()}>
-            Pick element
-          </button>
+          <IconActionButton
+            icon="⌖"
+            label="Pick element"
+            className="primary"
+            onClick={() => void startPick()}
+          />
         )}
       </div>
       {picking && <p className="hint">Hover the page and click an element…</p>}

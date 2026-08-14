@@ -2,8 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import {
   checklistProgress,
-  deadlineLabel,
-  deadlineStatus,
+  daysUntil,
+  deadlineLabelFromDays,
+  deadlineStatusFromDays,
   isComplete,
   progressBar,
 } from '@/shared/checklists';
@@ -26,6 +27,7 @@ interface ChecklistCardProps {
   isEditing: boolean;
   onToggleExpand: (id: string) => void;
   onToggleParent: (list: Checklist) => void;
+  onToggleImportant: (list: Checklist) => void;
   onToggleSubtask: (list: Checklist, subtaskId: string) => void;
   onAddSubtask: (list: Checklist, title: string) => void;
   onDeleteSubtask: (list: Checklist, subtaskId: string) => void;
@@ -109,6 +111,7 @@ export function ChecklistCard({
   isEditing,
   onToggleExpand,
   onToggleParent,
+  onToggleImportant,
   onToggleSubtask,
   onAddSubtask,
   onDeleteSubtask,
@@ -139,7 +142,10 @@ export function ChecklistCard({
   }
 
   const { filled, empty } = progressBar(progress.percent);
-  const status = deadlineStatus(list.deadline, now);
+  // Computed once and shared by the status badge's colour and its label,
+  // instead of each independently re-deriving it from list.deadline/now.
+  const days = list.deadline === null ? null : daysUntil(list.deadline, now);
+  const status = deadlineStatusFromDays(days);
 
   function addSubtask(): void {
     const trimmed = newSubtask.trim();
@@ -167,9 +173,19 @@ export function ChecklistCard({
         >
           {isExpanded ? '▾' : '▸'}
         </button>
+        <button
+          type="button"
+          className={list.important ? 'star-toggle active' : 'star-toggle'}
+          onClick={() => onToggleImportant(list)}
+          aria-pressed={list.important === true}
+          aria-label={list.important ? 'Unmark as important' : 'Mark as important'}
+          title={list.important ? 'Important' : 'Mark as important'}
+        >
+          {list.important ? '★' : '☆'}
+        </button>
         <span className={complete ? 'checklist-title done' : 'checklist-title'}>{list.title}</span>
-        {list.deadline !== null && (
-          <span className={`deadline-badge is-${status}`}>{deadlineLabel(list.deadline, now)}</span>
+        {days !== null && (
+          <span className={`deadline-badge is-${status}`}>{deadlineLabelFromDays(days)}</span>
         )}
         <span className="task-actions">
           <button type="button" onClick={() => onStartEdit(list.id)}>

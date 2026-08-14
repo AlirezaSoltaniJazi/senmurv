@@ -84,6 +84,11 @@ function stopWatching(): void {
 /** Strip the page's client-side locks, optionally staying on to re-apply them. */
 export function bypassPage(options: BypassOptions, shouldWatch: boolean): BypassReport {
   snapshot ??= createSnapshot();
+  // Drop entries for elements no longer in the document before adding more —
+  // otherwise repeated manual re-bypasses on a re-rendering page grow this
+  // Map without bound (sticky mode already does this in reapply(); manual
+  // re-applies need the same guard since they never go through reapply()).
+  pruneDetached(snapshot);
   const report = applyQuietly(options, snapshot);
   lastReport = report;
   if (shouldWatch) startWatching(options);

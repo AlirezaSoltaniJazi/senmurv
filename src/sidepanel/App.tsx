@@ -45,6 +45,9 @@ const NotesTab = lazy(() => import('./components/NotesTab').then((m) => ({ defau
 const SettingsTab = lazy(() =>
   import('./components/SettingsTab').then((m) => ({ default: m.SettingsTab }))
 );
+const DataIOTab = lazy(() =>
+  import('./components/DataIOTab').then((m) => ({ default: m.DataIOTab }))
+);
 
 type TabKey =
   | 'data'
@@ -57,7 +60,8 @@ type TabKey =
   | 'track'
   | 'mytasks'
   | 'notes'
-  | 'settings';
+  | 'settings'
+  | 'dataio';
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'data', label: 'Data' },
@@ -71,6 +75,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'mytasks', label: 'My Tasks' },
   { key: 'notes', label: 'Notes' },
   { key: 'settings', label: 'Settings' },
+  { key: 'dataio', label: 'Export/Import' },
 ];
 
 const VERSION = chrome.runtime.getManifest().version;
@@ -368,6 +373,7 @@ export function App(): ReactElement {
               onTagColorsChange={changeTagColors}
             />
           )}
+          {tab === 'dataio' && <DataIOTab reloadNonce={reloadNonce} />}
         </Suspense>
       </main>
     </div>

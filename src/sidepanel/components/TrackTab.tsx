@@ -22,6 +22,7 @@ import { AutocompleteInput } from './AutocompleteInput';
 import { TagColorsContext } from './TagColorsContext';
 import { TaskCalendarView } from './TaskCalendarView';
 import { TaskListView } from './TaskListView';
+import { TaskRow } from './TaskRow';
 import { TrackExport } from './TrackExport';
 
 type View = 'list' | 'calendar';
@@ -178,6 +179,10 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
     await persist(child);
   }
 
+  function toggleImportant(entry: TimeEntry): void {
+    void persist({ ...entry, important: !entry.important, updatedAt: nowMs() });
+  }
+
   async function saveEdit(entry: TimeEntry): Promise<void> {
     setError(null);
     if (await persist({ ...entry, updatedAt: nowMs() })) {
@@ -196,6 +201,7 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
     if (res.ok) {
       setEntries(res.value);
       setEditingId(null);
+      setExpanded(new Set());
       setStatus('Cleared all tracked tasks.');
     } else {
       setError(res.error);
@@ -212,6 +218,19 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
     if (res.ok) {
       setEntries(res.value);
       if (editingId === id) setEditingId(null);
+      // expanded is keyed `${dayKey}|${rootId}` (see TaskBlockView) — drop any
+      // block key rooted at the deleted entry; a no-op if it was a non-root child.
+      setExpanded((prev) => {
+        let changed = false;
+        const next = new Set(prev);
+        for (const key of prev) {
+          if (key.endsWith(`|${id}`)) {
+            next.delete(key);
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     } else {
       setError(res.error);
     }
@@ -239,6 +258,11 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
   }
 
   const activeEntries = [...entries].filter(isActive).sort((a, b) => firstStart(b) - firstStart(a));
+  // Starred but not currently running/paused — Active already covers the
+  // starred-and-live case, so this section never duplicates it.
+  const importantEntries = [...entries]
+    .filter((e) => e.important === true && !isActive(e))
+    .sort((a, b) => firstStart(b) - firstStart(a));
   const dayBlocks = buildDayBlocks(entries, now);
   const grid = buildMonthGrid(cursor.year, cursor.month);
   const totals = totalsByDay(entries, now);
@@ -285,6 +309,16 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
                   key={entry.id}
                   className={`running-row ${isRunning(entry) ? 'is-running' : 'is-paused'}`}
                 >
+                  <button
+                    type="button"
+                    className={entry.important ? 'star-toggle active' : 'star-toggle'}
+                    onClick={() => toggleImportant(entry)}
+                    aria-pressed={entry.important === true}
+                    aria-label={entry.important ? 'Unmark as important' : 'Mark as important'}
+                    title={entry.important ? 'Important' : 'Mark as important'}
+                  >
+                    {entry.important ? '★' : '☆'}
+                  </button>
                   <span className={`task-tag ${tagColorClass(entry.tag, tagColors)}`}>
                     {entry.tag || 'untagged'}
                   </span>
@@ -307,6 +341,30 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
                     </button>
                   </span>
                 </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {importantEntries.length > 0 && (
+          <>
+            <h3 className="section-title">Important</h3>
+            <ul className="task-list">
+              {importantEntries.map((entry) => (
+                <TaskRow
+                  key={entry.id}
+                  entry={entry}
+                  now={now}
+                  isEditing={editingId === entry.id}
+                  titleOptions={titles}
+                  tagOptions={tags}
+                  onRerun={(e) => void rerun(e)}
+                  onStartEdit={(id) => setEditingId(id)}
+                  onCancelEdit={() => setEditingId(null)}
+                  onSave={(e) => void saveEdit(e)}
+                  onDelete={(id) => void remove(id)}
+                  onToggleImportant={toggleImportant}
+                />
               ))}
             </ul>
           </>
@@ -357,6 +415,7 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
             onCancelEdit={() => setEditingId(null)}
             onSave={(entry) => void saveEdit(entry)}
             onDelete={(id) => void remove(id)}
+            onToggleImportant={toggleImportant}
           />
         ) : (
           <TaskCalendarView
@@ -379,6 +438,7 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
             onCancelEdit={() => setEditingId(null)}
             onSave={(entry) => void saveEdit(entry)}
             onDelete={(id) => void remove(id)}
+            onToggleImportant={toggleImportant}
           />
         )}
 

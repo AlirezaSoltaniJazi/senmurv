@@ -56,9 +56,11 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.DELETE_TAG; payload: { tag: string } }
   | { type: typeof MESSAGE_TYPES.GET_CHECKLISTS }
   | { type: typeof MESSAGE_TYPES.SAVE_CHECKLIST; payload: { checklist: Checklist } }
+  | { type: typeof MESSAGE_TYPES.SET_CHECKLISTS; payload: { checklists: Checklist[] } }
   | { type: typeof MESSAGE_TYPES.DELETE_CHECKLIST; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.GET_NOTES }
   | { type: typeof MESSAGE_TYPES.SAVE_NOTE; payload: { note: Note } }
+  | { type: typeof MESSAGE_TYPES.SET_NOTES; payload: { notes: Note[] } }
   | { type: typeof MESSAGE_TYPES.DELETE_NOTE; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.GET_PREFS }
   | { type: typeof MESSAGE_TYPES.SAVE_PREFS; payload: { prefs: Prefs } }
@@ -146,10 +148,12 @@ export type RuntimeMessage =
   // Value profiles (shared by both tabs)
   | { type: typeof MESSAGE_TYPES.GET_PROFILES }
   | { type: typeof MESSAGE_TYPES.SAVE_PROFILE; payload: { profile: ValueProfile } }
+  | { type: typeof MESSAGE_TYPES.SET_PROFILES; payload: { profiles: ValueProfile[] } }
   | { type: typeof MESSAGE_TYPES.DELETE_PROFILE; payload: { id: string } }
   // Query param sets (Query params tool)
   | { type: typeof MESSAGE_TYPES.GET_QUERY_PARAM_SETS }
   | { type: typeof MESSAGE_TYPES.SAVE_QUERY_PARAM_SET; payload: { set: QueryParamSet } }
+  | { type: typeof MESSAGE_TYPES.SET_QUERY_PARAM_SETS; payload: { sets: QueryParamSet[] } }
   | { type: typeof MESSAGE_TYPES.DELETE_QUERY_PARAM_SET; payload: { id: string } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));

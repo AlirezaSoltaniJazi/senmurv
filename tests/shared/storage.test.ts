@@ -22,6 +22,8 @@ import {
   isTimeEntry,
   isValueProfile,
   savePrefs,
+  saveProfiles,
+  saveQueryParamSets,
   upsertChecklist,
   upsertNote,
   upsertProfileStored,
@@ -314,6 +316,19 @@ describe('query param set storage', () => {
     const remaining = await deleteQueryParamSet('qps_1');
     expect(remaining.map((s) => s.id)).toEqual(['qps_2']);
   });
+
+  it('saveQueryParamSets fully overwrites the stored list', async () => {
+    await upsertQueryParamSet(makeSet());
+    await saveQueryParamSets([makeSet({ id: 'qps_new', name: 'New' })]);
+    const all = await getQueryParamSets();
+    expect(all.map((s) => s.id)).toEqual(['qps_new']);
+  });
+
+  it('saveQueryParamSets can clear the stored list', async () => {
+    await upsertQueryParamSet(makeSet());
+    await saveQueryParamSets([]);
+    expect(await getQueryParamSets()).toEqual([]);
+  });
 });
 
 describe('value profiles storage', () => {
@@ -361,6 +376,19 @@ describe('value profiles storage', () => {
     const afterDelete = await deleteProfile('a');
     expect(afterDelete.map((p) => p.id)).toEqual(['b']);
     expect((await getProfiles()).map((p) => p.id)).toEqual(['b']);
+  });
+
+  it('saveProfiles fully overwrites the stored list', async () => {
+    await upsertProfileStored(mk({ id: 'a' }));
+    await saveProfiles([mk({ id: 'new', name: 'New' })]);
+    const all = await getProfiles();
+    expect(all.map((p) => p.id)).toEqual(['new']);
+  });
+
+  it('saveProfiles can clear the stored list', async () => {
+    await upsertProfileStored(mk({ id: 'a' }));
+    await saveProfiles([]);
+    expect(await getProfiles()).toEqual([]);
   });
 });
 

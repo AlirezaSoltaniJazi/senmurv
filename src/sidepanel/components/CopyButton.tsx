@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 
 interface Props {
@@ -14,12 +14,23 @@ interface Props {
 
 export function CopyButton({ text, label = 'Copy', className }: Props): ReactElement {
   const [copied, setCopied] = useState(false);
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function cancelReset(): void {
+    if (resetTimer.current !== null) {
+      clearTimeout(resetTimer.current);
+      resetTimer.current = null;
+    }
+  }
+
+  useEffect(() => cancelReset, []);
 
   async function copy(): Promise<void> {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(true);
-      setTimeout(() => setCopied(false), 1200);
+      cancelReset();
+      resetTimer.current = setTimeout(() => setCopied(false), 1200);
     } catch {
       // Clipboard can be unavailable without focus; ignore silently.
     }

@@ -60,6 +60,17 @@ describe('generateValue', () => {
     expect((region ?? '').length).toBeGreaterThan(0);
   });
 
+  it('returns a non-empty city name', () => {
+    const city = generateValue('city', 'en_GB');
+    expect(typeof city).toBe('string');
+    expect((city ?? '').length).toBeGreaterThan(0);
+  });
+
+  it('returns a well-formed UUID', () => {
+    const uuid = generateValue('uuid', 'en_GB') ?? '';
+    expect(uuid).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
+  });
+
   it('honours a Number digit-count genArg (dMIN-MAX)', () => {
     for (let i = 0; i < 40; i += 1) {
       const v = generateValue('number', 'en_GB', undefined, 'd3-5') ?? '';

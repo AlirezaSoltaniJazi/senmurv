@@ -16,6 +16,7 @@
  * module-level overlay is sufficient and keeps teardown in a single place.
  */
 
+import { rafThrottle } from '@/content/raf-throttle';
 import { SENMURV_HOST_TAGS } from '@/shared/constants';
 
 const HOST_TAG = 'senmurv-picker-overlay';
@@ -67,6 +68,7 @@ let hostEl: HTMLElement | null = null;
 let shadowEl: ShadowRoot | null = null;
 const boxPool: HTMLDivElement[] = [];
 const labelPool: HTMLDivElement[] = [];
+let flashTimer: ReturnType<typeof setTimeout> | null = null;
 
 /** Is this node one of Senmurv's own injected hosts? */
 export function isOurHost(node: Node | null): boolean {
@@ -164,8 +166,10 @@ export function flashOverlay(): void {
   if (!el) return;
   const previous = el.style.borderColor;
   el.style.borderColor = TONE_COLORS.good;
-  setTimeout(() => {
+  if (flashTimer !== null) clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => {
     el.style.borderColor = previous;
+    flashTimer = null;
   }, 200);
 }
 
@@ -182,6 +186,10 @@ export function destroyOverlay(): void {
   shadowEl = null;
   boxPool.length = 0;
   labelPool.length = 0;
+  if (flashTimer !== null) {
+    clearTimeout(flashTimer);
+    flashTimer = null;
+  }
 }
 
 /** The real page element at a point — our host is pointer-events:none, so it is skipped. */
@@ -203,6 +211,7 @@ export interface CaptureHandlers {
 }
 
 let captureEl: HTMLDivElement | null = null;
+let captureMove: ReturnType<typeof rafThrottle> | null = null;
 
 /**
  * Mount a full-viewport `pointer-events: auto` layer that swallows the page's
@@ -224,7 +233,11 @@ export function enableCapture(handlers: CaptureHandlers): void {
     layer.setPointerCapture(e.pointerId);
     handlers.onDown(e.clientX, e.clientY);
   });
-  layer.addEventListener('pointermove', (e) => handlers.onMove(e.clientX, e.clientY));
+  // Coalesced to one call per frame, same as every other hover-driven mode —
+  // this was the one pointer path still writing to the overlay on every raw
+  // event instead of going through rafThrottle.
+  captureMove = rafThrottle((e) => handlers.onMove(e.clientX, e.clientY));
+  layer.addEventListener('pointermove', captureMove.handler);
   layer.addEventListener('pointerup', (e) => {
     handlers.onUp(e.clientX, e.clientY);
     if (layer.hasPointerCapture(e.pointerId)) layer.releasePointerCapture(e.pointerId);
@@ -236,6 +249,8 @@ export function enableCapture(handlers: CaptureHandlers): void {
 
 /** Remove the capture layer, restoring normal page interaction. */
 export function disableCapture(): void {
+  captureMove?.cancel();
+  captureMove = null;
   captureEl?.remove();
   captureEl = null;
 }

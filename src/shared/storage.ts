@@ -175,6 +175,22 @@ export async function deleteTask(id: string): Promise<TimeEntry[]> {
   });
 }
 
+/**
+ * Read-modify-write the whole task list under the same lock upsertTask/
+ * deleteTask use, so a bulk transform (e.g. renaming a tag across every
+ * entry) can't lose a concurrent write the way an unlocked getTasks() +
+ * saveTasks() pair would — the exact race withKeyLock exists to prevent.
+ */
+export async function transformTasks(
+  fn: (tasks: TimeEntry[]) => TimeEntry[]
+): Promise<TimeEntry[]> {
+  return withKeyLock(STORAGE_KEYS.TASKS, async () => {
+    const next = fn(await getTasks());
+    await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
+    return next;
+  });
+}
+
 // ---------------------------------------------------------------------------
 // My Tasks (checklists)
 // ---------------------------------------------------------------------------
@@ -324,6 +340,13 @@ export async function getProfiles(): Promise<ValueProfile[]> {
   return raw.filter(isValueProfile);
 }
 
+/** Overwrite the full profile list. */
+export async function saveProfiles(profiles: ValueProfile[]): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.PROFILES, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: profiles })
+  );
+}
+
 /** Insert or update a profile by id; returns the new list. */
 export async function upsertProfileStored(profile: ValueProfile): Promise<ValueProfile[]> {
   return withKeyLock(STORAGE_KEYS.PROFILES, async () => {
@@ -379,6 +402,13 @@ export async function getQueryParamSets(): Promise<QueryParamSet[]> {
   const raw = result[STORAGE_KEYS.QUERY_PARAM_SETS];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isQueryParamSet);
+}
+
+/** Overwrite the full query-param set list. */
+export async function saveQueryParamSets(sets: QueryParamSet[]): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, () =>
+    chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: sets })
+  );
 }
 
 /** Insert or update a query-param set by id; returns the new list. */

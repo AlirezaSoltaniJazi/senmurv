@@ -7,6 +7,7 @@ import { profileFromEntry } from '@/shared/profiles';
 import type { CookieEdit, CookieRow, CookieSameSite, Result, ValueProfile } from '@/shared/types';
 import { reloadActiveTab } from '@/sidepanel/tab-reload';
 import { CopyButton } from './CopyButton';
+import { IconActionButton } from './IconActionButton';
 import { ProfileList } from './profiles/ProfileList';
 
 interface Props {
@@ -196,9 +197,12 @@ export function CookiesTab({ autoReload, onAutoReloadChange }: Props): ReactElem
             Profiles
           </button>
         </div>
-        <button type="button" onClick={() => void refresh()} title="Re-read cookies">
-          ↻ Refresh
-        </button>
+        <IconActionButton
+          icon="↻"
+          label="Refresh"
+          title="Re-read cookies"
+          onClick={() => void refresh()}
+        />
       </div>
       {origin && <p className="hint dim">{origin}</p>}
 
@@ -211,17 +215,24 @@ export function CookiesTab({ autoReload, onAutoReloadChange }: Props): ReactElem
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <button type="button" className="primary" onClick={() => setDraft(emptyDraft())}>
-            + Add cookie
-          </button>
-          <button
-            type="button"
-            className={armed ? 'danger' : ''}
-            disabled={rows.length === 0}
-            onClick={() => (armed ? void clearAll() : setArmed(true))}
-          >
-            {armed ? 'Really delete all — click again' : 'Delete all'}
-          </button>
+          <IconActionButton
+            icon="+"
+            label="Add cookie"
+            className="primary"
+            onClick={() => setDraft(emptyDraft())}
+          />
+          {armed ? (
+            <button type="button" className="danger" onClick={() => void clearAll()}>
+              Really delete all — click again
+            </button>
+          ) : (
+            <IconActionButton
+              icon="✕"
+              label="Delete all"
+              disabled={rows.length === 0}
+              onClick={() => setArmed(true)}
+            />
+          )}
         </div>
       )}
 
@@ -237,9 +248,12 @@ export function CookiesTab({ autoReload, onAutoReloadChange }: Props): ReactElem
           />
           Auto-reload page after change
         </label>
-        <button type="button" onClick={reloadActiveTab} title="Reload the page now">
-          ↻ Reload page
-        </button>
+        <IconActionButton
+          icon="↻"
+          label="Reload page"
+          title="Reload the page now"
+          onClick={reloadActiveTab}
+        />
       </div>
 
       {!showProfiles && draft && (

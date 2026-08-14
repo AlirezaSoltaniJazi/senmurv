@@ -21,7 +21,9 @@ import {
 import type { PersonName } from '@/shared/generators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
+import { configForRegion, findRegion, REGIONS } from '@/shared/tools/region';
 import {
+  buildLocalePool,
   buildWorkflowScript,
   describeStep,
   fieldToStep,
@@ -43,6 +45,7 @@ import type {
 } from '@/shared/types';
 import { newId } from '@/utils/id';
 import { CopyButton } from './CopyButton';
+import { IconActionButton } from './IconActionButton';
 
 interface Props {
   seed: RecorderSeed | null;
@@ -150,6 +153,7 @@ export function RecorderTab({
   // so this just gates the Stop button; the user clears it via Stop.
   const [running, setRunning] = useState(false);
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
+  const [regionId, setRegionId] = useState<string>('none');
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [adhocOpen, setAdhocOpen] = useState(false);
@@ -387,11 +391,16 @@ export function RecorderTab({
   }
 
   // Fill generators are emitted as in-page `{random:…}` tokens (see workflow.ts),
-  // so a saved/copied flow re-randomizes on every run — no faker needed in the page.
-  function buildScriptFor(list: WorkflowStep[]): string {
-    return buildWorkflowScript(list, { hudSeconds, findTimeoutSeconds });
+  // so a saved/copied flow re-randomizes on every run — no faker needed in the
+  // page. A pool of `locale`-correct samples (for the kinds this flow actually
+  // uses) is pre-generated here and baked in alongside them, so the token
+  // resolves to real `locale` data on every future run instead of the fixed
+  // UK-biased in-page fallback.
+  async function buildScriptFor(list: WorkflowStep[]): Promise<string> {
+    const localePool = await buildLocalePool(list, locale);
+    return buildWorkflowScript(list, { hudSeconds, findTimeoutSeconds, localePool });
   }
-  function buildFlow(): string {
+  async function buildFlow(): Promise<string> {
     return buildScriptFor(steps);
   }
   async function runSteps(list: WorkflowStep[], done: string): Promise<void> {
@@ -401,11 +410,29 @@ export function RecorderTab({
       setError('Add or record some steps first.');
       return;
     }
+    let regionApplied = false;
+    if (regionId !== 'none') {
+      const region = findRegion(regionId);
+      if (region) {
+        const regionRes = await sendRuntimeMessage<Result<void>>({
+          type: MESSAGE_TYPES.APPLY_REGION,
+          payload: { config: configForRegion(region, true) },
+        });
+        if (!regionRes.ok) {
+          setError(regionRes.error);
+          return;
+        }
+        regionApplied = true;
+      }
+    }
     setRunning(true);
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_SCRIPT,
-      payload: { code: buildScriptFor(list) },
+      payload: { code: await buildScriptFor(list) },
     });
+    if (regionApplied) {
+      await sendRuntimeMessage({ type: MESSAGE_TYPES.RESTORE_REGION });
+    }
     if (res.ok) setStatus(done);
     else {
       setError(res.error);
@@ -429,7 +456,7 @@ export function RecorderTab({
   async function copyFlow(): Promise<void> {
     if (!steps.length) return;
     try {
-      await navigator.clipboard.writeText(buildFlow());
+      await navigator.clipboard.writeText(await buildFlow());
       setStatus('Flow script copied to clipboard.');
     } catch {
       setError('Could not access the clipboard.');
@@ -450,7 +477,7 @@ export function RecorderTab({
     });
     const existing = listRes.ok ? listRes.value : [];
     const clash = existing.find((s) => s.name.trim().toLowerCase() === name.toLowerCase());
-    const code = buildFlow();
+    const code = await buildFlow();
     const now = nowMs();
 
     if (clash) {
@@ -546,14 +573,13 @@ export function RecorderTab({
   return (
     <div className="tab">
       <div className="row">
-        <button
-          type="button"
+        <IconActionButton
+          icon={recording ? '■' : '●'}
+          label={recording ? 'Stop recording' : 'Record'}
           className={recording ? 'danger' : 'primary'}
           disabled={picking}
           onClick={() => void toggleRecord()}
-        >
-          {recording ? '■ Stop recording' : '● Record'}
-        </button>
+        />
         <button
           type="button"
           onClick={() => setAdhocOpen((v) => !v)}
@@ -574,6 +600,22 @@ export function RecorderTab({
           {SUPPORTED_LOCALES.map((l) => (
             <option key={l} value={l}>
               {LOCALE_LABELS[l] ?? l}
+            </option>
+          ))}
+        </select>
+        <label className="field-label" htmlFor="recorder-region">
+          Run in region
+        </label>
+        <select
+          id="recorder-region"
+          value={regionId}
+          onChange={(e) => setRegionId(e.target.value)}
+          title="Emulate a region's clock, timezone and locale for the duration of the run"
+        >
+          <option value="none">None</option>
+          {REGIONS.map((r) => (
+            <option key={r.id} value={r.id}>
+              {r.flag} {r.label}
             </option>
           ))}
         </select>

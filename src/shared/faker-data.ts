@@ -140,15 +140,25 @@ function nationalMobile(locale: Locale, faker: Faker): string {
 }
 
 /**
+ * Both formats of ONE randomly generated mobile number — the national form and
+ * the "+code" form — so a caller needing both (e.g. a copy-with/without-code
+ * button pair) doesn't call the generator twice and get two different numbers.
+ */
+export function generatePhoneBoth(locale: Locale): { withCode: string; withoutCode: string } {
+  const national = nationalMobile(locale, getFaker(locale));
+  const code = DIAL_CODES[locale];
+  const withCode = code ? `${code} ${national.replace(/^0/, '')}`.trim() : national;
+  return { withCode, withoutCode: national };
+}
+
+/**
  * A region-correct **mobile** phone number. `withCode` prepends the locale's
  * dialing code (and drops the national trunk `0`); otherwise the national format
  * is returned. Always a valid mobile range — never a landline/freephone number.
  */
 export function generatePhone(locale: Locale, withCode = true): string {
-  const national = nationalMobile(locale, getFaker(locale));
-  if (!withCode) return national;
-  const code = DIAL_CODES[locale];
-  return code ? `${code} ${national.replace(/^0/, '')}`.trim() : national;
+  const both = generatePhoneBoth(locale);
+  return withCode ? both.withCode : both.withoutCode;
 }
 
 /**
@@ -192,9 +202,32 @@ function regionOf(faker: Faker): string {
   return loc.city();
 }
 
+/** Default digit count for the Random Number field. */
+export const RANDOM_NUMBER_LENGTH_DEFAULT = 5;
+export const RANDOM_NUMBER_LENGTH_MAX = 32;
+
+/**
+ * A random numeric string of exactly `length` digits (clamped to
+ * 1..{@link RANDOM_NUMBER_LENGTH_MAX}). The leading digit is non-zero when
+ * `length > 1`, so the string never reads as having fewer digits than requested.
+ */
+export function generateRandomNumber(
+  locale: Locale,
+  length: number = RANDOM_NUMBER_LENGTH_DEFAULT
+): string {
+  const faker = getFaker(locale);
+  const len = Math.min(RANDOM_NUMBER_LENGTH_MAX, Math.max(1, Math.floor(length) || 1));
+  if (len === 1) return String(faker.number.int({ min: 0, max: 9 }));
+  let out = String(faker.number.int({ min: 1, max: 9 }));
+  for (let i = 1; i < len; i += 1) out += faker.number.int({ min: 0, max: 9 });
+  return out;
+}
+
 /** Options controlling generated data. */
 export interface TestDataOptions {
   phoneWithCode?: boolean;
+  /** Digit count for `randomNumber`. Defaults to {@link RANDOM_NUMBER_LENGTH_DEFAULT}. */
+  randomNumberLength?: number;
 }
 
 /** Generate one set of locale-aware test data. */
@@ -206,15 +239,21 @@ export function generateTestData(
   const sex = faker.person.sexType();
   const firstName = faker.person.firstName(sex);
   const lastName = faker.person.lastName(sex);
+  const phones = generatePhoneBoth(locale);
+  const wantsCode = options.phoneWithCode ?? true;
 
   return {
     firstName,
     lastName,
-    phone: generatePhone(locale, options.phoneWithCode ?? true),
+    phone: wantsCode ? phones.withCode : phones.withoutCode,
+    phoneAlt: wantsCode ? phones.withoutCode : phones.withCode,
     address: faker.location.streetAddress(),
+    city: faker.location.city(),
     postalCode: faker.location.zipCode(),
     region: regionOf(faker),
     email: faker.internet.email({ firstName, lastName }),
     dateOfBirth: faker.date.birthdate().toLocaleDateString('en-GB'),
+    uuid: faker.string.uuid(),
+    randomNumber: generateRandomNumber(locale, options.randomNumberLength),
   };
 }

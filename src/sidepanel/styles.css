@@ -109,6 +109,38 @@ body {
   border: none;
 }
 
+/* An action button that adapts to panel width: normally just its text label
+   (icon hidden — the label alone is clearest); with room to spare the icon
+   joins it; when space is tight the label drops and the icon carries the
+   button alone (its native `title` + `aria-label` still give it a name). */
+.icon-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.icon-collapse .ico {
+  display: none;
+  line-height: 1;
+}
+
+@media (min-width: 640px) {
+  .icon-collapse .ico {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 380px) {
+  .icon-collapse .lbl {
+    display: none;
+  }
+
+  .icon-collapse .ico {
+    display: inline-block;
+  }
+}
+
 .tab-btn {
   flex: 1;
   background: none;
@@ -285,6 +317,13 @@ select,
   font-size: 11px;
 }
 
+/* A data row's copy button(s) — plain rows carry one, Phone carries a second
+   (copy with/without the dial code) sharing the row's trailing grid column. */
+.copy-group {
+  display: flex;
+  gap: 4px;
+}
+
 /* Full-size variant: matches a standard action button when placed in a row
    alongside them (e.g. the JSON Formatter's Format / Minify / Copy row). */
 .copy-btn.copy-btn-lg {
@@ -322,6 +361,15 @@ select,
   margin: 6px 0 0;
   display: flex;
   align-items: center;
+}
+
+/* A <summary> reusing .section-title (e.g. the collapsed-by-default "Done"
+   section) — override its `display: flex` so the native disclosure ▶/▼
+   marker still renders. */
+summary.section-title.collapsible {
+  display: list-item;
+  cursor: pointer;
+  list-style-position: inside;
 }
 
 .locator-row,
@@ -1027,7 +1075,7 @@ select,
 
 .running-row {
   display: grid;
-  grid-template-columns: auto 1fr auto auto;
+  grid-template-columns: auto auto 1fr auto auto;
   align-items: center;
   gap: 8px;
   background: var(--panel);
@@ -1167,6 +1215,26 @@ select,
 .expand-toggle:hover {
   color: var(--text);
   border: none;
+}
+
+/* Favorite (Notes) / Important (My Tasks, Track) star toggle. */
+.star-toggle {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0 2px;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.star-toggle:hover {
+  color: var(--warn);
+  border: none;
+}
+
+.star-toggle.active {
+  color: var(--warn);
 }
 
 .task-runcount {
@@ -1559,6 +1627,13 @@ input[type='checkbox'] {
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+.note-body.collapsed {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 5;
+  overflow: hidden;
 }
 
 /* Tools tab — launcher list (base `button` already supplies panel/border/radius) */

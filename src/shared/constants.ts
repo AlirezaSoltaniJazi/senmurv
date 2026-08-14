@@ -35,9 +35,11 @@ export const MESSAGE_TYPES = {
   DELETE_TAG: 'DELETE_TAG',
   GET_CHECKLISTS: 'GET_CHECKLISTS',
   SAVE_CHECKLIST: 'SAVE_CHECKLIST',
+  SET_CHECKLISTS: 'SET_CHECKLISTS',
   DELETE_CHECKLIST: 'DELETE_CHECKLIST',
   GET_NOTES: 'GET_NOTES',
   SAVE_NOTE: 'SAVE_NOTE',
+  SET_NOTES: 'SET_NOTES',
   DELETE_NOTE: 'DELETE_NOTE',
   GET_PREFS: 'GET_PREFS',
   SAVE_PREFS: 'SAVE_PREFS',
@@ -99,11 +101,13 @@ export const MESSAGE_TYPES = {
   // Value profiles (shared by the Cookies + Storage tabs)
   GET_PROFILES: 'GET_PROFILES',
   SAVE_PROFILE: 'SAVE_PROFILE',
+  SET_PROFILES: 'SET_PROFILES',
   DELETE_PROFILE: 'DELETE_PROFILE',
   // Query param sets — a named snapshot of the Query params builder (base +
   // every row + hash), recalled as one chip instead of one param at a time.
   GET_QUERY_PARAM_SETS: 'GET_QUERY_PARAM_SETS',
   SAVE_QUERY_PARAM_SET: 'SAVE_QUERY_PARAM_SET',
+  SET_QUERY_PARAM_SETS: 'SET_QUERY_PARAM_SETS',
   DELETE_QUERY_PARAM_SET: 'DELETE_QUERY_PARAM_SET',
 } as const;
 

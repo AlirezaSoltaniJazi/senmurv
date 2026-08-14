@@ -28,6 +28,7 @@ interface TaskCalendarViewProps {
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
   onDelete: (id: string) => void;
+  onToggleImportant: (entry: TimeEntry) => void;
 }
 
 const WEEKDAY_HEADERS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] as const;
@@ -54,6 +55,7 @@ export function TaskCalendarView({
   onCancelEdit,
   onSave,
   onDelete,
+  onToggleImportant,
 }: TaskCalendarViewProps): ReactElement {
   const tagColors = useContext(TagColorsContext);
   const todayKey = dayKey(now);
@@ -148,6 +150,7 @@ export function TaskCalendarView({
                   onCancelEdit={onCancelEdit}
                   onSave={onSave}
                   onDelete={onDelete}
+                  onToggleImportant={onToggleImportant}
                 />
               ))}
             </div>

@@ -3,8 +3,10 @@ import {
   applyScriptImport,
   buildScriptTree,
   deleteFolder,
+  filterScriptTree,
   hasChildren,
   importConflicts,
+  matchesScriptQuery,
   moveScriptBefore,
   nestScript,
   newFolder,
@@ -75,6 +77,21 @@ describe('script-io', () => {
   it('rejects bad JSON and content without a scripts array', () => {
     expect(parseScriptsImport('{not json').ok).toBe(false);
     expect(parseScriptsImport(JSON.stringify({ foo: 1 })).ok).toBe(false);
+  });
+
+  it('round-trips a folder and its child, preserving isFolder/parentId', () => {
+    const withFolder: SavedScript[] = [
+      { id: 'fld_1', name: 'Auth', code: '', isFolder: true, createdAt: 1, updatedAt: 2 },
+      { id: 'scr_2', name: 'Login', code: 'x()', parentId: 'fld_1', createdAt: 1, updatedAt: 2 },
+    ];
+    const res = parseScriptsImport(serializeScripts(withFolder));
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value).toHaveLength(2);
+    expect(res.value[0]).toMatchObject({ id: 'fld_1', name: 'Auth', isFolder: true });
+    expect(res.value[0]!.parentId).toBeUndefined();
+    expect(res.value[1]).toMatchObject({ id: 'scr_2', name: 'Login', parentId: 'fld_1' });
+    expect(res.value[1]!.isFolder).toBeUndefined();
   });
 });
 
@@ -191,6 +208,49 @@ describe('applyScriptImport', () => {
     expect(next[1]!.id).not.toBe('scr_1');
   });
 
+  it('overwrite mode copies isFolder/parentId onto the merged record', () => {
+    const next = applyScriptImport(
+      sample,
+      [{ id: 'fld_1', name: 'Auth', code: '', isFolder: true }],
+      'overwrite',
+      999
+    );
+    const folder = next.find((s) => s.id === 'fld_1');
+    expect(folder).toMatchObject({ isFolder: true });
+    expect(folder?.parentId).toBeUndefined();
+  });
+
+  it('keep-both re-groups a folder and its child under fresh, remapped ids', () => {
+    const next = applyScriptImport(
+      [],
+      [
+        { id: 'fld_1', name: 'Auth', code: '', isFolder: true },
+        { id: 'scr_2', name: 'Login', code: 'x()', parentId: 'fld_1' },
+      ],
+      'keep-both',
+      999
+    );
+    expect(next).toHaveLength(2);
+    const folder = next.find((s) => s.isFolder === true);
+    const child = next.find((s) => s.isFolder !== true);
+    expect(folder).toBeDefined();
+    expect(child).toBeDefined();
+    expect(folder!.id).not.toBe('fld_1'); // fresh id
+    expect(child!.id).not.toBe('scr_2'); // fresh id
+    expect(child!.parentId).toBe(folder!.id); // remapped, still grouped
+  });
+
+  it('keep-both degrades a child re-imported without its folder to top-level', () => {
+    const next = applyScriptImport(
+      [],
+      [{ id: 'scr_2', name: 'Login', code: 'x()', parentId: 'fld_missing' }],
+      'keep-both',
+      999
+    );
+    expect(next).toHaveLength(1);
+    expect(next[0]!.parentId).toBeUndefined();
+  });
+
   it('uniqueName returns the base when free, else the first free “base (n)”', () => {
     expect(uniqueName('Flow', new Set())).toBe('Flow');
     expect(uniqueName('Flow', new Set(['Flow']))).toBe('Flow (2)');
@@ -218,5 +278,45 @@ describe('applyScriptImport', () => {
     // No-op and out-of-range are returned unchanged (same reference).
     expect(reorderScripts(list, 1, 1)).toBe(list);
     expect(reorderScripts(list, 9, 0)).toBe(list);
+  });
+});
+
+describe('matchesScriptQuery', () => {
+  it('is case-insensitive, blank matches everything, and matches the name only', () => {
+    expect(matchesScriptQuery('Login flow', '')).toBe(true);
+    expect(matchesScriptQuery('Login flow', '   ')).toBe(true);
+    expect(matchesScriptQuery('Login flow', 'LOGIN')).toBe(true);
+    expect(matchesScriptQuery('Login flow', 'flow')).toBe(true);
+    expect(matchesScriptQuery('Login flow', 'nope')).toBe(false);
+  });
+});
+
+describe('filterScriptTree', () => {
+  const tree = buildScriptTree([fld('F'), mk('alpha', 'F'), mk('beta', 'F'), mk('gamma')]);
+
+  it('returns the tree unchanged for a blank query', () => {
+    expect(filterScriptTree(tree, '')).toBe(tree);
+  });
+
+  it('keeps a folder and ALL its children when the folder name matches', () => {
+    const filtered = filterScriptTree(tree, 'f');
+    expect(filtered.map((g) => g.parent.id)).toEqual(['F']);
+    expect(ids(filtered[0]!.children)).toEqual(['alpha', 'beta']);
+  });
+
+  it('keeps a folder but ONLY the matching children when a child name matches', () => {
+    const filtered = filterScriptTree(tree, 'alpha');
+    expect(filtered.map((g) => g.parent.id)).toEqual(['F']);
+    expect(ids(filtered[0]!.children)).toEqual(['alpha']);
+  });
+
+  it('drops a folder whose name and every child fail to match', () => {
+    const other = buildScriptTree([fld('G'), mk('x', 'G')]);
+    expect(filterScriptTree(other, 'zzz')).toEqual([]);
+  });
+
+  it('keeps or drops a top-level script on its own name match', () => {
+    expect(filterScriptTree(tree, 'gamma').map((g) => g.parent.id)).toEqual(['gamma']);
+    expect(filterScriptTree(tree, 'nope')).toEqual([]);
   });
 });

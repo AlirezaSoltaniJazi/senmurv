@@ -15,9 +15,14 @@ import {
   getQueryParamSets,
   getScripts,
   getTasks,
+  saveChecklists,
+  saveNotes,
+  saveProfiles,
+  saveQueryParamSets,
   saveScripts,
   saveTasks,
   savePrefs,
+  transformTasks,
   upsertProfileStored,
   upsertChecklist,
   upsertNote,
@@ -213,16 +218,12 @@ async function stopFlowInPage(tabId: number): Promise<Result<void>> {
 
 /** Rename tag `from` → `to` across every entry (one atomic write); returns the new list. */
 async function renameTagAcross(from: string, to: string): Promise<TimeEntry[]> {
-  const next = renameTagInEntries(await getTasks(), from, to);
-  await saveTasks(next);
-  return next;
+  return transformTasks((tasks) => renameTagInEntries(tasks, from, to));
 }
 
 /** Un-tag every entry carrying `tag` (entries kept); returns the new list. */
 async function clearTagAcross(tag: string): Promise<TimeEntry[]> {
-  const next = clearTagInEntries(await getTasks(), tag);
-  await saveTasks(next);
-  return next;
+  return transformTasks((tasks) => clearTagInEntries(tasks, tag));
 }
 
 // ---------------------------------------------------------------------------
@@ -1404,14 +1405,14 @@ async function mutateWebStorage(
 // Cookies tab — chrome.cookies against the active tab's URL
 // ---------------------------------------------------------------------------
 
-/** The active tab's URL, validated as a cookie-addressable http(s) page. */
-async function cookieUrlFor(tabId: number): Promise<Result<URL>> {
-  try {
-    const tab = await chrome.tabs.get(tabId);
-    return parseCookieUrl(tab.url ?? '');
-  } catch (err) {
-    return { ok: false, error: errorMessage(err) };
-  }
+/**
+ * Validate the tab's URL as a cookie-addressable http(s) page. Takes the URL
+ * directly (already resolved by withActiveTab) rather than re-fetching the
+ * tab via chrome.tabs.get — every caller here is reached through
+ * withActiveTab, which already paid for exactly one chrome.tabs.query.
+ */
+function cookieUrlFrom(url: string | undefined): Result<URL> {
+  return parseCookieUrl(url ?? '');
 }
 
 function toCookieRow(c: chrome.cookies.Cookie): CookieRow {
@@ -1435,8 +1436,10 @@ function toCookieRow(c: chrome.cookies.Cookie): CookieRow {
  * Queried by domain rather than URL so cookies scoped to another path still
  * appear; Chrome's URL match is a path PREFIX test that would hide them.
  */
-async function listCookies(tabId: number): Promise<Result<{ origin: string; rows: CookieRow[] }>> {
-  const urlRes = await cookieUrlFor(tabId);
+async function listCookies(
+  url: string | undefined
+): Promise<Result<{ origin: string; rows: CookieRow[] }>> {
+  const urlRes = cookieUrlFrom(url);
   if (!urlRes.ok) return urlRes;
   try {
     const all = await chrome.cookies.getAll({ domain: urlRes.value.hostname });
@@ -1447,8 +1450,8 @@ async function listCookies(tabId: number): Promise<Result<{ origin: string; rows
   }
 }
 
-async function setCookie(tabId: number, edit: CookieEdit): Promise<Result<void>> {
-  const urlRes = await cookieUrlFor(tabId);
+async function setCookie(url: string | undefined, edit: CookieEdit): Promise<Result<void>> {
+  const urlRes = cookieUrlFrom(url);
   if (!urlRes.ok) return urlRes;
   const path = edit.path.trim() === '' ? '/' : edit.path.trim();
   const warning = cookieWriteWarning({ ...edit, path }, urlRes.value);
@@ -1476,8 +1479,12 @@ async function setCookie(tabId: number, edit: CookieEdit): Promise<Result<void>>
   }
 }
 
-async function removeCookie(tabId: number, name: string, path: string): Promise<Result<void>> {
-  const urlRes = await cookieUrlFor(tabId);
+async function removeCookie(
+  url: string | undefined,
+  name: string,
+  path: string
+): Promise<Result<void>> {
+  const urlRes = cookieUrlFrom(url);
   if (!urlRes.ok) return urlRes;
   try {
     await chrome.cookies.remove({ url: urlForPath(urlRes.value, path || '/'), name });
@@ -1488,20 +1495,18 @@ async function removeCookie(tabId: number, name: string, path: string): Promise<
 }
 
 /** Remove every cookie this tab can see, each at its own path. */
-async function clearCookies(tabId: number): Promise<Result<number>> {
-  const urlRes = await cookieUrlFor(tabId);
+async function clearCookies(url: string | undefined): Promise<Result<number>> {
+  const urlRes = cookieUrlFrom(url);
   if (!urlRes.ok) return urlRes;
   try {
     const all = await chrome.cookies.getAll({ domain: urlRes.value.hostname });
-    let removed = 0;
-    for (const c of all) {
-      try {
-        await chrome.cookies.remove({ url: urlForPath(urlRes.value, c.path), name: c.name });
-        removed += 1;
-      } catch {
-        // A cookie on a domain we can't address — skip it rather than abort.
-      }
-    }
+    // Concurrent, not sequential — each removal targets an independent
+    // name+path pulled from the same snapshot, so nothing depends on order.
+    // allSettled (not all) so one un-addressable cookie can't abort the rest.
+    const results = await Promise.allSettled(
+      all.map((c) => chrome.cookies.remove({ url: urlForPath(urlRes.value, c.path), name: c.name }))
+    );
+    const removed = results.filter((r) => r.status === 'fulfilled').length;
     return { ok: true, value: removed };
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
@@ -1594,6 +1599,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
+      case MESSAGE_TYPES.SET_CHECKLISTS:
+        saveChecklists(message.payload.checklists)
+          .then(() => sendResponse({ ok: true, value: message.payload.checklists }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
       case MESSAGE_TYPES.DELETE_CHECKLIST:
         deleteChecklist(message.payload.id)
           .then((value) => sendResponse({ ok: true, value }))
@@ -1609,6 +1620,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.SAVE_NOTE:
         upsertNote(message.payload.note)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_NOTES:
+        saveNotes(message.payload.notes)
+          .then(() => sendResponse({ ok: true, value: message.payload.notes }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
@@ -1639,6 +1656,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.SAVE_QUERY_PARAM_SET:
         upsertQueryParamSet(message.payload.set)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_QUERY_PARAM_SETS:
+        saveQueryParamSets(message.payload.sets)
+          .then(() => sendResponse({ ok: true, value: message.payload.sets }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
@@ -1765,23 +1788,21 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       }
 
       case MESSAGE_TYPES.LIST_COOKIES:
-        withActiveRunnableTab((tabId) => listCookies(tabId)).then(sendResponse);
+        withActiveTab((tab) => listCookies(tab.url)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.SET_COOKIE:
-        withActiveRunnableTab((tabId) => setCookie(tabId, message.payload.cookie)).then(
-          sendResponse
-        );
+        withActiveTab((tab) => setCookie(tab.url, message.payload.cookie)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.REMOVE_COOKIE:
-        withActiveRunnableTab((tabId) =>
-          removeCookie(tabId, message.payload.name, message.payload.path)
+        withActiveTab((tab) =>
+          removeCookie(tab.url, message.payload.name, message.payload.path)
         ).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.CLEAR_COOKIES:
-        withActiveRunnableTab((tabId) => clearCookies(tabId)).then(sendResponse);
+        withActiveTab((tab) => clearCookies(tab.url)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.GET_PROFILES:
@@ -1793,6 +1814,12 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
       case MESSAGE_TYPES.SAVE_PROFILE:
         upsertProfileStored(message.payload.profile)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_PROFILES:
+        saveProfiles(message.payload.profiles)
+          .then(() => sendResponse({ ok: true, value: message.payload.profiles }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
