@@ -109,9 +109,10 @@ body {
   border: none;
 }
 
-/* A primary action button that carries both an icon and a text label — the
-   label drops at narrow panel widths, leaving just the icon (Regenerate,
-   Pick element, Record, …). */
+/* An action button that adapts to panel width: normally just its text label
+   (icon hidden — the label alone is clearest); with room to spare the icon
+   joins it; when space is tight the label drops and the icon carries the
+   button alone (its native `title` + `aria-label` still give it a name). */
 .icon-collapse {
   display: inline-flex;
   align-items: center;
@@ -119,9 +120,24 @@ body {
   gap: 5px;
 }
 
-@media (max-width: 480px) {
+.icon-collapse .ico {
+  display: none;
+  line-height: 1;
+}
+
+@media (min-width: 640px) {
+  .icon-collapse .ico {
+    display: inline-block;
+  }
+}
+
+@media (max-width: 380px) {
   .icon-collapse .lbl {
     display: none;
+  }
+
+  .icon-collapse .ico {
+    display: inline-block;
   }
 }
 

@@ -45,6 +45,7 @@ import type {
 } from '@/shared/types';
 import { newId } from '@/utils/id';
 import { CopyButton } from './CopyButton';
+import { IconActionButton } from './IconActionButton';
 
 interface Props {
   seed: RecorderSeed | null;
@@ -572,16 +573,13 @@ export function RecorderTab({
   return (
     <div className="tab">
       <div className="row">
-        <button
-          type="button"
-          className={recording ? 'danger icon-collapse' : 'primary icon-collapse'}
-          aria-label={recording ? 'Stop recording' : 'Record'}
+        <IconActionButton
+          icon={recording ? '■' : '●'}
+          label={recording ? 'Stop recording' : 'Record'}
+          className={recording ? 'danger' : 'primary'}
           disabled={picking}
           onClick={() => void toggleRecord()}
-        >
-          <span aria-hidden="true">{recording ? '■' : '●'}</span>
-          <span className="lbl">{recording ? 'Stop recording' : 'Record'}</span>
-        </button>
+        />
         <button
           type="button"
           onClick={() => setAdhocOpen((v) => !v)}

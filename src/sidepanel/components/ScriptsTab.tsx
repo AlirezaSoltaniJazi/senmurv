@@ -23,6 +23,7 @@ import {
 import type { RecorderSeed } from '@/shared/workflow';
 import type { Result, SavedScript, ScriptSeed } from '@/shared/types';
 import { newId } from '@/utils/id';
+import { IconActionButton } from './IconActionButton';
 
 interface Props {
   /** Open a generated fill/flow script in the Recorder tab for customization. */
@@ -545,17 +546,19 @@ export function ScriptsTab({
   return (
     <div className="tab">
       <div className="row">
-        <button type="button" className="primary" onClick={() => void createFolder()}>
-          + New folder
-        </button>
-        <button
-          type="button"
+        <IconActionButton
+          icon="+"
+          label="New folder"
+          className="primary"
+          onClick={() => void createFolder()}
+        />
+        <IconActionButton
+          icon="✕"
+          label="Delete all"
           className="danger"
-          onClick={() => void deleteAll()}
           disabled={scripts.length === 0}
-        >
-          Delete all
-        </button>
+          onClick={() => void deleteAll()}
+        />
         <label className="field-label" htmlFor="scripts-region">
           Run in region
         </label>

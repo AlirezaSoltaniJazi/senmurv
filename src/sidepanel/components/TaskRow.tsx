@@ -13,6 +13,7 @@ import {
 import type { TimeEntry, TimeInterval } from '@/shared/types';
 import { newId } from '@/utils/id';
 import { AutocompleteInput } from './AutocompleteInput';
+import { IconActionButton } from './IconActionButton';
 import { TagColorsContext } from './TagColorsContext';
 
 interface TaskRowProps {
@@ -234,9 +235,7 @@ export function TaskRow({
       </span>
       <span className="task-actions">
         {onRerun && !isActive(entry) && (
-          <button type="button" onClick={() => onRerun(entry)}>
-            ↻ Re-run
-          </button>
+          <IconActionButton icon="↻" label="Re-run" onClick={() => onRerun(entry)} />
         )}
         <button type="button" onClick={() => onStartEdit(entry.id)}>
           Edit

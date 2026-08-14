@@ -10,6 +10,7 @@ import {
 } from '@/shared/faker-data';
 import type { GeneratedData, Locale } from '@/shared/types';
 import { CopyButton } from './CopyButton';
+import { IconActionButton } from './IconActionButton';
 
 const FIELDS: { key: keyof GeneratedData; label: string }[] = [
   { key: 'firstName', label: 'First name' },
@@ -88,15 +89,12 @@ export function GenerateDataTab(): ReactElement {
             </option>
           ))}
         </select>
-        <button
-          type="button"
-          className="primary icon-collapse"
-          aria-label="Regenerate"
+        <IconActionButton
+          icon="↻"
+          label="Regenerate"
+          className="primary"
           onClick={() => regenerate()}
-        >
-          <span aria-hidden="true">↻</span>
-          <span className="lbl">Regenerate</span>
-        </button>
+        />
       </div>
       <label className="checkbox-inline">
         <input

@@ -12,6 +12,7 @@ import { fromLocalInputValue, isActive, isRunning } from '@/shared/tasks';
 import type { Checklist, Result, Subtask, TimeEntry } from '@/shared/types';
 import { newId } from '@/utils/id';
 import { ChecklistCard } from './ChecklistCard';
+import { IconActionButton } from './IconActionButton';
 
 interface Props {
   /** Bumped by the header refresh button to re-pull data from storage. */
@@ -269,9 +270,12 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
           onChange={(e) => setDeadline(e.target.value)}
           aria-label="Deadline (optional)"
         />
-        <button type="button" className="primary" onClick={() => void addTask()}>
-          Add task
-        </button>
+        <IconActionButton
+          icon="+"
+          label="Add task"
+          className="primary"
+          onClick={() => void addTask()}
+        />
       </div>
 
       {checklists.length > 0 && (

@@ -13,6 +13,7 @@ import type {
 } from '@/shared/types';
 import { reloadActiveTab } from '@/sidepanel/tab-reload';
 import { CopyButton } from './CopyButton';
+import { IconActionButton } from './IconActionButton';
 import { ProfileList } from './profiles/ProfileList';
 
 interface Props {
@@ -202,9 +203,12 @@ export function StorageTab({ autoReload, onAutoReloadChange }: Props): ReactElem
             Profiles
           </button>
         </div>
-        <button type="button" onClick={() => void refresh()} title="Re-read from the page">
-          ↻ Refresh
-        </button>
+        <IconActionButton
+          icon="↻"
+          label="Refresh"
+          title="Re-read from the page"
+          onClick={() => void refresh()}
+        />
       </div>
 
       {snapshot && <p className="hint dim">{snapshot.origin}</p>}
@@ -218,21 +222,24 @@ export function StorageTab({ autoReload, onAutoReloadChange }: Props): ReactElem
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
-          <button
-            type="button"
+          <IconActionButton
+            icon="+"
+            label="Add key"
             className="primary"
             onClick={() => setDraft({ key: '', value: '', isNew: true })}
-          >
-            + Add key
-          </button>
-          <button
-            type="button"
-            className={armed ? 'danger' : ''}
-            disabled={items.length === 0}
-            onClick={() => (armed ? void clearArea() : setArmed(true))}
-          >
-            {armed ? 'Really clear — click again' : 'Clear all'}
-          </button>
+          />
+          {armed ? (
+            <button type="button" className="danger" onClick={() => void clearArea()}>
+              Really clear — click again
+            </button>
+          ) : (
+            <IconActionButton
+              icon="✕"
+              label="Clear all"
+              disabled={items.length === 0}
+              onClick={() => setArmed(true)}
+            />
+          )}
         </div>
       )}
 
@@ -248,9 +255,12 @@ export function StorageTab({ autoReload, onAutoReloadChange }: Props): ReactElem
           />
           Auto-reload page after change
         </label>
-        <button type="button" onClick={reloadActiveTab} title="Reload the page now">
-          ↻ Reload page
-        </button>
+        <IconActionButton
+          icon="↻"
+          label="Reload page"
+          title="Reload the page now"
+          onClick={reloadActiveTab}
+        />
       </div>
 
       {!showProfiles && draft && (
