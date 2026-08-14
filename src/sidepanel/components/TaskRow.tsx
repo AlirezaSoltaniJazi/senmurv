@@ -27,6 +27,7 @@ interface TaskRowProps {
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
   onDelete: (id: string) => void;
+  onToggleImportant: (entry: TimeEntry) => void;
   /** When set, render as a child run: show this time-range label instead of tag+title. */
   runLabel?: string;
   /** When provided and the entry is stopped, show a Re-run button. */
@@ -196,6 +197,7 @@ export function TaskRow({
   onCancelEdit,
   onSave,
   onDelete,
+  onToggleImportant,
   runLabel,
   onRerun,
 }: TaskRowProps): ReactElement {
@@ -218,6 +220,16 @@ export function TaskRow({
   const paused = isPaused(entry);
   return (
     <div className="task-row">
+      <button
+        type="button"
+        className={entry.important ? 'star-toggle active' : 'star-toggle'}
+        onClick={() => onToggleImportant(entry)}
+        aria-pressed={entry.important === true}
+        aria-label={entry.important ? 'Unmark as important' : 'Mark as important'}
+        title={entry.important ? 'Important' : 'Mark as important'}
+      >
+        {entry.important ? '★' : '☆'}
+      </button>
       {runLabel !== undefined ? (
         <span className="run-time">{runLabel}</span>
       ) : (

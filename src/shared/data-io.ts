@@ -407,6 +407,7 @@ export interface ImportedNote {
   body: string;
   createdAt?: number;
   updatedAt?: number;
+  favorite?: boolean;
 }
 
 /** Serialize notes to a versioned, timestamped JSON export bundle. */
@@ -436,6 +437,7 @@ function validateImportedNote(value: unknown, index: number): Result<ImportedNot
   if (typeof v.id === 'string') out.id = v.id;
   if (typeof v.createdAt === 'number') out.createdAt = v.createdAt;
   if (typeof v.updatedAt === 'number') out.updatedAt = v.updatedAt;
+  if (typeof v.favorite === 'boolean') out.favorite = v.favorite;
   return { ok: true, value: out };
 }
 
@@ -512,7 +514,9 @@ export function applyNoteImport(
       const id = newId('note_');
       const title = uniqueName(imp.title, titles);
       titles.add(title);
-      byId.set(id, { id, title, body: imp.body, createdAt: now, updatedAt: now });
+      const note: Note = { id, title, body: imp.body, createdAt: now, updatedAt: now };
+      if (imp.favorite !== undefined) note.favorite = imp.favorite;
+      byId.set(id, note);
     }
     return [...byId.values()];
   }
@@ -520,13 +524,15 @@ export function applyNoteImport(
   for (const imp of imported) {
     const id = imp.id ?? newId('note_');
     const existing = byId.get(id);
-    byId.set(id, {
+    const note: Note = {
       id,
       title: imp.title,
       body: imp.body,
       createdAt: existing?.createdAt ?? imp.createdAt ?? now,
       updatedAt: now,
-    });
+    };
+    if (imp.favorite !== undefined) note.favorite = imp.favorite;
+    byId.set(id, note);
   }
   return [...byId.values()];
 }
@@ -559,6 +565,7 @@ export interface ImportedChecklist {
   deadline: number | null;
   createdAt?: number;
   updatedAt?: number;
+  important?: boolean;
 }
 
 /** Serialize checklists to a versioned, timestamped JSON export bundle. */
@@ -629,6 +636,7 @@ function validateImportedChecklist(value: unknown, index: number): Result<Import
   if (typeof v.id === 'string') out.id = v.id;
   if (typeof v.createdAt === 'number') out.createdAt = v.createdAt;
   if (typeof v.updatedAt === 'number') out.updatedAt = v.updatedAt;
+  if (typeof v.important === 'boolean') out.important = v.important;
   return { ok: true, value: out };
 }
 
@@ -716,7 +724,7 @@ export function applyChecklistImport(
         title: s.title,
         done: s.done,
       }));
-      byId.set(id, {
+      const checklist: Checklist = {
         id,
         title,
         subtasks,
@@ -724,7 +732,9 @@ export function applyChecklistImport(
         deadline: imp.deadline,
         createdAt: now,
         updatedAt: now,
-      });
+      };
+      if (imp.important !== undefined) checklist.important = imp.important;
+      byId.set(id, checklist);
     }
     return [...byId.values()];
   }
@@ -737,7 +747,7 @@ export function applyChecklistImport(
       title: s.title,
       done: s.done,
     }));
-    byId.set(id, {
+    const checklist: Checklist = {
       id,
       title: imp.title,
       subtasks,
@@ -745,7 +755,9 @@ export function applyChecklistImport(
       deadline: imp.deadline,
       createdAt: existing?.createdAt ?? imp.createdAt ?? now,
       updatedAt: now,
-    });
+    };
+    if (imp.important !== undefined) checklist.important = imp.important;
+    byId.set(id, checklist);
   }
   return [...byId.values()];
 }

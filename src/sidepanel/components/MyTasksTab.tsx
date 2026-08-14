@@ -105,7 +105,18 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
     }
   }
 
+  // Marking something done while its timer is running would otherwise leave
+  // that timer ticking forever in the background — stop it in the same click.
   function toggleParent(list: Checklist): void {
+    const willComplete = list.subtasks.length > 0 ? !isComplete(list) : !list.done;
+    if (willComplete) {
+      const own = activeEntryFor(list.id);
+      if (own) stopTracking(own);
+      for (const s of list.subtasks) {
+        const active = activeSubEntryFor(s.id);
+        if (active) stopTracking(active);
+      }
+    }
     const next: Checklist =
       list.subtasks.length > 0
         ? {
@@ -118,11 +129,20 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
   }
 
   function toggleSubtask(list: Checklist, subtaskId: string): void {
+    const subtask = list.subtasks.find((s) => s.id === subtaskId);
+    if (subtask && !subtask.done) {
+      const active = activeSubEntryFor(subtaskId);
+      if (active) stopTracking(active);
+    }
     void persist({
       ...list,
       subtasks: list.subtasks.map((s) => (s.id === subtaskId ? { ...s, done: !s.done } : s)),
       updatedAt: nowMs(),
     });
+  }
+
+  function toggleImportant(list: Checklist): void {
+    void persist({ ...list, important: !list.important, updatedAt: nowMs() });
   }
 
   function addSubtask(list: Checklist, subtaskTitle: string): void {
@@ -251,7 +271,40 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
   const sorted = [...checklists].sort(
     (a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || b.createdAt - a.createdAt
   );
-  const filtered = sorted.filter((list) => matchesChecklistQuery(list, query));
+  const matching = sorted.filter((list) => matchesChecklistQuery(list, query));
+  // Each task lands in exactly one section — no duplicate listing. Starred
+  // wins over done (a starred task you've finished still surfaces as
+  // Important); everything else that's complete moves to Done.
+  const importantLists = matching.filter((list) => list.important === true);
+  const doneLists = matching.filter((list) => list.important !== true && isComplete(list));
+  const otherLists = matching.filter((list) => list.important !== true && !isComplete(list));
+
+  function renderCard(list: Checklist): ReactElement {
+    return (
+      <ChecklistCard
+        key={list.id}
+        list={list}
+        now={now}
+        trackingEntry={activeEntryFor(list.id)}
+        subTrackingFor={activeSubEntryFor}
+        isExpanded={expanded.has(list.id)}
+        isEditing={editingId === list.id}
+        onToggleExpand={toggleExpand}
+        onToggleParent={toggleParent}
+        onToggleImportant={toggleImportant}
+        onToggleSubtask={toggleSubtask}
+        onAddSubtask={addSubtask}
+        onDeleteSubtask={deleteSubtask}
+        onStartTracking={() => startTracking(list)}
+        onStartSubtaskTracking={startSubtaskTracking}
+        onStopTracking={stopTracking}
+        onStartEdit={(id) => setEditingId(id)}
+        onCancelEdit={() => setEditingId(null)}
+        onSaveEdit={(l) => void saveEdit(l)}
+        onDelete={(id) => void remove(id)}
+      />
+    );
+  }
 
   return (
     <div className="tab">
@@ -300,38 +353,35 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
         />
       </div>
 
-      {filtered.length === 0 ? (
+      {importantLists.length > 0 && (
+        <>
+          <h3 className="section-title">Important</h3>
+          <div className="checklist-list">{importantLists.map(renderCard)}</div>
+        </>
+      )}
+
+      {doneLists.length > 0 && (
+        <details>
+          <summary className="section-title collapsible">Done ({doneLists.length})</summary>
+          <div className="checklist-list">{doneLists.map(renderCard)}</div>
+        </details>
+      )}
+
+      {matching.length === 0 ? (
         <p className="hint">
           {checklists.length === 0
             ? 'No tasks yet. Add one above.'
             : 'Nothing matches your search.'}
         </p>
       ) : (
-        <div className="checklist-list">
-          {filtered.map((list) => (
-            <ChecklistCard
-              key={list.id}
-              list={list}
-              now={now}
-              trackingEntry={activeEntryFor(list.id)}
-              subTrackingFor={activeSubEntryFor}
-              isExpanded={expanded.has(list.id)}
-              isEditing={editingId === list.id}
-              onToggleExpand={toggleExpand}
-              onToggleParent={toggleParent}
-              onToggleSubtask={toggleSubtask}
-              onAddSubtask={addSubtask}
-              onDeleteSubtask={deleteSubtask}
-              onStartTracking={() => startTracking(list)}
-              onStartSubtaskTracking={startSubtaskTracking}
-              onStopTracking={stopTracking}
-              onStartEdit={(id) => setEditingId(id)}
-              onCancelEdit={() => setEditingId(null)}
-              onSaveEdit={(l) => void saveEdit(l)}
-              onDelete={(id) => void remove(id)}
-            />
-          ))}
-        </div>
+        otherLists.length > 0 && (
+          <>
+            {(importantLists.length > 0 || doneLists.length > 0) && (
+              <h3 className="section-title">All tasks</h3>
+            )}
+            <div className="checklist-list">{otherLists.map(renderCard)}</div>
+          </>
+        )
       )}
 
       {error && <p className="error">{error}</p>}

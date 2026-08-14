@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
-import { matchesNoteQuery } from '@/shared/notes';
+import { matchesNoteQuery, sortNotes } from '@/shared/notes';
 import type { Note, Result } from '@/shared/types';
 import { newId } from '@/utils/id';
 
@@ -212,8 +212,25 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
     });
   }
 
-  const sorted = [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
+  // Favoriting is a metadata flag, not a content edit — updatedAt (and so the
+  // recency half of sortNotes) deliberately stays untouched.
+  async function toggleFavorite(note: Note): Promise<void> {
+    const res = await sendRuntimeMessage<Result<Note[]>>({
+      type: MESSAGE_TYPES.SAVE_NOTE,
+      payload: { note: { ...note, favorite: !note.favorite } },
+    });
+    if (res.ok) setNotes(res.value);
+    else setError(res.error);
+  }
+
+  const sorted = sortNotes(notes);
   const shown = sorted.filter((note) => matchesNoteQuery(note, query));
+  // Favorited notes move into the Favorites section instead of also sitting
+  // here — one canonical place per note, not a duplicate listing. `shown` is
+  // already favorite-first-then-recency (via sortNotes), so both slices stay
+  // correctly ordered without re-sorting.
+  const favoriteNotes = shown.filter((n) => n.favorite === true);
+  const otherNotes = shown.filter((n) => n.favorite !== true);
 
   /** Expand every currently-shown (i.e. search-filtered) note, leaving hidden ones untouched. */
   function expandAll(): void {
@@ -231,6 +248,48 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
       for (const note of shown) next.delete(note.id);
       return next;
     });
+  }
+
+  function renderNoteCard(note: Note): ReactElement {
+    const isExpanded = expanded.has(note.id);
+    const hasBody = note.body.trim() !== '';
+    return (
+      <li key={note.id} className="note-card">
+        <div className="note-head">
+          {hasBody && (
+            <button
+              type="button"
+              className="expand-toggle"
+              onClick={() => toggleExpand(note.id)}
+              aria-expanded={isExpanded}
+              aria-label={isExpanded ? 'Collapse note' : 'Expand note'}
+            >
+              {isExpanded ? '▾' : '▸'}
+            </button>
+          )}
+          <button
+            type="button"
+            className={note.favorite ? 'star-toggle active' : 'star-toggle'}
+            onClick={() => void toggleFavorite(note)}
+            aria-pressed={note.favorite === true}
+            aria-label={note.favorite ? 'Unfavorite note' : 'Favorite note'}
+            title={note.favorite ? 'Unfavorite' : 'Favorite'}
+          >
+            {note.favorite ? '★' : '☆'}
+          </button>
+          <span className="note-title">{noteHeading(note)}</span>
+          <span className="note-actions">
+            <button type="button" onClick={() => editNote(note)}>
+              Edit
+            </button>
+            <button type="button" className="danger" onClick={() => void remove(note.id)}>
+              Delete
+            </button>
+          </span>
+        </div>
+        {hasBody && <p className={isExpanded ? 'note-body' : 'note-body collapsed'}>{note.body}</p>}
+      </li>
+    );
   }
 
   return (
@@ -278,46 +337,27 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
         </div>
       )}
 
-      <ul className="note-list">
-        {shown.length === 0 && (
+      {favoriteNotes.length > 0 && (
+        <>
+          <h3 className="section-title">Favorites</h3>
+          <ul className="note-list">{favoriteNotes.map(renderNoteCard)}</ul>
+        </>
+      )}
+
+      {shown.length === 0 ? (
+        <ul className="note-list">
           <li className="hint">
             {notes.length === 0 ? 'No notes yet.' : 'No note matches that search.'}
           </li>
-        )}
-        {shown.map((note) => {
-          const isExpanded = expanded.has(note.id);
-          const hasBody = note.body.trim() !== '';
-          return (
-            <li key={note.id} className="note-card">
-              <div className="note-head">
-                {hasBody && (
-                  <button
-                    type="button"
-                    className="expand-toggle"
-                    onClick={() => toggleExpand(note.id)}
-                    aria-expanded={isExpanded}
-                    aria-label={isExpanded ? 'Collapse note' : 'Expand note'}
-                  >
-                    {isExpanded ? '▾' : '▸'}
-                  </button>
-                )}
-                <span className="note-title">{noteHeading(note)}</span>
-                <span className="note-actions">
-                  <button type="button" onClick={() => editNote(note)}>
-                    Edit
-                  </button>
-                  <button type="button" className="danger" onClick={() => void remove(note.id)}>
-                    Delete
-                  </button>
-                </span>
-              </div>
-              {hasBody && (
-                <p className={isExpanded ? 'note-body' : 'note-body collapsed'}>{note.body}</p>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+        </ul>
+      ) : (
+        otherNotes.length > 0 && (
+          <>
+            {favoriteNotes.length > 0 && <h3 className="section-title">All notes</h3>}
+            <ul className="note-list">{otherNotes.map(renderNoteCard)}</ul>
+          </>
+        )
+      )}
 
       {status && <p className="status">{status}</p>}
       {error && <p className="error">{error}</p>}

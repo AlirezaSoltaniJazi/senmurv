@@ -27,6 +27,7 @@ interface ChecklistCardProps {
   isEditing: boolean;
   onToggleExpand: (id: string) => void;
   onToggleParent: (list: Checklist) => void;
+  onToggleImportant: (list: Checklist) => void;
   onToggleSubtask: (list: Checklist, subtaskId: string) => void;
   onAddSubtask: (list: Checklist, title: string) => void;
   onDeleteSubtask: (list: Checklist, subtaskId: string) => void;
@@ -110,6 +111,7 @@ export function ChecklistCard({
   isEditing,
   onToggleExpand,
   onToggleParent,
+  onToggleImportant,
   onToggleSubtask,
   onAddSubtask,
   onDeleteSubtask,
@@ -170,6 +172,16 @@ export function ChecklistCard({
           aria-label={isExpanded ? 'Collapse subtasks' : 'Expand subtasks'}
         >
           {isExpanded ? '▾' : '▸'}
+        </button>
+        <button
+          type="button"
+          className={list.important ? 'star-toggle active' : 'star-toggle'}
+          onClick={() => onToggleImportant(list)}
+          aria-pressed={list.important === true}
+          aria-label={list.important ? 'Unmark as important' : 'Mark as important'}
+          title={list.important ? 'Important' : 'Mark as important'}
+        >
+          {list.important ? '★' : '☆'}
         </button>
         <span className={complete ? 'checklist-title done' : 'checklist-title'}>{list.title}</span>
         {days !== null && (

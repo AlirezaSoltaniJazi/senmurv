@@ -406,6 +406,33 @@ describe('data-io: notes', () => {
     expect(next[1]!.title).toBe('Standup (2)');
     expect(next[1]!.id).not.toBe('note_1');
   });
+
+  it('round-trips the favorite flag through export → import', () => {
+    const favoriteNote: Note = { ...sampleNote, favorite: true };
+    const res = parseNotesImport(serializeNotes([favoriteNote]));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.value[0]!.favorite).toBe(true);
+  });
+
+  it('applyNoteImport carries favorite through in overwrite mode', () => {
+    const next = applyNoteImport(
+      [sampleNote],
+      [{ id: 'note_1', title: 'Standup', body: 'x', favorite: true }],
+      'overwrite',
+      999
+    );
+    expect(next[0]!.favorite).toBe(true);
+  });
+
+  it('applyNoteImport carries favorite through in keep-both mode', () => {
+    const next = applyNoteImport(
+      [],
+      [{ title: 'New', body: 'x', favorite: true }],
+      'keep-both',
+      999
+    );
+    expect(next[0]!.favorite).toBe(true);
+  });
 });
 
 describe('data-io: checklists', () => {
@@ -580,5 +607,41 @@ describe('data-io: checklists', () => {
     expect(next[1]!.id).not.toBe('chk_1');
     expect(next[1]!.subtasks[0]!.id).not.toBe('sub_1');
     expect(next[1]!.subtasks[0]!.id).toMatch(/^sub_/);
+  });
+
+  it('round-trips the important flag through export → import', () => {
+    const importantChecklist: Checklist = { ...sampleChecklist, important: true };
+    const res = parseChecklistsImport(serializeChecklists([importantChecklist]));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.value[0]!.important).toBe(true);
+  });
+
+  it('applyChecklistImport carries important through in overwrite mode', () => {
+    const next = applyChecklistImport(
+      [sampleChecklist],
+      [
+        {
+          id: 'chk_1',
+          title: 'Release v1.0',
+          subtasks: [],
+          done: false,
+          deadline: null,
+          important: true,
+        },
+      ],
+      'overwrite',
+      999
+    );
+    expect(next[0]!.important).toBe(true);
+  });
+
+  it('applyChecklistImport carries important through in keep-both mode', () => {
+    const next = applyChecklistImport(
+      [],
+      [{ title: 'New', subtasks: [], done: false, deadline: null, important: true }],
+      'keep-both',
+      999
+    );
+    expect(next[0]!.important).toBe(true);
   });
 });

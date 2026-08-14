@@ -72,6 +72,8 @@ export interface TimeEntry {
   checklistId?: string;
   /** Set when the entry tracks a specific subtask of that checklist (its id). */
   subtaskId?: string;
+  /** Marked important (star). Purely a user-set flag — no effect on grouping/sort. */
+  important?: boolean;
 }
 
 /** Locator generation strategies (Find Element Locator tool). */
@@ -761,6 +763,8 @@ export interface Checklist {
   deadline: number | null; // exact epoch ms, or null when unset
   createdAt: number;
   updatedAt: number;
+  /** Marked important (star). Purely a user-set flag — no effect on progress/sort. */
+  important?: boolean;
 }
 
 /** A free-form saved note (Notes tool). */
@@ -770,6 +774,8 @@ export interface Note {
   body: string;
   createdAt: number;
   updatedAt: number;
+  /** Favorited notes sort to the top of the list. */
+  favorite?: boolean;
 }
 
 /** UI scale preset for the whole panel. */

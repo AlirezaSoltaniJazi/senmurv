@@ -21,6 +21,7 @@ interface TaskBlockViewProps {
   onCancelEdit: () => void;
   onSave: (entry: TimeEntry) => void;
   onDelete: (id: string) => void;
+  onToggleImportant: (entry: TimeEntry) => void;
 }
 
 /**
@@ -41,6 +42,7 @@ export function TaskBlockView({
   onCancelEdit,
   onSave,
   onDelete,
+  onToggleImportant,
 }: TaskBlockViewProps): ReactElement {
   const tagColors = useContext(TagColorsContext);
   if (!block.multiRun) {
@@ -57,6 +59,7 @@ export function TaskBlockView({
         onCancelEdit={onCancelEdit}
         onSave={onSave}
         onDelete={onDelete}
+        onToggleImportant={onToggleImportant}
       />
     );
   }
@@ -102,6 +105,7 @@ export function TaskBlockView({
               onCancelEdit={onCancelEdit}
               onSave={onSave}
               onDelete={onDelete}
+              onToggleImportant={onToggleImportant}
             />
           ))}
         </div>
