@@ -10,7 +10,7 @@ listing" block into the CWS dashboard.
 
 Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 
-• Generate Random Data — locale-aware test data (name, phone, address, city, postal code, region/county, email, date of birth, UUID) across 15 countries, with one-click copy and a phone country-code toggle.
+• Generate Random Data — locale-aware test data (name, phone, address, city, postal code, region/county, email, date of birth, UUID, and a random number of a length you set) across 15 countries, with one-click copy for every field — Phone copies both with and without the country code — and a phone country-code toggle.
 
 • Find Element Locator — pick any element and get ranked, copy-ready locators (data-testid, formControlName, id, aria-label, CSS, XPath) with a live match-count / uniqueness check, plus snippets for Playwright, WebdriverIO, Cypress, Selenium, and Robot Framework. A "Test a locator" box checks any selector instantly, and "Highlight matches" outlines every match on the page.
 
@@ -32,14 +32,14 @@ Senmurv is a QA / test-automation helper that lives in Chrome's side panel.
 
 • Value profiles (Cookies / Storage) — save the values you keep switching between while testing (locales, feature flags, logins) and apply one in a click.
 
-• Track — a stopwatch for your work: start / pause / resume / stop tagged tasks, run several at once, clear them all in one go, and review time by day in a list or calendar.
+• Track — a stopwatch for your work: start / pause / resume / stop tagged tasks, run several at once, star the ones that matter into their own Important section, clear them all in one go, and review time by day in a list or calendar.
 
-• My Tasks — searchable checklists with subtasks, completion %, and deadlines (with days remaining) — and start a Track timer on any task from here.
+• My Tasks — searchable checklists with subtasks, completion %, and deadlines (with days remaining); star a task into its own Important section, and a finished task moves into a collapsed Done section — start a Track timer on any task or subtask from here, and checking it done stops that timer automatically.
 
-• Notes — quick free-form notes, searchable, collapsed to a 5-line preview with a per-note expand toggle and Expand all / Collapse all; saving clears the form for the next one, and unsaved text auto-saves as you type so closing the panel never loses it.
+• Notes — quick free-form notes, searchable, collapsed to a 5-line preview with a per-note expand toggle and Expand all / Collapse all; star a note into its own Favorites section; saving clears the form for the next one, and unsaved text auto-saves as you type so closing the panel never loses it.
 
 • Settings — panel font size (also adjustable with Cmd/Ctrl +/-, and reset with Cmd/Ctrl 0), the flow-run popup auto-close and element-find timeout, and Track-tag management (rename / recolour / delete); plus Refresh and Open-in-full-page from the toolbar.
 
-• Export/Import — export or import Scripts (with their folders), Cookie/Storage value profiles, Query params saved sets, Notes, and My Tasks as JSON. Select one or many items; if a name already exists on import, choose Overwrite or Keep both (the new one gets auto-numbered).
+• Export/Import — export or import Scripts (with their folders — checking a folder selects every script inside it), Cookie/Storage value profiles, Query params saved sets, Notes, and My Tasks as JSON. Select one or many items; if a name already exists on import, choose Overwrite or Keep both (the new one gets auto-numbered).
 
 All data and settings stay in your browser. Senmurv does not collect or transmit any data.

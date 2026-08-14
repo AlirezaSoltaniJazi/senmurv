@@ -26,6 +26,31 @@ All notable changes to Senmurv are documented here. The format is based on
   folder's own name doesn't match.
 - **Notes → Collapse** — notes clip to 5 lines by default, with a per-note
   expand toggle and **Expand all** / **Collapse all**.
+- **Data → Phone: copy with or without the country code** — the Phone row now
+  has a second Copy button for the other format (same number, the code
+  present or stripped), whichever the "Phone with country code" checkbox
+  isn't already showing.
+- **Data → Random number** — a new generated field (5 digits by default) with
+  its own length control (1–32) next to the phone toggle.
+- **My Tasks → Important** and **Track → Important** — star a task or a
+  tracked entry to promote it into its own **Important** section; Track's
+  sits right after **Active** and never repeats an entry that's already
+  shown there.
+- **My Tasks → Done** — a completed task moves out of the main list into a
+  **Done** section, collapsed by default (with a count) so finished work
+  doesn't crowd out what's still open.
+- **Notes → Favorites** — star a note to promote it into its own
+  **Favorites** section above the rest.
+- **Export/Import → Scripts: folder checkboxes select their children** —
+  checking a folder (for export, or in the staged-import list) now also
+  checks every script inside it; unchecking it clears them too, so the
+  checkboxes finally match what actually gets exported/imported.
+- **Responsive action buttons** — buttons across Data, Locator, Recorder,
+  Scripts, Cookies, Storage, and Track (Regenerate, Pick element, Record,
+  New folder / Delete all, Refresh / Add cookie / Add key / Clear all /
+  Reload page, Re-run, Add task) show icon + label with room to spare, just
+  the label at normal panel widths, and collapse to an icon with a hover
+  tooltip when space is tight.
 
 ### Changed
 
@@ -37,6 +62,9 @@ All notable changes to Senmurv are documented here. The format is based on
 - Two small memory leaks: a copy-button's "Copied" reset timer and an
   in-page highlight's flash-revert timer could each fire after the component
   that started them was already gone. Both are now cancelled properly.
+- **My Tasks — marking a task or subtask done now stops its running timer**
+  — previously a timer kept ticking in the background after its task was
+  checked off complete.
 
 ## [0.8.0] - 2026-08-06
 
