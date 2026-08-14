@@ -11,7 +11,10 @@ export type Framework = (typeof FRAMEWORKS)[number];
 export interface GeneratedData {
   firstName: string;
   lastName: string;
+  /** Formatted per the current "with country code" toggle. */
   phone: string;
+  /** The other phone format (same digits, opposite of `phone`) — for the second copy button. */
+  phoneAlt: string;
   address: string;
   city: string;
   postalCode: string;
@@ -19,6 +22,7 @@ export interface GeneratedData {
   email: string;
   dateOfBirth: string;
   uuid: string;
+  randomNumber: string;
 }
 
 /** A script handed to the Scripts tab from another tool, to load into its editor once. */

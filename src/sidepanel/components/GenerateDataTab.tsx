@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { DEFAULT_LOCALE, LOCALE_LABELS, SUPPORTED_LOCALES } from '@/shared/constants';
-import { DIAL_CODES, ensureFaker, generateTestData } from '@/shared/faker-data';
+import {
+  DIAL_CODES,
+  ensureFaker,
+  generateTestData,
+  RANDOM_NUMBER_LENGTH_DEFAULT,
+  RANDOM_NUMBER_LENGTH_MAX,
+} from '@/shared/faker-data';
 import type { GeneratedData, Locale } from '@/shared/types';
 import { CopyButton } from './CopyButton';
 
@@ -16,11 +22,13 @@ const FIELDS: { key: keyof GeneratedData; label: string }[] = [
   { key: 'email', label: 'Email' },
   { key: 'dateOfBirth', label: 'Date of birth' },
   { key: 'uuid', label: 'UUID' },
+  { key: 'randomNumber', label: 'Random number' },
 ];
 
 export function GenerateDataTab(): ReactElement {
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
   const [phoneWithCode, setPhoneWithCode] = useState(true);
+  const [randomNumberLength, setRandomNumberLength] = useState(RANDOM_NUMBER_LENGTH_DEFAULT);
   const [data, setData] = useState<GeneratedData | null>(null);
 
   // First render: paint the shell instantly, then load the default locale's
@@ -28,17 +36,36 @@ export function GenerateDataTab(): ReactElement {
   useEffect(() => {
     let alive = true;
     void ensureFaker(DEFAULT_LOCALE).then(() => {
-      if (alive) setData(generateTestData(DEFAULT_LOCALE, { phoneWithCode: true }));
+      if (alive) {
+        setData(
+          generateTestData(DEFAULT_LOCALE, {
+            phoneWithCode: true,
+            randomNumberLength: RANDOM_NUMBER_LENGTH_DEFAULT,
+          })
+        );
+      }
     });
     return () => {
       alive = false;
     };
   }, []);
 
-  function regenerate(nextLocale: Locale = locale, withCode: boolean = phoneWithCode): void {
+  function regenerate(
+    nextLocale: Locale = locale,
+    withCode: boolean = phoneWithCode,
+    numberLength: number = randomNumberLength
+  ): void {
     void ensureFaker(nextLocale).then(() =>
-      setData(generateTestData(nextLocale, { phoneWithCode: withCode }))
+      setData(
+        generateTestData(nextLocale, { phoneWithCode: withCode, randomNumberLength: numberLength })
+      )
     );
+  }
+
+  function changeRandomNumberLength(raw: string): void {
+    const n = Math.min(RANDOM_NUMBER_LENGTH_MAX, Math.max(1, Math.floor(Number(raw)) || 1));
+    setRandomNumberLength(n);
+    regenerate(locale, phoneWithCode, n);
   }
 
   return (
@@ -61,8 +88,14 @@ export function GenerateDataTab(): ReactElement {
             </option>
           ))}
         </select>
-        <button type="button" className="primary" onClick={() => regenerate()}>
-          Regenerate
+        <button
+          type="button"
+          className="primary icon-collapse"
+          aria-label="Regenerate"
+          onClick={() => regenerate()}
+        >
+          <span aria-hidden="true">↻</span>
+          <span className="lbl">Regenerate</span>
         </button>
       </div>
       <label className="checkbox-inline">
@@ -76,6 +109,17 @@ export function GenerateDataTab(): ReactElement {
         />
         Phone with country code ({DIAL_CODES[locale]})
       </label>
+      <label className="checkbox-inline">
+        Random number length
+        <input
+          type="number"
+          className="name-input genarg-num"
+          min={1}
+          max={RANDOM_NUMBER_LENGTH_MAX}
+          value={randomNumberLength}
+          onChange={(e) => changeRandomNumberLength(e.target.value)}
+        />
+      </label>
 
       <ul className="data-list">
         {FIELDS.map((f) => {
@@ -84,7 +128,12 @@ export function GenerateDataTab(): ReactElement {
             <li key={f.key} className="data-row">
               <span className="data-key">{f.label}</span>
               <span className="data-value">{value || '…'}</span>
-              <CopyButton text={value} />
+              <div className="copy-group">
+                <CopyButton text={value} />
+                {f.key === 'phone' && data && (
+                  <CopyButton text={data.phoneAlt} label={phoneWithCode ? 'No code' : '+Code'} />
+                )}
+              </div>
             </li>
           );
         })}

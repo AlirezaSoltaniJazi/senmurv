@@ -151,12 +151,24 @@ export function LocatorTab(): ReactElement {
     <div className="tab">
       <div className="row">
         {picking ? (
-          <button type="button" className="primary" onClick={() => void cancelPick()}>
-            Cancel pick (Esc)
+          <button
+            type="button"
+            className="primary icon-collapse"
+            aria-label="Cancel pick (Esc)"
+            onClick={() => void cancelPick()}
+          >
+            <span aria-hidden="true">✕</span>
+            <span className="lbl">Cancel pick (Esc)</span>
           </button>
         ) : (
-          <button type="button" className="primary" onClick={() => void startPick()}>
-            Pick element
+          <button
+            type="button"
+            className="primary icon-collapse"
+            aria-label="Pick element"
+            onClick={() => void startPick()}
+          >
+            <span aria-hidden="true">⌖</span>
+            <span className="lbl">Pick element</span>
           </button>
         )}
       </div>

@@ -109,6 +109,22 @@ body {
   border: none;
 }
 
+/* A primary action button that carries both an icon and a text label — the
+   label drops at narrow panel widths, leaving just the icon (Regenerate,
+   Pick element, Record, …). */
+.icon-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+@media (max-width: 480px) {
+  .icon-collapse .lbl {
+    display: none;
+  }
+}
+
 .tab-btn {
   flex: 1;
   background: none;
@@ -283,6 +299,13 @@ select,
 .copy-btn {
   padding: 3px 8px;
   font-size: 11px;
+}
+
+/* A data row's copy button(s) — plain rows carry one, Phone carries a second
+   (copy with/without the dial code) sharing the row's trailing grid column. */
+.copy-group {
+  display: flex;
+  gap: 4px;
 }
 
 /* Full-size variant: matches a standard action button when placed in a row

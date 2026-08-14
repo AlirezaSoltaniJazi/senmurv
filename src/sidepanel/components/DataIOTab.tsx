@@ -167,6 +167,22 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
     });
   }
 
+  /** A folder's checkbox cascades to all its children (both selecting and deselecting). */
+  function toggleSelectFolder(folderId: string, childIds: string[]): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const willSelect = !next.has(folderId);
+      if (willSelect) {
+        next.add(folderId);
+        for (const id of childIds) next.add(id);
+      } else {
+        next.delete(folderId);
+        for (const id of childIds) next.delete(id);
+      }
+      return next;
+    });
+  }
+
   // ── Export ──────────────────────────────────────────────────────────────────
 
   function exportScripts(): void {
@@ -345,8 +361,23 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
     }
   }
 
+  // Checking a staged folder's checkbox also selects its staged children (and
+  // clearing it clears them) — mirrors the export tree's toggleSelectFolder, so
+  // a folder can't look selected while a script inside it silently isn't.
   function togglePending(i: number): void {
-    setPendingSel((prev) => prev.map((v, idx) => (idx === i ? !v : v)));
+    setPendingSel((prev) => {
+      const next = prev.map((v, idx) => (idx === i ? !v : v));
+      if (pending && pending.kind === 'scripts') {
+        const folder = pending.items[i];
+        if (folder?.isFolder === true && folder.id !== undefined) {
+          const value = next[i]!;
+          pending.items.forEach((item, idx) => {
+            if (item.parentId === folder.id) next[idx] = value;
+          });
+        }
+      }
+      return next;
+    });
   }
 
   function cancelImport(): void {
@@ -496,8 +527,19 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
               <input
                 type="checkbox"
                 checked={selected.has(g.parent.id)}
-                onChange={() => toggleSelect(g.parent.id)}
-                title="Select for export"
+                onChange={() =>
+                  g.parent.isFolder
+                    ? toggleSelectFolder(
+                        g.parent.id,
+                        g.children.map((c) => c.id)
+                      )
+                    : toggleSelect(g.parent.id)
+                }
+                title={
+                  g.parent.isFolder
+                    ? 'Select folder and its scripts for export'
+                    : 'Select for export'
+                }
               />
               <span className="script-name">
                 {g.parent.isFolder && (

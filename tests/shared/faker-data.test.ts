@@ -4,7 +4,9 @@ import {
   ensureFaker,
   generatePhone,
   generatePhoneIntl,
+  generateRandomNumber,
   generateTestData,
+  RANDOM_NUMBER_LENGTH_MAX,
 } from '@/shared/faker-data';
 import type { GeneratedData } from '@/shared/types';
 
@@ -18,6 +20,7 @@ const REQUIRED_FIELDS: (keyof GeneratedData)[] = [
   'firstName',
   'lastName',
   'phone',
+  'phoneAlt',
   'address',
   'city',
   'postalCode',
@@ -25,6 +28,7 @@ const REQUIRED_FIELDS: (keyof GeneratedData)[] = [
   'email',
   'dateOfBirth',
   'uuid',
+  'randomNumber',
 ];
 
 describe('generateTestData', () => {
@@ -54,6 +58,50 @@ describe('generateTestData', () => {
   it('generates a well-formed UUID', () => {
     expect(generateTestData('en_GB').uuid).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+    );
+  });
+
+  it('phoneAlt carries the same digits as phone, in the opposite format', () => {
+    const withCode = generateTestData('en_GB', { phoneWithCode: true });
+    expect(withCode.phone.startsWith('+44')).toBe(true);
+    expect(withCode.phoneAlt.startsWith('+')).toBe(false);
+    expect(withCode.phone.replace(/\D/g, '')).toBe(`44${withCode.phoneAlt.replace(/^0/, '')}`);
+
+    const withoutCode = generateTestData('en_GB', { phoneWithCode: false });
+    expect(withoutCode.phone.startsWith('+')).toBe(false);
+    expect(withoutCode.phoneAlt.startsWith('+44')).toBe(true);
+  });
+
+  it('honours randomNumberLength and defaults to 5 digits', () => {
+    expect(generateTestData('en_GB').randomNumber).toHaveLength(5);
+    expect(generateTestData('en_GB', { randomNumberLength: 8 }).randomNumber).toHaveLength(8);
+    expect(generateTestData('en_GB', { randomNumberLength: 1 }).randomNumber).toHaveLength(1);
+  });
+});
+
+describe('generateRandomNumber', () => {
+  it('defaults to 5 digits', () => {
+    expect(generateRandomNumber('en_GB')).toMatch(/^\d{5}$/);
+  });
+
+  it('honours a custom length, including a single digit', () => {
+    for (let i = 0; i < 20; i += 1) {
+      expect(generateRandomNumber('en_GB', 8)).toMatch(/^\d{8}$/);
+    }
+    expect(generateRandomNumber('en_GB', 1)).toMatch(/^\d$/);
+  });
+
+  it('never produces a leading zero above one digit (so the length always reads correctly)', () => {
+    for (let i = 0; i < 40; i += 1) {
+      expect(generateRandomNumber('en_GB', 6)).toMatch(/^[1-9]\d{5}$/);
+    }
+  });
+
+  it('clamps length to 1..RANDOM_NUMBER_LENGTH_MAX', () => {
+    expect(generateRandomNumber('en_GB', 0)).toHaveLength(1);
+    expect(generateRandomNumber('en_GB', -5)).toHaveLength(1);
+    expect(generateRandomNumber('en_GB', RANDOM_NUMBER_LENGTH_MAX + 50)).toHaveLength(
+      RANDOM_NUMBER_LENGTH_MAX
     );
   });
 });
