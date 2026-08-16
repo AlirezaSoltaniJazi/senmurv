@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
-const distDir = resolve(root, 'dist');
+
+const distArg = process.argv.find((a) => a.startsWith('--dist='));
+const distDir = resolve(root, distArg ? distArg.slice('--dist='.length) : 'dist');
 const releaseDir = resolve(root, 'release');
 
 if (!existsSync(distDir)) {
-  console.error('dist/ does not exist. Run `npm run build` first.');
+  console.error(`${distDir} does not exist. Run the matching build script first.`);
   process.exit(1);
 }
 
