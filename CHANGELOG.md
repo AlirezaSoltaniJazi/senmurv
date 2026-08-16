@@ -6,6 +6,11 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Firefox support** — Senmurv now works in Firefox, with the same tools and
+  side-panel experience as Chrome.
+
 ## [0.9.0] - 2026-08-14
 
 ### Added
