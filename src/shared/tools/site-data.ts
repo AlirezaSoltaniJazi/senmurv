@@ -2,7 +2,7 @@ import type { ClearTypeId, Result } from '@/shared/types';
 
 /**
  * The Site-data safety kernel. Every invariant that stops an unrecoverable
- * mistake lives here, with zero `chrome.*`, so it tests cleanly.
+ * mistake lives here, with zero extension API calls, so it tests cleanly.
  *
  * SCOPE, DELIBERATELY: this clears the CURRENT ORIGIN only, from the page
  * itself, and asks for no new permission. It cannot touch the HTTP disk cache —

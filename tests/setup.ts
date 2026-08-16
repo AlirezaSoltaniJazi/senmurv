@@ -65,9 +65,29 @@ const chromeMock = {
     insertCSS: vi.fn(async () => undefined),
     removeCSS: vi.fn(async () => undefined),
   },
+  // Firefox-only fallback path in enableSidePanelOnActionClick — chromeMock
+  // always has `sidePanel`, so this stays unexercised by default; a test
+  // deletes `sidePanel` off a clone to reach it.
+  action: {
+    onClicked: makeEvent(),
+  },
+  sidebarAction: {
+    toggle: vi.fn(async () => undefined),
+    open: vi.fn(async () => undefined),
+    close: vi.fn(async () => undefined),
+  },
 };
 
 vi.stubGlobal('chrome', chromeMock);
+
+// src/shared/browser-api.ts imports the real webextension-polyfill, which
+// throws synchronously unless it detects a live extension `chrome.runtime.id`
+// AND wraps every method assuming Chrome's callback-based signatures — our
+// mock's methods are already promise-returning, so the real polyfill would
+// wait forever on a callback that's never invoked. Mocking the module itself
+// routes `browser.*` straight to chromeMock, matching how `chrome.*` worked
+// before the cross-browser rename.
+vi.mock('webextension-polyfill', () => ({ default: chromeMock }));
 
 beforeEach(() => {
   for (const k of Object.keys(store)) delete store[k];

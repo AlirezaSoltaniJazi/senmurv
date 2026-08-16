@@ -1,5 +1,6 @@
 import { Fragment, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import {
@@ -24,20 +25,22 @@ function nowMs(): number {
 
 /** Read the active tab's URL. The panel holds `tabs`, so no worker round-trip. */
 function readActiveUrl(onUrl: (url: string) => void): void {
-  chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-    if (chrome.runtime.lastError) return;
-    onUrl(tabs[0]?.url ?? '');
-  });
+  void browser.tabs
+    .query({ active: true, lastFocusedWindow: true })
+    .then((tabs) => onUrl(tabs[0]?.url ?? ''))
+    .catch(() => undefined);
 }
 
 /** Navigate the active tab (a true redirect), rather than opening a new one. */
 function navigateActiveTab(url: string, onError: (message: string) => void): void {
-  chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-    if (chrome.runtime.lastError) return;
-    const id = tabs[0]?.id;
-    if (typeof id !== 'number') return;
-    void chrome.tabs.update(id, { url }).catch(() => onError('Chrome refused that URL.'));
-  });
+  void browser.tabs
+    .query({ active: true, lastFocusedWindow: true })
+    .then((tabs) => {
+      const id = tabs[0]?.id;
+      if (typeof id !== 'number') return undefined;
+      return browser.tabs.update(id, { url });
+    })
+    .catch(() => onError('The browser refused that URL.'));
 }
 
 export function QueryParamsTool(): ReactElement {
@@ -130,7 +133,7 @@ export function QueryParamsTool(): ReactElement {
 
   function openNewTab(): void {
     if (built === '') return;
-    void chrome.tabs.create({ url: built }).catch(() => setError('Chrome refused that URL.'));
+    void browser.tabs.create({ url: built }).catch(() => setError('The browser refused that URL.'));
   }
 
   function goHere(): void {

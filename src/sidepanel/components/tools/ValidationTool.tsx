@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { buildBoundaryChecklist } from '@/shared/tools/validation-contract';
@@ -74,8 +75,8 @@ export function ValidationTool(): ReactElement {
         setPicked(message.payload);
       }
     }
-    chrome.runtime.onMessage.addListener(onMessage);
-    return () => chrome.runtime.onMessage.removeListener(onMessage);
+    browser.runtime.onMessage.addListener(onMessage);
+    return () => browser.runtime.onMessage.removeListener(onMessage);
   }, []);
 
   const contract = picked?.data ?? null;

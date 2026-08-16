@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactElement, SetStateAction } from 'react';
+import { browser } from '@/shared/browser-api';
 import {
   DEFAULT_LOCALE,
   FRAMEWORK_LABELS,
@@ -174,11 +175,13 @@ export function RecorderTab({
 
   // The spec's goto/visit URL defaults to the active tab's URL.
   useEffect(() => {
-    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-      if (chrome.runtime.lastError) return;
-      const url = tabs[0]?.url ?? '';
-      if (/^https?:/.test(url)) setSpecUrl(url);
-    });
+    void browser.tabs
+      .query({ active: true, lastFocusedWindow: true })
+      .then((tabs) => {
+        const url = tabs[0]?.url ?? '';
+        if (/^https?:/.test(url)) setSpecUrl(url);
+      })
+      .catch(() => undefined);
   }, []);
 
   const stepListRef = useRef<HTMLOListElement>(null);
@@ -241,9 +244,9 @@ export function RecorderTab({
         });
       }
     }
-    chrome.runtime.onMessage.addListener(onMessage);
+    browser.runtime.onMessage.addListener(onMessage);
     return () => {
-      chrome.runtime.onMessage.removeListener(onMessage);
+      browser.runtime.onMessage.removeListener(onMessage);
       if (recordingRef.current) void sendRuntimeMessage({ type: MESSAGE_TYPES.STOP_RECORD });
     };
   }, [setSteps]);

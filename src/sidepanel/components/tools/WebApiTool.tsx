@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { BypassState, Result, XrmWebApiRecord } from '@/shared/types';
@@ -44,7 +45,9 @@ export function WebApiTool(): ReactElement {
 
   function openNewTab(): void {
     if (!record) return;
-    void chrome.tabs.create({ url: record.url }).catch(() => setError('Chrome refused that URL.'));
+    void browser.tabs
+      .create({ url: record.url })
+      .catch(() => setError('The browser refused that URL.'));
   }
 
   if (hasXrm === false) {

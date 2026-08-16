@@ -1,3 +1,4 @@
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import type {
   Checklist,
@@ -140,7 +141,7 @@ export type RuntimeMessage =
     }
   | { type: typeof MESSAGE_TYPES.REMOVE_WEB_STORAGE; payload: { area: StorageArea; key: string } }
   | { type: typeof MESSAGE_TYPES.CLEAR_WEB_STORAGE; payload: { area: StorageArea } }
-  // Cookies tab — chrome.cookies against the active tab's URL ("cookies" permission).
+  // Cookies tab — browser.cookies against the active tab's URL ("cookies" permission).
   | { type: typeof MESSAGE_TYPES.LIST_COOKIES }
   | { type: typeof MESSAGE_TYPES.SET_COOKIE; payload: { cookie: CookieEdit } }
   | { type: typeof MESSAGE_TYPES.REMOVE_COOKIE; payload: { name: string; path: string } }
@@ -169,7 +170,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
 
 /** Send a typed message to the extension (service worker / other extension pages). */
 export async function sendRuntimeMessage<T = unknown>(message: RuntimeMessage): Promise<T> {
-  return chrome.runtime.sendMessage(message) as Promise<T>;
+  return browser.runtime.sendMessage(message) as Promise<T>;
 }
 
 /** Send a typed message to a specific tab's content script. */
@@ -177,5 +178,5 @@ export async function sendTabMessage<T = unknown>(
   tabId: number,
   message: RuntimeMessage
 ): Promise<T> {
-  return chrome.tabs.sendMessage(tabId, message) as Promise<T>;
+  return browser.tabs.sendMessage(tabId, message) as Promise<T>;
 }

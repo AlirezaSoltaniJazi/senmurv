@@ -41,6 +41,25 @@ describe('install', () => {
     await flush();
     expect(chromeMock.storage.local.set).not.toHaveBeenCalled();
   });
+
+  it('falls back to the sidebarAction toggle when sidePanel is unavailable (Firefox)', () => {
+    const mock = chromeMock as Omit<typeof chromeMock, 'sidePanel'> & {
+      sidePanel?: typeof chromeMock.sidePanel | undefined;
+    };
+    const original = mock.sidePanel;
+    mock.sidePanel = undefined;
+    chromeMock.action.onClicked.clearListeners();
+    try {
+      chromeMock.runtime.onInstalled.dispatch();
+      expect(chromeMock.action.onClicked.addListener).toHaveBeenCalled();
+      expect(chromeMock.sidebarAction.toggle).not.toHaveBeenCalled();
+      chromeMock.action.onClicked.dispatch({}, undefined);
+      expect(chromeMock.sidebarAction.toggle).toHaveBeenCalled();
+    } finally {
+      mock.sidePanel = original;
+      chromeMock.action.onClicked.clearListeners();
+    }
+  });
 });
 
 describe('RUN_SCRIPT', () => {

@@ -1,4 +1,4 @@
-/** chrome.storage.local keys. */
+/** browser.storage.local keys. */
 export const STORAGE_KEYS = {
   SCRIPTS: 'senmurv:scripts',
   TASKS: 'senmurv:tasks',
@@ -92,7 +92,7 @@ export const MESSAGE_TYPES = {
   WRITE_WEB_STORAGE: 'WRITE_WEB_STORAGE',
   REMOVE_WEB_STORAGE: 'REMOVE_WEB_STORAGE',
   CLEAR_WEB_STORAGE: 'CLEAR_WEB_STORAGE',
-  // Cookies tab — chrome.cookies against the active tab's URL. Requires the
+  // Cookies tab — browser.cookies against the active tab's URL. Requires the
   // "cookies" permission; it is the only way to see or edit HttpOnly cookies.
   LIST_COOKIES: 'LIST_COOKIES',
   SET_COOKIE: 'SET_COOKIE',
@@ -218,6 +218,7 @@ export const BLOCKED_URL_PREFIXES = [
   'chrome://',
   'chrome-extension://',
   'edge://',
+  'moz-extension://',
   'about:',
   // The declared content script matches http/https only, so these never have a
   // picker to talk to; naming them turns a confusing injection failure into a
@@ -226,6 +227,7 @@ export const BLOCKED_URL_PREFIXES = [
   'view-source:',
   'https://chrome.google.com/webstore',
   'https://chromewebstore.google.com',
+  'https://addons.mozilla.org',
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -273,7 +275,7 @@ export const BYPASS_LOCK_ATTRS = [
 ] as const;
 
 /**
- * The Bypass override sheet, injected with `chrome.scripting.insertCSS` and
+ * The Bypass override sheet, injected with `browser.scripting.insertCSS` and
  * removed with `removeCSS`.
  *
  * Injected CSS is immune to the page's `style-src` CSP, which an appended

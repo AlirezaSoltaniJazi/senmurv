@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import {
   FIND_TIMEOUT_SECONDS_DEFAULT,
   FONT_PRESET_ZOOM,
@@ -78,11 +79,14 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'dataio', label: 'Export/Import' },
 ];
 
-const VERSION = chrome.runtime.getManifest().version;
-const LOGO_URL = chrome.runtime.getURL('public/icons/icon-32.png');
+const VERSION = browser.runtime.getManifest().version;
+// Unprefixed — both builds' publicDir copy lands assets at icons/*; Chrome's
+// dist/ additionally has a public/icons/* duplicate (CRXJS preserves the
+// manifest-declared path too), but the Firefox build only has the former.
+const LOGO_URL = browser.runtime.getURL('icons/icon-32.png');
 
 function openFullPage(): void {
-  void chrome.tabs.create({ url: chrome.runtime.getURL('src/sidepanel/index.html') });
+  void browser.tabs.create({ url: browser.runtime.getURL('src/sidepanel/index.html') });
 }
 
 export function App(): ReactElement {
@@ -224,8 +228,9 @@ export function App(): ReactElement {
   }
 
   // Cmd/Ctrl + Plus/Minus/0 zooms the panel — the same shortcut the browser
-  // itself uses, since a chrome.sidePanel document doesn't share the host
-  // tab's native zoom. changeFontScale/changeFontSize are recreated every
+  // itself uses, since the panel is its own document (chrome.sidePanel /
+  // sidebar_action) and doesn't share the host tab's native zoom.
+  // changeFontScale/changeFontSize are recreated every
   // render (not memoized), so listing them re-subscribes the listener each
   // render too — cheap, and the only way to guarantee it never reads stale
   // prefs (currentPrefs() closes over several independent state slices).
@@ -253,11 +258,13 @@ export function App(): ReactElement {
 
   // Auto-refresh: start reloads the tab that's active right now, every N seconds.
   const startAutoRefresh = useCallback((seconds: number) => {
-    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-      if (chrome.runtime.lastError) return;
-      const id = tabs[0]?.id;
-      if (typeof id === 'number') setAutoRefresh({ tabId: id, seconds });
-    });
+    void browser.tabs
+      .query({ active: true, lastFocusedWindow: true })
+      .then((tabs) => {
+        const id = tabs[0]?.id;
+        if (typeof id === 'number') setAutoRefresh({ tabId: id, seconds });
+      })
+      .catch(() => undefined);
   }, []);
   const stopAutoRefresh = useCallback(() => setAutoRefresh(null), []);
 
@@ -267,7 +274,7 @@ export function App(): ReactElement {
   useEffect(() => {
     if (!autoRefresh) return undefined;
     const id = setInterval(() => {
-      void chrome.tabs.reload(autoRefresh.tabId).catch(() => setAutoRefresh(null));
+      void browser.tabs.reload(autoRefresh.tabId).catch(() => setAutoRefresh(null));
     }, autoRefresh.seconds * 1000);
     return () => clearInterval(id);
   }, [autoRefresh]);

@@ -1,3 +1,4 @@
+import { browser } from '@/shared/browser-api';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 
@@ -9,7 +10,7 @@ import type { RuntimeMessage } from '@/shared/messages';
  * Messages addressed to the side panel (ELEMENT_PICKED, ACTION_RECORDED, and
  * the Tools streams) are answered by nobody when the panel is closed: the
  * service worker's `default: return false` declines them and no other listener
- * responds. A `chrome.runtime.sendMessage` promise can settle as a rejection in
+ * responds. A `browser.runtime.sendMessage` promise can settle as a rejection in
  * that situation, and today's `notify` treats any rejection as "we have been
  * orphaned — tear down".
  *
@@ -24,7 +25,7 @@ import type { RuntimeMessage } from '@/shared/messages';
 /** Is the extension context still valid? (False for an orphaned content script.) */
 export function contextAlive(): boolean {
   try {
-    return Boolean(chrome.runtime?.id);
+    return Boolean(browser.runtime?.id);
   } catch {
     return false;
   }

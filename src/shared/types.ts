@@ -638,7 +638,7 @@ export type LogicalNameKind = 'field' | 'tab' | 'section';
 
 /**
  * One logical (schema) name read from the Xrm API. Deliberately plain data:
- * `chrome.scripting` results must be JSON-serialisable, so the MAIN-world read
+ * `browser.scripting` results must be JSON-serialisable, so the MAIN-world read
  * can hand back names but never the elements they belong to — the content
  * script re-resolves each one against `[data-id]`.
  */
@@ -679,12 +679,12 @@ export interface WebStorageSnapshot {
   readonly warnings: string[];
 }
 
-/** A cookie's SameSite attribute, in the shape chrome.cookies uses. */
+/** A cookie's SameSite attribute, in the shape browser.cookies uses. */
 export type CookieSameSite = 'no_restriction' | 'lax' | 'strict' | 'unspecified';
 
 /**
  * One cookie visible to the extension for the current URL. Mirrors the fields of
- * `chrome.cookies.Cookie` we surface — including `httpOnly`, which `document.cookie`
+ * `browser.cookies.Cookie` we surface — including `httpOnly`, which `document.cookie`
  * can never see (the reason this tab needs the `cookies` permission).
  */
 export interface CookieRow {

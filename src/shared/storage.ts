@@ -1,3 +1,4 @@
+import { browser } from '@/shared/browser-api';
 import {
   FIND_TIMEOUT_SECONDS_DEFAULT,
   FIND_TIMEOUT_SECONDS_MAX,
@@ -30,7 +31,7 @@ import type { QueryParamSet } from '@/shared/tools/query-params';
 // ---------------------------------------------------------------------------
 
 /**
- * chrome.storage has no compare-and-swap, so a read-modify-write
+ * browser.storage has no compare-and-swap, so a read-modify-write
  * (`get → compute → set`) can interleave with another and lose a write: two
  * upserts both read the same base list, then the second `set` clobbers the
  * first's addition. Every mutation funnels through the single service worker, so
@@ -74,7 +75,7 @@ export function isSavedScript(value: unknown): value is SavedScript {
 
 /** Read all saved scripts (silently drops anything that fails validation). */
 export async function getScripts(): Promise<SavedScript[]> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.SCRIPTS);
+  const result = await browser.storage.local.get(STORAGE_KEYS.SCRIPTS);
   const raw = result[STORAGE_KEYS.SCRIPTS];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isSavedScript);
@@ -83,7 +84,7 @@ export async function getScripts(): Promise<SavedScript[]> {
 /** Overwrite the full script list. */
 export async function saveScripts(scripts: SavedScript[]): Promise<void> {
   await withKeyLock(STORAGE_KEYS.SCRIPTS, () =>
-    chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: scripts })
+    browser.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: scripts })
   );
 }
 
@@ -95,7 +96,7 @@ export async function upsertScript(script: SavedScript): Promise<SavedScript[]> 
     const next = exists
       ? scripts.map((s) => (s.id === script.id ? script : s))
       : [...scripts, script];
-    await chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: next });
     return next;
   });
 }
@@ -105,7 +106,7 @@ export async function deleteScript(id: string): Promise<SavedScript[]> {
   return withKeyLock(STORAGE_KEYS.SCRIPTS, async () => {
     const scripts = await getScripts();
     const next = scripts.filter((s) => s.id !== id);
-    await chrome.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.SCRIPTS]: next });
     return next;
   });
 }
@@ -141,7 +142,7 @@ export function isTimeEntry(value: unknown): value is TimeEntry {
 
 /** Read all logged tasks (silently drops anything that fails validation). */
 export async function getTasks(): Promise<TimeEntry[]> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.TASKS);
+  const result = await browser.storage.local.get(STORAGE_KEYS.TASKS);
   const raw = result[STORAGE_KEYS.TASKS];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isTimeEntry);
@@ -150,7 +151,7 @@ export async function getTasks(): Promise<TimeEntry[]> {
 /** Overwrite the full task list. */
 export async function saveTasks(tasks: TimeEntry[]): Promise<void> {
   await withKeyLock(STORAGE_KEYS.TASKS, () =>
-    chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: tasks })
+    browser.storage.local.set({ [STORAGE_KEYS.TASKS]: tasks })
   );
 }
 
@@ -160,7 +161,7 @@ export async function upsertTask(task: TimeEntry): Promise<TimeEntry[]> {
     const tasks = await getTasks();
     const exists = tasks.some((t) => t.id === task.id);
     const next = exists ? tasks.map((t) => (t.id === task.id ? task : t)) : [...tasks, task];
-    await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
     return next;
   });
 }
@@ -170,7 +171,7 @@ export async function deleteTask(id: string): Promise<TimeEntry[]> {
   return withKeyLock(STORAGE_KEYS.TASKS, async () => {
     const tasks = await getTasks();
     const next = tasks.filter((t) => t.id !== id);
-    await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
     return next;
   });
 }
@@ -186,7 +187,7 @@ export async function transformTasks(
 ): Promise<TimeEntry[]> {
   return withKeyLock(STORAGE_KEYS.TASKS, async () => {
     const next = fn(await getTasks());
-    await chrome.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.TASKS]: next });
     return next;
   });
 }
@@ -219,7 +220,7 @@ export function isChecklist(value: unknown): value is Checklist {
 
 /** Read all checklists (silently drops anything that fails validation). */
 export async function getChecklists(): Promise<Checklist[]> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.CHECKLISTS);
+  const result = await browser.storage.local.get(STORAGE_KEYS.CHECKLISTS);
   const raw = result[STORAGE_KEYS.CHECKLISTS];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isChecklist);
@@ -228,7 +229,7 @@ export async function getChecklists(): Promise<Checklist[]> {
 /** Overwrite the full checklist list. */
 export async function saveChecklists(checklists: Checklist[]): Promise<void> {
   await withKeyLock(STORAGE_KEYS.CHECKLISTS, () =>
-    chrome.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: checklists })
+    browser.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: checklists })
   );
 }
 
@@ -240,7 +241,7 @@ export async function upsertChecklist(checklist: Checklist): Promise<Checklist[]
     const next = exists
       ? checklists.map((c) => (c.id === checklist.id ? checklist : c))
       : [...checklists, checklist];
-    await chrome.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: next });
     return next;
   });
 }
@@ -250,7 +251,7 @@ export async function deleteChecklist(id: string): Promise<Checklist[]> {
   return withKeyLock(STORAGE_KEYS.CHECKLISTS, async () => {
     const checklists = await getChecklists();
     const next = checklists.filter((c) => c.id !== id);
-    await chrome.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.CHECKLISTS]: next });
     return next;
   });
 }
@@ -274,7 +275,7 @@ export function isNote(value: unknown): value is Note {
 
 /** Read all notes (silently drops anything that fails validation). */
 export async function getNotes(): Promise<Note[]> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.NOTES);
+  const result = await browser.storage.local.get(STORAGE_KEYS.NOTES);
   const raw = result[STORAGE_KEYS.NOTES];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isNote);
@@ -283,7 +284,7 @@ export async function getNotes(): Promise<Note[]> {
 /** Overwrite the full note list. */
 export async function saveNotes(notes: Note[]): Promise<void> {
   await withKeyLock(STORAGE_KEYS.NOTES, () =>
-    chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: notes })
+    browser.storage.local.set({ [STORAGE_KEYS.NOTES]: notes })
   );
 }
 
@@ -293,7 +294,7 @@ export async function upsertNote(note: Note): Promise<Note[]> {
     const notes = await getNotes();
     const exists = notes.some((n) => n.id === note.id);
     const next = exists ? notes.map((n) => (n.id === note.id ? note : n)) : [...notes, note];
-    await chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.NOTES]: next });
     return next;
   });
 }
@@ -303,7 +304,7 @@ export async function deleteNote(id: string): Promise<Note[]> {
   return withKeyLock(STORAGE_KEYS.NOTES, async () => {
     const notes = await getNotes();
     const next = notes.filter((n) => n.id !== id);
-    await chrome.storage.local.set({ [STORAGE_KEYS.NOTES]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.NOTES]: next });
     return next;
   });
 }
@@ -334,7 +335,7 @@ export function isValueProfile(value: unknown): value is ValueProfile {
 
 /** Read all value profiles (silently drops anything that fails validation). */
 export async function getProfiles(): Promise<ValueProfile[]> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.PROFILES);
+  const result = await browser.storage.local.get(STORAGE_KEYS.PROFILES);
   const raw = result[STORAGE_KEYS.PROFILES];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isValueProfile);
@@ -343,7 +344,7 @@ export async function getProfiles(): Promise<ValueProfile[]> {
 /** Overwrite the full profile list. */
 export async function saveProfiles(profiles: ValueProfile[]): Promise<void> {
   await withKeyLock(STORAGE_KEYS.PROFILES, () =>
-    chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: profiles })
+    browser.storage.local.set({ [STORAGE_KEYS.PROFILES]: profiles })
   );
 }
 
@@ -355,7 +356,7 @@ export async function upsertProfileStored(profile: ValueProfile): Promise<ValueP
     const next = exists
       ? profiles.map((p) => (p.id === profile.id ? profile : p))
       : [...profiles, profile];
-    await chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.PROFILES]: next });
     return next;
   });
 }
@@ -365,7 +366,7 @@ export async function deleteProfile(id: string): Promise<ValueProfile[]> {
   return withKeyLock(STORAGE_KEYS.PROFILES, async () => {
     const profiles = await getProfiles();
     const next = profiles.filter((p) => p.id !== id);
-    await chrome.storage.local.set({ [STORAGE_KEYS.PROFILES]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.PROFILES]: next });
     return next;
   });
 }
@@ -398,7 +399,7 @@ export function isQueryParamSet(value: unknown): value is QueryParamSet {
 
 /** Read all query-param sets (silently drops anything that fails validation). */
 export async function getQueryParamSets(): Promise<QueryParamSet[]> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.QUERY_PARAM_SETS);
+  const result = await browser.storage.local.get(STORAGE_KEYS.QUERY_PARAM_SETS);
   const raw = result[STORAGE_KEYS.QUERY_PARAM_SETS];
   if (!Array.isArray(raw)) return [];
   return raw.filter(isQueryParamSet);
@@ -407,7 +408,7 @@ export async function getQueryParamSets(): Promise<QueryParamSet[]> {
 /** Overwrite the full query-param set list. */
 export async function saveQueryParamSets(sets: QueryParamSet[]): Promise<void> {
   await withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, () =>
-    chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: sets })
+    browser.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: sets })
   );
 }
 
@@ -417,7 +418,7 @@ export async function upsertQueryParamSet(set: QueryParamSet): Promise<QueryPara
     const sets = await getQueryParamSets();
     const exists = sets.some((s) => s.id === set.id);
     const next = exists ? sets.map((s) => (s.id === set.id ? set : s)) : [...sets, set];
-    await chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
     return next;
   });
 }
@@ -427,7 +428,7 @@ export async function deleteQueryParamSet(id: string): Promise<QueryParamSet[]> 
   return withKeyLock(STORAGE_KEYS.QUERY_PARAM_SETS, async () => {
     const sets = await getQueryParamSets();
     const next = sets.filter((s) => s.id !== id);
-    await chrome.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
+    await browser.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
     return next;
   });
 }
@@ -483,7 +484,7 @@ function readTagColors(value: unknown): Record<string, number> | undefined {
 
 /** Read prefs, merging stored valid fields over the defaults. */
 export async function getPrefs(): Promise<Prefs> {
-  const result = await chrome.storage.local.get(STORAGE_KEYS.PREFS);
+  const result = await browser.storage.local.get(STORAGE_KEYS.PREFS);
   const raw = result[STORAGE_KEYS.PREFS];
   if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_PREFS };
   const v = raw as Record<string, unknown>;
@@ -518,6 +519,6 @@ export async function getPrefs(): Promise<Prefs> {
 /** Overwrite the stored prefs object. */
 export async function savePrefs(prefs: Prefs): Promise<void> {
   await withKeyLock(STORAGE_KEYS.PREFS, () =>
-    chrome.storage.local.set({ [STORAGE_KEYS.PREFS]: prefs })
+    browser.storage.local.set({ [STORAGE_KEYS.PREFS]: prefs })
   );
 }

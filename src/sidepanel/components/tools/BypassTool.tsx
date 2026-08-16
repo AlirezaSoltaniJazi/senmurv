@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { buildBypassScript, DEFAULT_BYPASS_OPTIONS } from '@/shared/tools/bypass';
@@ -120,8 +121,8 @@ export function BypassTool({ onSaveScript }: Props): ReactElement {
       if (!isRuntimeMessage(message)) return;
       if (message.type === MESSAGE_TYPES.BYPASS_STATE_CHANGED) setReport(message.payload.report);
     }
-    chrome.runtime.onMessage.addListener(onMessage);
-    return () => chrome.runtime.onMessage.removeListener(onMessage);
+    browser.runtime.onMessage.addListener(onMessage);
+    return () => browser.runtime.onMessage.removeListener(onMessage);
   }, []);
 
   async function run<T>(send: () => Promise<Result<T>>, onDone: (value: T) => void): Promise<void> {
