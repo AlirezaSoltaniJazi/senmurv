@@ -130,6 +130,21 @@ describe('isRuntimeMessage', () => {
         },
       })
     ).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.EXPORT_ACCOUNTS, payload: { pin: '123456' } })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.EXPORT_ACCOUNTS,
+        payload: { pin: '123456', ids: ['acct_1'] },
+      })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+        payload: { accounts: [] },
+      })
+    ).toBe(true);
   });
 
   it('rejects unknown or malformed values', () => {

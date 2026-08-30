@@ -1,5 +1,6 @@
 import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
+import type { ImportedAccount } from '@/shared/data-io';
 import type {
   AccountDraft,
   AccountLocator,
@@ -194,6 +195,11 @@ export type RuntimeMessage =
         loginButton: AccountLocator;
         timeoutMs: number;
       };
+    }
+  | { type: typeof MESSAGE_TYPES.EXPORT_ACCOUNTS; payload: { pin: string; ids?: string[] } }
+  | {
+      type: typeof MESSAGE_TYPES.IMPORT_ACCOUNTS;
+      payload: { accounts: ImportedAccount[]; defaultPassword?: string };
     };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));

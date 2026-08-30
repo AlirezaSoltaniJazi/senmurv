@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   changePin,
   decryptSecret,
+  decryptSecretsWithPin,
   encryptSecret,
   getLockState,
   lockAccounts,
@@ -160,6 +161,40 @@ describe('shared/crypto', () => {
       // Original PIN still works — nothing was changed.
       await lockAccounts();
       expect((await unlockWithPin('111111')).ok).toBe(true);
+    });
+  });
+
+  describe('decryptSecretsWithPin', () => {
+    it('decrypts every secret when the PIN is correct', async () => {
+      await setUpPin('123456', 30);
+      const a = await encryptSecret('secret-a');
+      const b = await encryptSecret('secret-b');
+      const result = await decryptSecretsWithPin('123456', [a, b]);
+      expect(result).toEqual({ ok: true, value: ['secret-a', 'secret-b'] });
+    });
+
+    it('rejects an incorrect PIN', async () => {
+      await setUpPin('123456', 30);
+      const secret = await encryptSecret('secret-a');
+      const result = await decryptSecretsWithPin('000000', [secret]);
+      expect(result).toEqual({ ok: false, error: 'Incorrect PIN.' });
+    });
+
+    it('errors clearly when no PIN has ever been set up', async () => {
+      const result = await decryptSecretsWithPin('123456', []);
+      expect(result).toEqual({ ok: false, error: 'No PIN has been set up yet.' });
+    });
+
+    it('works regardless of the current lock state, and never changes it', async () => {
+      await setUpPin('123456', 30);
+      const secret = await encryptSecret('secret-a');
+      await lockAccounts();
+
+      expect((await getLockState()).isUnlocked).toBe(false);
+      const result = await decryptSecretsWithPin('123456', [secret]);
+      expect(result).toEqual({ ok: true, value: ['secret-a'] });
+      // Still locked afterward — export is a one-off, not an unlock.
+      expect((await getLockState()).isUnlocked).toBe(false);
     });
   });
 });

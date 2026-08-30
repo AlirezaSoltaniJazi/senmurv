@@ -11,6 +11,7 @@ import {
 import {
   changePin,
   decryptSecret,
+  decryptSecretsWithPin,
   encryptSecret,
   getLockState,
   lockAccounts,
@@ -21,6 +22,8 @@ import {
 import { duplicateAccount, isValidPin, renameGroup, validateAccount } from '@/shared/accounts';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
+import { uniqueName } from '@/shared/script-io';
+import type { ImportedAccount } from '@/shared/data-io';
 import {
   clearDefaultPasswordRecord,
   deleteAccount,
@@ -60,6 +63,7 @@ import {
 import { cookieWriteWarning, parseCookieUrl, urlForPath } from '@/shared/cookie-url';
 import { clearTagInEntries, renameTagInEntries } from '@/shared/tasks';
 import { buildClearPlan } from '@/shared/tools/site-data';
+import { newId } from '@/utils/id';
 import type {
   Account,
   AccountDraft,
@@ -69,6 +73,7 @@ import type {
   CookieRow,
   BypassReport,
   BypassState,
+  DefaultPasswordRecord,
   EncryptedSecret,
   LocatorKind,
   LogicalNameRecord,
@@ -1680,6 +1685,118 @@ async function renameGroupInStore(from: string, to: string): Promise<Account[]> 
 }
 
 /**
+ * Decrypt `ids` (or every saved account, if omitted) plus the shared default
+ * password, for the Accounts export. Re-verifies `pin` directly via
+ * decryptSecretsWithPin — independent of whatever the ambient unlock session
+ * is, since exporting plaintext passwords always re-requires the PIN.
+ */
+async function exportAccounts(
+  pin: string,
+  ids: string[] | undefined
+): Promise<Result<{ accounts: ImportedAccount[]; defaultPassword?: string }>> {
+  const all = await getAccounts();
+  const accounts = ids ? all.filter((a) => ids.includes(a.id)) : all;
+
+  const secrets: EncryptedSecret[] = [];
+  const secretIndexByAccountId = new Map<string, number>();
+  for (const a of accounts) {
+    if (a.encryptedPassword) {
+      secretIndexByAccountId.set(a.id, secrets.length);
+      secrets.push(a.encryptedPassword);
+    }
+  }
+  const defaultRecord = await getDefaultPasswordRecord();
+  const defaultPasswordIndex = defaultRecord ? secrets.length : -1;
+  if (defaultRecord) secrets.push(defaultRecord.encryptedPassword);
+
+  const decrypted = await decryptSecretsWithPin(pin, secrets);
+  if (!decrypted.ok) return decrypted;
+
+  const exported: ImportedAccount[] = accounts.map((a) => {
+    const out: ImportedAccount = {
+      name: a.name,
+      address: a.address,
+      username: a.username,
+      useDefaultPassword: a.useDefaultPassword,
+      usernameField: a.usernameField,
+      passwordField: a.passwordField,
+      loginButton: a.loginButton,
+    };
+    const idx = secretIndexByAccountId.get(a.id);
+    if (idx !== undefined) out.password = decrypted.value[idx]!;
+    if (a.group) out.group = a.group;
+    if (a.description) out.description = a.description;
+    return out;
+  });
+
+  const result: { accounts: ImportedAccount[]; defaultPassword?: string } = { accounts: exported };
+  if (defaultPasswordIndex !== -1) result.defaultPassword = decrypted.value[defaultPasswordIndex]!;
+  return { ok: true, value: result };
+}
+
+/**
+ * Encrypt and add every imported account as a new entry (fresh id, name
+ * de-duplicated against the current list via the same `uniqueName` helper
+ * `duplicateAccount` uses) — never overwrites an existing account by id,
+ * since an imported id came from a different install and matching it against
+ * a local one would be a coincidence, not intent. Requires Accounts to be
+ * unlocked: encryptSecret throws the standard "locked" error otherwise, which
+ * propagates to this message's response like any other Accounts write.
+ */
+async function importAccountsInStore(
+  imported: ImportedAccount[],
+  defaultPassword: string | undefined
+): Promise<Result<Account[]>> {
+  const now = Date.now();
+  const current = await getAccounts();
+  const names = new Set(current.map((a) => a.name));
+  const additions: Account[] = [];
+
+  for (const imp of imported) {
+    let encryptedPassword: EncryptedSecret | undefined;
+    if (!imp.useDefaultPassword) {
+      if (!imp.password) {
+        return { ok: false, error: `"${imp.name}" needs a password, or useDefaultPassword: true.` };
+      }
+      encryptedPassword = await encryptSecret(imp.password);
+    }
+    const name = uniqueName(imp.name, names);
+    names.add(name);
+    const candidate: Account = {
+      id: newId('acct_'),
+      name,
+      address: imp.address,
+      username: imp.username,
+      useDefaultPassword: imp.useDefaultPassword,
+      usernameField: imp.usernameField,
+      passwordField: imp.passwordField,
+      loginButton: imp.loginButton,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
+    if (imp.group) candidate.group = imp.group;
+    if (imp.description) candidate.description = imp.description;
+    const validated = validateAccount(candidate);
+    if (!validated.ok) return validated;
+    additions.push(validated.value);
+  }
+
+  let defaultPasswordRecord: DefaultPasswordRecord | undefined;
+  if (defaultPassword) {
+    defaultPasswordRecord = {
+      encryptedPassword: await encryptSecret(defaultPassword),
+      updatedAt: now,
+    };
+  }
+
+  const next = [...current, ...additions];
+  await saveAccounts(next);
+  if (defaultPasswordRecord) await setDefaultPasswordRecord(defaultPasswordRecord);
+  return { ok: true, value: next };
+}
+
+/**
  * Navigate to the saved account's address, wait for the page to load, decrypt
  * the right password (the account's own, or the shared default), and ask the
  * content script to fill + click via the saved locators.
@@ -2117,6 +2234,18 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
       case MESSAGE_TYPES.RENAME_GROUP:
         renameGroupInStore(message.payload.from, message.payload.to)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.EXPORT_ACCOUNTS:
+        exportAccounts(message.payload.pin, message.payload.ids)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.IMPORT_ACCOUNTS:
+        importAccountsInStore(message.payload.accounts, message.payload.defaultPassword)
+          .then(sendResponse)
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 

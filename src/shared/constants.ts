@@ -131,6 +131,8 @@ export const MESSAGE_TYPES = {
   LOCK_ACCOUNTS: 'LOCK_ACCOUNTS',
   RUN_ACCOUNT_LOGIN: 'RUN_ACCOUNT_LOGIN',
   ACCOUNT_LOGIN_FILL: 'ACCOUNT_LOGIN_FILL',
+  EXPORT_ACCOUNTS: 'EXPORT_ACCOUNTS',
+  IMPORT_ACCOUNTS: 'IMPORT_ACCOUNTS',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */

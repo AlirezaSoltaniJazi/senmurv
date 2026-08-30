@@ -473,3 +473,164 @@ describe('RUN_ACCOUNT_LOGIN', () => {
     expect(sentMessage.payload.password).toBe('shared-default');
   });
 });
+
+interface AccountsExportValue {
+  accounts: { name: string; password?: string; useDefaultPassword: boolean }[];
+  defaultPassword?: string;
+}
+
+describe('EXPORT_ACCOUNTS', () => {
+  it('decrypts accounts and the default password when the PIN is correct', async () => {
+    await setUpPin('123456', 30);
+    store['senmurv:accounts'] = [
+      makeAccount({ id: 'acct_1', encryptedPassword: await encryptSecret('hunter2') }),
+    ];
+    store['senmurv:defaultPassword'] = {
+      encryptedPassword: await encryptSecret('defaultPw'),
+      updatedAt: 1,
+    };
+
+    const res = await send({ type: MESSAGE_TYPES.EXPORT_ACCOUNTS, payload: { pin: '123456' } });
+    expect(res).toMatchObject({ ok: true });
+    const value = (res as Response).value as AccountsExportValue;
+    expect(value.accounts).toHaveLength(1);
+    expect(value.accounts[0]).toMatchObject({ name: 'My Site', password: 'hunter2' });
+    expect(value.defaultPassword).toBe('defaultPw');
+  });
+
+  it('rejects an incorrect PIN and reveals nothing', async () => {
+    await setUpPin('123456', 30);
+    store['senmurv:accounts'] = [
+      makeAccount({ encryptedPassword: await encryptSecret('hunter2') }),
+    ];
+    const res = await send({ type: MESSAGE_TYPES.EXPORT_ACCOUNTS, payload: { pin: '000000' } });
+    expect(res).toEqual({ ok: false, error: 'Incorrect PIN.' });
+  });
+
+  it('only exports the accounts whose ids are given', async () => {
+    await setUpPin('123456', 30);
+    store['senmurv:accounts'] = [
+      makeAccount({ id: 'acct_1', name: 'A', encryptedPassword: await encryptSecret('pw-a') }),
+      makeAccount({ id: 'acct_2', name: 'B', encryptedPassword: await encryptSecret('pw-b') }),
+    ];
+    const res = await send({
+      type: MESSAGE_TYPES.EXPORT_ACCOUNTS,
+      payload: { pin: '123456', ids: ['acct_2'] },
+    });
+    expect(res).toMatchObject({ ok: true });
+    const value = (res as Response).value as AccountsExportValue;
+    expect(value.accounts).toHaveLength(1);
+    expect(value.accounts[0]).toMatchObject({ name: 'B', password: 'pw-b' });
+  });
+
+  it('works even while Accounts is currently locked, and leaves it locked afterward', async () => {
+    await setUpPin('123456', 30);
+    store['senmurv:accounts'] = [
+      makeAccount({ encryptedPassword: await encryptSecret('hunter2') }),
+    ];
+    await send({ type: MESSAGE_TYPES.LOCK_ACCOUNTS });
+
+    const res = await send({ type: MESSAGE_TYPES.EXPORT_ACCOUNTS, payload: { pin: '123456' } });
+    expect(res).toMatchObject({ ok: true });
+
+    const state = await send({ type: MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE });
+    expect((state as Response).value).toMatchObject({ isUnlocked: false });
+  });
+
+  it('an account using the default password has no password field of its own', async () => {
+    await setUpPin('123456', 30);
+    store['senmurv:accounts'] = [makeAccount({ useDefaultPassword: true })];
+    const res = await send({ type: MESSAGE_TYPES.EXPORT_ACCOUNTS, payload: { pin: '123456' } });
+    const value = (res as Response).value as AccountsExportValue;
+    expect(value.accounts[0]?.password).toBeUndefined();
+    expect(value.accounts[0]?.useDefaultPassword).toBe(true);
+  });
+});
+
+function importDraft(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    name: 'My Site',
+    address: 'https://sub.x.com',
+    username: 'sss@ss.com',
+    useDefaultPassword: false,
+    password: 'hunter2',
+    usernameField: { kind: 'css', query: '#username' },
+    passwordField: { kind: 'css', query: '#password' },
+    loginButton: { kind: 'css', query: '#login' },
+    ...overrides,
+  };
+}
+
+describe('IMPORT_ACCOUNTS', () => {
+  it('encrypts and adds imported accounts with fresh ids and de-duplicated names', async () => {
+    await setUpPin('123456', 30);
+    store['senmurv:accounts'] = [makeAccount({ id: 'acct_1', name: 'My Site' })];
+
+    const res = await send({
+      type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+      payload: { accounts: [importDraft()] },
+    });
+    expect(res).toMatchObject({ ok: true });
+    const accounts = (res as Response).value as Account[];
+    expect(accounts).toHaveLength(2);
+    const imported = accounts.find((a) => a.id !== 'acct_1');
+    expect(imported?.name).toBe('My Site (2)');
+    expect(imported?.encryptedPassword?.ciphertext).toBeDefined();
+    expect(JSON.stringify(store)).not.toContain('hunter2');
+  });
+
+  it('imports a useDefaultPassword account with no password of its own', async () => {
+    await setUpPin('123456', 30);
+    const res = await send({
+      type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+      payload: {
+        accounts: [importDraft({ useDefaultPassword: true, password: undefined })],
+      },
+    });
+    expect(res).toMatchObject({ ok: true });
+    const accounts = (res as Response).value as Account[];
+    expect(accounts[0]?.encryptedPassword).toBeUndefined();
+    expect(accounts[0]?.useDefaultPassword).toBe(true);
+  });
+
+  it('fails clearly when Accounts is locked', async () => {
+    await setUpPin('123456', 30);
+    await send({ type: MESSAGE_TYPES.LOCK_ACCOUNTS });
+    const res = await send({
+      type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+      payload: { accounts: [importDraft()] },
+    });
+    expect(res).toEqual({
+      ok: false,
+      error: 'Accounts are locked. Enter your PIN to continue.',
+    });
+  });
+
+  it('sets the default password only when defaultPassword is provided', async () => {
+    await setUpPin('123456', 30);
+    const res = await send({
+      type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+      payload: {
+        accounts: [importDraft({ useDefaultPassword: true, password: undefined })],
+        defaultPassword: 'sharedPw',
+      },
+    });
+    expect(res).toMatchObject({ ok: true });
+    const stateRes = await send({ type: MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE });
+    expect((stateRes as Response).value).toMatchObject({ isSet: true });
+  });
+
+  it('carries group and description through to the saved account', async () => {
+    await setUpPin('123456', 30);
+    const res = await send({
+      type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+      payload: {
+        accounts: [importDraft({ group: 'Group A', description: 'Staging login' })],
+      },
+    });
+    expect(res).toMatchObject({ ok: true });
+    const accounts = (res as Response).value as Account[];
+    expect(accounts[0]?.group).toBe('Group A');
+    expect(accounts[0]?.description).toBe('Staging login');
+  });
+});

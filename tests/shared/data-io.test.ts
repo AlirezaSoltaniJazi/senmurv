@@ -6,17 +6,20 @@ import {
   applyQueryParamSetImport,
   checklistImportConflicts,
   noteImportConflicts,
+  parseAccountsImport,
   parseChecklistsImport,
   parseNotesImport,
   parseProfilesImport,
   parseQueryParamSetsImport,
   profileImportConflicts,
   queryParamSetImportConflicts,
+  serializeAccountsExport,
   serializeChecklists,
   serializeNotes,
   serializeProfiles,
   serializeQueryParamSets,
 } from '@/shared/data-io';
+import type { ImportedAccount } from '@/shared/data-io';
 import type { Checklist, Note, ValueProfile } from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
 
@@ -432,6 +435,118 @@ describe('data-io: notes', () => {
       999
     );
     expect(next[0]!.favorite).toBe(true);
+  });
+});
+
+const sampleImportedAccount: ImportedAccount = {
+  name: 'My Site',
+  address: 'https://sub.x.com',
+  username: 'sss@ss.com',
+  useDefaultPassword: false,
+  password: 'hunter2',
+  usernameField: { kind: 'css', query: '#username' },
+  passwordField: { kind: 'css', query: '#password' },
+  loginButton: { kind: 'css', query: '#login' },
+};
+
+describe('data-io: accounts', () => {
+  it('round-trips export → import preserving fields, and stamps the bundle', () => {
+    const json = serializeAccountsExport([sampleImportedAccount], 'defaultPw');
+    const bundle = JSON.parse(json);
+    expect(bundle.app).toBe('senmurv');
+    expect(bundle.type).toBe('accounts');
+    expect(bundle.schemaVersion).toBe(1);
+    expect(typeof bundle.exportedAt).toBe('string');
+    expect(bundle.defaultPassword).toBe('defaultPw');
+
+    const res = parseAccountsImport(json);
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.value.accounts).toHaveLength(1);
+      expect(res.value.accounts[0]).toEqual(sampleImportedAccount);
+      expect(res.value.defaultPassword).toBe('defaultPw');
+    }
+  });
+
+  it('omits defaultPassword from the bundle and the parsed result when absent', () => {
+    const json = serializeAccountsExport([sampleImportedAccount]);
+    expect(JSON.parse(json).defaultPassword).toBeUndefined();
+    const res = parseAccountsImport(json);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.value.defaultPassword).toBeUndefined();
+  });
+
+  it('accepts a bare array, with no defaultPassword', () => {
+    const res = parseAccountsImport(JSON.stringify([sampleImportedAccount]));
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.value.accounts).toHaveLength(1);
+      expect(res.value.defaultPassword).toBeUndefined();
+    }
+  });
+
+  it('accepts useDefaultPassword: true with no password of its own', () => {
+    const account = { ...sampleImportedAccount, useDefaultPassword: true };
+    delete (account as { password?: string }).password;
+    const res = parseAccountsImport(JSON.stringify({ accounts: [account] }));
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.value.accounts[0]!.password).toBeUndefined();
+  });
+
+  it('rejects an unsupported schemaVersion', () => {
+    const res = parseAccountsImport(
+      JSON.stringify({ schemaVersion: 99, accounts: [sampleImportedAccount] })
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain('schemaVersion');
+  });
+
+  it('rejects an account with no password and useDefaultPassword: false', () => {
+    const account = { ...sampleImportedAccount };
+    delete (account as { password?: string }).password;
+    const res = parseAccountsImport(JSON.stringify({ accounts: [account] }));
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain('accounts[0]');
+  });
+
+  it('reports the offending item with an index', () => {
+    const res = parseAccountsImport(
+      JSON.stringify({
+        accounts: [sampleImportedAccount, { ...sampleImportedAccount, usernameField: null }],
+      })
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain('accounts[1].usernameField');
+  });
+
+  it('rejects bad JSON and content without an accounts array', () => {
+    expect(parseAccountsImport('{not json').ok).toBe(false);
+    expect(parseAccountsImport(JSON.stringify({ foo: 1 })).ok).toBe(false);
+  });
+
+  it('rejects a non-object item and a bogus locator kind', () => {
+    expect(parseAccountsImport(JSON.stringify({ accounts: [null] })).ok).toBe(false);
+    const res = parseAccountsImport(
+      JSON.stringify({
+        accounts: [{ ...sampleImportedAccount, passwordField: { kind: 'html', query: 'x' } }],
+      })
+    );
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.error).toContain('passwordField');
+  });
+
+  it('carries group and description through export → import', () => {
+    const withExtras: ImportedAccount = {
+      ...sampleImportedAccount,
+      group: 'Group A',
+      description: 'Staging login',
+    };
+    const res = parseAccountsImport(serializeAccountsExport([withExtras]));
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.value.accounts[0]!.group).toBe('Group A');
+      expect(res.value.accounts[0]!.description).toBe('Staging login');
+    }
   });
 });
 

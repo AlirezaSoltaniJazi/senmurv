@@ -192,6 +192,32 @@ export async function unlockWithPin(pin: string): Promise<Result<void>> {
 }
 
 /**
+ * Verify `pin`, then decrypt every secret in `secrets` under the derived key
+ * — for the Accounts export, which re-requires the PIN as a one-off,
+ * ceremonial confirmation before revealing plaintext passwords. Deliberately
+ * does NOT touch the cached session (unlike unlockWithPin/changePin): export
+ * neither requires nor grants an unlocked session, so it works — and leaves
+ * the lock state exactly as it found it — whether Accounts was already
+ * unlocked or not.
+ */
+export async function decryptSecretsWithPin(
+  pin: string,
+  secrets: EncryptedSecret[]
+): Promise<Result<string[]>> {
+  const config = await getAccountsSecurityConfig();
+  if (!config) return { ok: false, error: 'No PIN has been set up yet.' };
+  try {
+    const key = await deriveKey(pin, fromBase64(config.salt), true);
+    const checked = await decryptWithKey(key, config.pinCheck);
+    if (checked !== PIN_CHECK_PLAINTEXT) return { ok: false, error: INCORRECT_PIN_ERROR };
+    const plaintexts = await Promise.all(secrets.map((s) => decryptWithKey(key, s)));
+    return { ok: true, value: plaintexts };
+  } catch {
+    return { ok: false, error: INCORRECT_PIN_ERROR };
+  }
+}
+
+/**
  * Change the PIN: verify `currentPin`, decrypt every secret handed in
  * `reencrypt` under the OLD key, re-encrypt each under a NEW key + NEW salt +
  * NEW canary, and return everything so the caller can persist it in one
