@@ -1,5 +1,7 @@
 import type { ChangeEvent, ReactElement } from 'react';
 import {
+  ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX,
+  ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN,
   FIND_TIMEOUT_SECONDS_MAX,
   FIND_TIMEOUT_SECONDS_MIN,
   FONT_PRESET_ZOOM,
@@ -24,6 +26,9 @@ interface Props {
   /** Seconds a Flow step waits for its element before giving up. */
   findTimeoutSeconds: number;
   onFindTimeoutChange: (seconds: number) => void;
+  /** Seconds a saved account must be hovered before its description tooltip appears. */
+  accountTooltipDelaySeconds: number;
+  onAccountTooltipDelayChange: (seconds: number) => void;
   /** Track-tag colour overrides (tag → palette index), and its setter. */
   tagColors: Record<string, number>;
   onTagColorsChange: (next: Record<string, number>) => void;
@@ -46,6 +51,8 @@ export function SettingsTab({
   onHudSecondsChange,
   findTimeoutSeconds,
   onFindTimeoutChange,
+  accountTooltipDelaySeconds,
+  onAccountTooltipDelayChange,
   tagColors,
   onTagColorsChange,
 }: Props): ReactElement {
@@ -137,6 +144,35 @@ export function SettingsTab({
       <p className="hint">
         How long each flow step waits for its element before giving up (a “Wait for element” step
         with its own timeout still wins).
+      </p>
+
+      <h3 className="section-title">Accounts</h3>
+      <div className="setting-row">
+        <label className="setting-label" htmlFor="account-tooltip-delay">
+          Description tooltip delay (seconds)
+        </label>
+        <input
+          id="account-tooltip-delay"
+          className="hud-seconds"
+          type="number"
+          min={ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN}
+          max={ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX}
+          step={1}
+          value={accountTooltipDelaySeconds}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            const n = Math.round(Number(e.target.value));
+            if (!Number.isFinite(n)) return;
+            onAccountTooltipDelayChange(
+              Math.min(
+                ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX,
+                Math.max(ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN, n)
+              )
+            );
+          }}
+        />
+      </div>
+      <p className="hint">
+        How long the mouse must hover a saved account before its description tooltip appears.
       </p>
 
       <h3 className="section-title">Track tags</h3>

@@ -17,17 +17,20 @@ if (!['patch', 'minor', 'major', 'current'].includes(bump)) {
 
 const pkgPath = resolve(root, 'package.json');
 const manifestPath = resolve(root, 'manifest.json');
+const manifestFirefoxPath = resolve(root, 'manifest.firefox.json');
 
 const pkgText = readFileSync(pkgPath, 'utf8');
 const manifestText = readFileSync(manifestPath, 'utf8');
+const manifestFirefoxText = readFileSync(manifestFirefoxPath, 'utf8');
 
 const pkg = JSON.parse(pkgText);
 const pkgVersion = pkg.version;
 const manifestVersion = JSON.parse(manifestText).version;
+const manifestFirefoxVersion = JSON.parse(manifestFirefoxText).version;
 
-if (pkgVersion !== manifestVersion) {
+if (pkgVersion !== manifestVersion || pkgVersion !== manifestFirefoxVersion) {
   console.error(
-    `Version mismatch: package.json=${pkgVersion} manifest.json=${manifestVersion}. Reconcile manually before bumping.`
+    `Version mismatch: package.json=${pkgVersion} manifest.json=${manifestVersion} manifest.firefox.json=${manifestFirefoxVersion}. Reconcile manually before bumping.`
   );
   process.exit(1);
 }
@@ -60,6 +63,10 @@ function replaceVersion(text, current, next) {
 if (bump !== 'current') {
   writeFileSync(pkgPath, replaceVersion(pkgText, pkgVersion, next));
   writeFileSync(manifestPath, replaceVersion(manifestText, manifestVersion, next));
+  writeFileSync(
+    manifestFirefoxPath,
+    replaceVersion(manifestFirefoxText, manifestFirefoxVersion, next)
+  );
 
   // Keep package-lock.json in sync so the lockfile version doesn't drift on CI
   // bumps. It's prettier-ignored, so re-serializing with 2-space indent is fine.

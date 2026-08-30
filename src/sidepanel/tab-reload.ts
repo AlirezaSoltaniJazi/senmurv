@@ -1,3 +1,5 @@
+import { browser } from '@/shared/browser-api';
+
 /**
  * Reload the tab the panel is acting on. Used by the Cookies / Storage tabs so a
  * changed cookie or storage value is actually picked up by the site (a locale
@@ -7,9 +9,11 @@
  * never turn a successful write into a visible error.
  */
 export function reloadActiveTab(): void {
-  chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-    if (chrome.runtime.lastError) return;
-    const id = tabs[0]?.id;
-    if (typeof id === 'number') void chrome.tabs.reload(id).catch(() => undefined);
-  });
+  void browser.tabs
+    .query({ active: true, lastFocusedWindow: true })
+    .then((tabs) => {
+      const id = tabs[0]?.id;
+      return typeof id === 'number' ? browser.tabs.reload(id) : undefined;
+    })
+    .catch(() => undefined);
 }

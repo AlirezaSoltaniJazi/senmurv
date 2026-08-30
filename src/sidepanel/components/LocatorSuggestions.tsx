@@ -10,11 +10,13 @@ import { CopyButton } from './CopyButton';
  * for `.locator-card` / `.snippet-list` depends on this exact shape.
  */
 
-/** A framework filter, or `all` to show every snippet. */
-export type FrameworkFilter = Framework | 'all';
+/** A framework filter, `all` to show every snippet, or `general` for just the
+ *  plain locator value (css/xpath/role/etc.) with no framework-specific code. */
+export type FrameworkFilter = Framework | 'all' | 'general';
 
 const FRAMEWORK_FILTERS: { key: FrameworkFilter; label: string }[] = [
   { key: 'all', label: 'All' },
+  { key: 'general', label: 'General' },
   ...FRAMEWORKS.map((f) => ({ key: f as FrameworkFilter, label: FRAMEWORK_LABELS[f] ?? f })),
 ];
 
@@ -61,8 +63,13 @@ export function LocatorSuggestions({
   return (
     <ul className="locator-list">
       {suggestions.map((s) => {
+        const showGeneral = filter === 'all' || filter === 'general';
         const shown =
-          filter === 'all' ? s.snippets : s.snippets.filter((sn) => sn.framework === filter);
+          filter === 'general'
+            ? []
+            : filter === 'all'
+              ? s.snippets
+              : s.snippets.filter((sn) => sn.framework === filter);
         return (
           <li key={`${s.strategy}-${s.value}`} className="locator-card">
             <div className="locator-head">
@@ -71,10 +78,12 @@ export function LocatorSuggestions({
               <CountBadge count={s.matchCount} />
               <span className={`quality q-${s.quality}`}>{s.quality}</span>
             </div>
-            <div className="locator-value">
-              <code>{s.value}</code>
-              <CopyButton text={s.value} />
-            </div>
+            {showGeneral && (
+              <div className="locator-value">
+                <code>{s.value}</code>
+                <CopyButton text={s.value} />
+              </div>
+            )}
             {shown.length > 0 && (
               <ul className="snippet-list">
                 {shown.map((sn) => (

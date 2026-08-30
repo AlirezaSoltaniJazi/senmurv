@@ -4,7 +4,7 @@
 
 # Senmurv
 
-**A QA & test-automation toolkit that lives in your Chrome Side Panel.**
+**A QA & test-automation toolkit that lives in your browser's side panel — Chrome Side Panel or Firefox Sidebar.**
 
 Generate test data · find robust locators · record & run page scripts · track time & tasks — on any page.
 
@@ -92,6 +92,23 @@ Then in Chrome:
 3. **Load unpacked** → select the `dist/` folder
 4. click the Senmurv toolbar icon to open the side panel
 
+### From source (Firefox, unpacked)
+
+```bash
+npm install
+npm run build:firefox   # → dist-firefox/
+```
+
+Then in Firefox:
+
+1. open `about:debugging#/runtime/this-firefox`
+2. **Load Temporary Add-on…** → select `dist-firefox/manifest.json`
+3. click the Senmurv toolbar icon to open the sidebar
+
+This loads for the current session only (Firefox requires Mozilla-signed
+`.xpi`s for a permanent install) — reload it here again after restarting
+Firefox. There's no Firefox Add-ons (AMO) listing yet.
+
 ### Chrome Web Store
 
 _Coming soon._ Once published, this section will link to the store listing.
@@ -99,23 +116,25 @@ _Coming soon._ Once published, this section will link to the store listing.
 ## Development
 
 ```bash
-npm run dev            # dev build with HMR (load dist/ unpacked)
-npm test               # run the Vitest suite
-npm run lint           # ESLint
-npm run format:check   # Prettier
-npm run typecheck      # tsc --noEmit
-npm run package        # build + zip → release/senmurv-<version>.zip
+npm run dev              # dev build with HMR (load dist/ unpacked)
+npm test                 # run the Vitest suite
+npm run lint             # ESLint
+npm run format:check     # Prettier
+npm run typecheck        # tsc --noEmit
+npm run package          # build + zip → release/senmurv-<version>.zip
+npm run dev:firefox      # Firefox build in watch mode (reload manually via about:debugging)
+npm run package:firefox  # build + zip → release/senmurv-firefox-<version>.zip
 ```
 
 ### Tech stack
 
-| Layer    | Tech                                                                             |
-| -------- | -------------------------------------------------------------------------------- |
-| Language | TypeScript (strict, no `any`)                                                    |
-| UI       | React 19 + Chrome Side Panel                                                     |
-| Build    | Vite + [@crxjs/vite-plugin](https://crxjs.dev/)                                  |
-| Tests    | Vitest + happy-dom                                                               |
-| APIs     | `chrome.sidePanel`, `chrome.scripting`, `chrome.storage.local`, `chrome.cookies` |
+| Layer    | Tech                                                                                                                                                                                          |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Language | TypeScript (strict, no `any`)                                                                                                                                                                 |
+| UI       | React 19 + Chrome Side Panel / Firefox Sidebar                                                                                                                                                |
+| Build    | Vite — [@crxjs/vite-plugin](https://crxjs.dev/) for Chrome, a hand-rolled config for Firefox                                                                                                  |
+| Tests    | Vitest + happy-dom                                                                                                                                                                            |
+| APIs     | [`webextension-polyfill`](https://github.com/mozilla/webextension-polyfill) over `scripting`, `storage.local`, `cookies`; `chrome.sidePanel` / `sidebarAction` where the two browsers diverge |
 
 ## Releasing
 

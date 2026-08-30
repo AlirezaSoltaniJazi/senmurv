@@ -94,6 +94,7 @@ jobs:
       # Build before test so the bundle-placement suite runs against dist/ here
       # too (it skips when dist/ is absent). npm run package rebuilds below.
       - run: npm run build
+      - run: npm run build:firefox
       - run: npm test
 
       - name: Bump version and promote changelog
@@ -106,6 +107,7 @@ jobs:
 
       - run: npm run package
       - run: npm run package:local
+      - run: npm run package:firefox
 
       - name: Extract release notes from changelog
         id: notes
@@ -130,7 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           version="${{ steps.bump.outputs.version }}"
-          git add package.json manifest.json package-lock.json CHANGELOG.md
+          git add package.json manifest.json manifest.firefox.json package-lock.json CHANGELOG.md
           if git diff --cached --quiet; then
             echo "Nothing to commit (version + changelog unchanged)."
           else

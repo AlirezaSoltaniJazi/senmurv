@@ -1,7 +1,14 @@
 import { uniqueName } from '@/shared/script-io';
 import type { ImportMode } from '@/shared/script-io';
 import type { QueryParam, QueryParamSet } from '@/shared/tools/query-params';
-import type { Checklist, Note, Result, Subtask, ValueProfile } from '@/shared/types';
+import type {
+  AccountLocator,
+  Checklist,
+  Note,
+  Result,
+  Subtask,
+  ValueProfile,
+} from '@/shared/types';
 import { newId } from '@/utils/id';
 
 /**
@@ -11,6 +18,15 @@ import { newId } from '@/utils/id';
  * its `ImportMode` type and its generic `uniqueName` dedup helper). Each kind
  * mirrors `script-io.ts` function-for-function: `serialize*`, `parse*Import`,
  * `*ImportConflicts`, `apply*Import`.
+ *
+ * Accounts is a fifth, differently-shaped kind bolted on at the bottom: it has
+ * no `apply*Import`/`*ImportConflicts` pair, because encrypting/decrypting a
+ * saved password can only happen in the service worker (shared/crypto.ts) —
+ * this module stays crypto-free like everywhere else in shared/. Only the
+ * shape validation (`parseAccountsImport`) and the bundle wrapper
+ * (`serializeAccountsExport`) live here; the actual export/import round trip
+ * goes through the EXPORT_ACCOUNTS/IMPORT_ACCOUNTS messages instead of a pure
+ * `apply*Import` function.
  */
 export const DATA_SCHEMA_VERSION = 1;
 
@@ -760,4 +776,162 @@ export function applyChecklistImport(
     byId.set(id, checklist);
   }
   return [...byId.values()];
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (saved logins) — see the module comment for why this kind is shaped
+// differently from the four above.
+// ---------------------------------------------------------------------------
+
+interface AccountsBundle {
+  app: 'senmurv';
+  type: 'accounts';
+  schemaVersion: number;
+  exportedAt: string;
+  accounts: ImportedAccount[];
+  defaultPassword?: string;
+}
+
+/**
+ * One saved account as it appears in an Accounts export/import file. Unlike
+ * a stored `Account`, the password here is plaintext — this file is exactly
+ * as sensitive as the accounts themselves, which is why EXPORT_ACCOUNTS
+ * requires re-entering the PIN and IMPORT_ACCOUNTS requires one to already
+ * be set up (both enforced in the service worker, never here).
+ */
+export interface ImportedAccount {
+  name: string;
+  address: string;
+  username: string;
+  useDefaultPassword: boolean;
+  password?: string;
+  usernameField: AccountLocator;
+  passwordField: AccountLocator;
+  loginButton: AccountLocator;
+  group?: string;
+  description?: string;
+}
+
+/** Wrap already-decrypted accounts (and optionally the default password) in
+ *  a versioned, timestamped JSON export bundle. `accounts`/`defaultPassword`
+ *  must already be plaintext — decrypting them is EXPORT_ACCOUNTS's job. */
+export function serializeAccountsExport(
+  accounts: ImportedAccount[],
+  defaultPassword?: string
+): string {
+  const bundle: AccountsBundle = {
+    app: 'senmurv',
+    type: 'accounts',
+    schemaVersion: DATA_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    accounts,
+  };
+  if (defaultPassword !== undefined) bundle.defaultPassword = defaultPassword;
+  return JSON.stringify(bundle, null, 2);
+}
+
+function isAccountLocator(value: unknown): value is AccountLocator {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (v.kind === 'css' || v.kind === 'xpath') && typeof v.query === 'string';
+}
+
+function validateImportedAccount(value: unknown, index: number): Result<ImportedAccount> {
+  if (typeof value !== 'object' || value === null) {
+    return { ok: false, error: `accounts[${index}] must be an object` };
+  }
+  const v = value as Record<string, unknown>;
+  if (typeof v.name !== 'string') {
+    return { ok: false, error: `accounts[${index}].name must be a string` };
+  }
+  if (typeof v.address !== 'string') {
+    return { ok: false, error: `accounts[${index}].address must be a string` };
+  }
+  if (typeof v.username !== 'string') {
+    return { ok: false, error: `accounts[${index}].username must be a string` };
+  }
+  if (typeof v.useDefaultPassword !== 'boolean') {
+    return { ok: false, error: `accounts[${index}].useDefaultPassword must be a boolean` };
+  }
+  if (!isAccountLocator(v.usernameField)) {
+    return { ok: false, error: `accounts[${index}].usernameField must be a locator` };
+  }
+  if (!isAccountLocator(v.passwordField)) {
+    return { ok: false, error: `accounts[${index}].passwordField must be a locator` };
+  }
+  if (!isAccountLocator(v.loginButton)) {
+    return { ok: false, error: `accounts[${index}].loginButton must be a locator` };
+  }
+  if (!v.useDefaultPassword && (typeof v.password !== 'string' || v.password.trim() === '')) {
+    return {
+      ok: false,
+      error: `accounts[${index}] needs a password, or useDefaultPassword: true`,
+    };
+  }
+  const out: ImportedAccount = {
+    name: v.name,
+    address: v.address,
+    username: v.username,
+    useDefaultPassword: v.useDefaultPassword,
+    usernameField: v.usernameField,
+    passwordField: v.passwordField,
+    loginButton: v.loginButton,
+  };
+  if (typeof v.password === 'string') out.password = v.password;
+  if (typeof v.group === 'string') out.group = v.group;
+  if (typeof v.description === 'string') out.description = v.description;
+  return { ok: true, value: out };
+}
+
+/**
+ * Parse an Accounts import file. Accepts a Senmurv bundle
+ * (`{ schemaVersion, accounts, defaultPassword? }`) or a bare array of
+ * accounts. Every item is validated field-by-field (fail-fast with the
+ * offending index), mirroring `parseNotesImport`. Purely shape validation —
+ * the returned `password`/`defaultPassword` stay plaintext strings; nothing
+ * here touches encryption.
+ */
+export function parseAccountsImport(
+  text: string
+): Result<{ accounts: ImportedAccount[]; defaultPassword?: string }> {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, error: `Not valid JSON: ${(err as Error).message}` };
+  }
+
+  let rawList: unknown[];
+  let defaultPassword: string | undefined;
+  if (Array.isArray(data)) {
+    rawList = data; // bare array — lenient, no schemaVersion, no default password
+  } else if (data && typeof data === 'object') {
+    const obj = data as Record<string, unknown>;
+    if (obj.schemaVersion !== undefined && obj.schemaVersion !== DATA_SCHEMA_VERSION) {
+      return {
+        ok: false,
+        error: `Unsupported schemaVersion: expected ${DATA_SCHEMA_VERSION}, got ${String(obj.schemaVersion)}`,
+      };
+    }
+    if (!Array.isArray(obj.accounts)) {
+      return { ok: false, error: 'No "accounts" array found in the file.' };
+    }
+    rawList = obj.accounts;
+    if (typeof obj.defaultPassword === 'string') defaultPassword = obj.defaultPassword;
+  } else {
+    return { ok: false, error: 'Expected an accounts bundle or an array of accounts.' };
+  }
+
+  const accounts: ImportedAccount[] = [];
+  for (let i = 0; i < rawList.length; i += 1) {
+    const r = validateImportedAccount(rawList[i], i);
+    if (!r.ok) return r;
+    accounts.push(r.value);
+  }
+  if (accounts.length === 0) {
+    return { ok: false, error: 'No accounts found to import.' };
+  }
+  const result: { accounts: ImportedAccount[]; defaultPassword?: string } = { accounts };
+  if (defaultPassword !== undefined) result.defaultPassword = defaultPassword;
+  return { ok: true, value: result };
 }

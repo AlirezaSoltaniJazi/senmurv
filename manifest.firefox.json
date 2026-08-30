@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Senmurv",
+  "version": "0.9.0",
+  "description": "QA side-panel toolkit: generate test data, find element locators, record & run page scripts, and track time & tasks.",
+  "permissions": ["scripting", "storage", "tabs", "cookies"],
+  "host_permissions": ["<all_urls>"],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "scripts": ["src/background/service-worker.ts"],
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Senmurv",
+    "default_icon": {
+      "16": "public/icons/icon-16.png",
+      "32": "public/icons/icon-32.png",
+      "48": "public/icons/icon-48.png",
+      "128": "public/icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "public/icons/icon-16.png",
+    "32": "public/icons/icon-32.png",
+    "48": "public/icons/icon-48.png",
+    "128": "public/icons/icon-128.png"
+  },
+  "sidebar_action": {
+    "default_panel": "src/sidepanel/index.html",
+    "default_title": "Senmurv",
+    "default_icon": {
+      "16": "public/icons/icon-16.png",
+      "32": "public/icons/icon-32.png",
+      "48": "public/icons/icon-48.png",
+      "128": "public/icons/icon-128.png"
+    }
+  },
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["src/content/picker.ts"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["picker.js", "assets/*"],
+      "matches": ["http://*/*", "https://*/*"]
+    }
+  ],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "{9af77c07-632f-445e-9777-199a4c4576d6}",
+      "strict_min_version": "128.0",
+      "data_collection_permissions": {
+        "required": ["none"]
+      }
+    }
+  }
+}

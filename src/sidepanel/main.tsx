@@ -1,5 +1,7 @@
+import type { Runtime } from 'webextension-polyfill';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { browser } from '@/shared/browser-api';
 import { App } from './App';
 import './styles.css';
 
@@ -15,9 +17,9 @@ import './styles.css';
 const HEARTBEAT_MS = 25_000;
 
 function connectLifecyclePort(): void {
-  let port: chrome.runtime.Port;
+  let port: Runtime.Port;
   try {
-    port = chrome.runtime.connect({ name: 'panel' });
+    port = browser.runtime.connect({ name: 'panel' });
   } catch {
     // Extension context invalidated (reloaded / updated) — nothing to keep alive.
     return;

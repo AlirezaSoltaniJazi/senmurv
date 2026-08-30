@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { DragEvent, ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { decodeBookmarklet } from '@/shared/bookmarklet';
@@ -229,11 +230,13 @@ export function ScriptsTab({
   function stopScript(): void {
     runTokenRef.current += 1; // invalidate the in-flight run() (its page is reloading)
     setRunningId(null);
-    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-      if (chrome.runtime.lastError) return;
-      const id = tabs[0]?.id;
-      if (typeof id === 'number') void chrome.tabs.reload(id).catch(() => undefined);
-    });
+    void browser.tabs
+      .query({ active: true, lastFocusedWindow: true })
+      .then((tabs) => {
+        const id = tabs[0]?.id;
+        return typeof id === 'number' ? browser.tabs.reload(id) : undefined;
+      })
+      .catch(() => undefined);
     setStatus('Reloaded the page to stop any running script.');
   }
 

@@ -638,7 +638,7 @@ export type LogicalNameKind = 'field' | 'tab' | 'section';
 
 /**
  * One logical (schema) name read from the Xrm API. Deliberately plain data:
- * `chrome.scripting` results must be JSON-serialisable, so the MAIN-world read
+ * `browser.scripting` results must be JSON-serialisable, so the MAIN-world read
  * can hand back names but never the elements they belong to — the content
  * script re-resolves each one against `[data-id]`.
  */
@@ -679,12 +679,12 @@ export interface WebStorageSnapshot {
   readonly warnings: string[];
 }
 
-/** A cookie's SameSite attribute, in the shape chrome.cookies uses. */
+/** A cookie's SameSite attribute, in the shape browser.cookies uses. */
 export type CookieSameSite = 'no_restriction' | 'lax' | 'strict' | 'unspecified';
 
 /**
  * One cookie visible to the extension for the current URL. Mirrors the fields of
- * `chrome.cookies.Cookie` we surface — including `httpOnly`, which `document.cookie`
+ * `browser.cookies.Cookie` we surface — including `httpOnly`, which `document.cookie`
  * can never see (the reason this tab needs the `cookies` permission).
  */
 export interface CookieRow {
@@ -816,6 +816,11 @@ export interface Prefs {
    * pinned. Capped at MAX_PINNED_TOOLS; omitted when none are pinned.
    */
   pinnedTools?: ToolKey[];
+  /**
+   * Seconds the mouse must hover a saved account before its description
+   * tooltip appears (Accounts tab). Omitted → the default applies.
+   */
+  accountTooltipDelaySeconds?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -897,4 +902,113 @@ export interface FillInstruction {
   fieldType: FieldType;
   value?: string;
   action?: 'check' | 'uncheck' | 'pickFirst' | 'pickRandom';
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (saved logins, PIN-locked encryption)
+// ---------------------------------------------------------------------------
+
+/** An AES-GCM encrypted secret. Useless without the PIN-derived key, which is
+ *  never itself persisted anywhere. */
+export interface EncryptedSecret {
+  /** Base64 ciphertext (includes the AES-GCM auth tag). */
+  ciphertext: string;
+  /** Base64, 12 random bytes — fresh on every encryption. */
+  iv: string;
+}
+
+/** One raw locator string the user pasted in, tagged with how to resolve it. */
+export interface AccountLocator {
+  kind: LocatorKind;
+  query: string;
+}
+
+/** A locator handed from the Locator tab's "Add to account" button to the
+ *  Accounts tab's currently-open (or newly-opened) editor, loaded once. */
+export interface AccountLocatorSeed {
+  query: string;
+  kind: LocatorKind;
+  field: 'username' | 'password' | 'loginButton';
+}
+
+/**
+ * A saved login account (Accounts tab). `encryptedPassword` is present only
+ * when `useDefaultPassword` is false; when true it is not stored at all (the
+ * global default password is substituted at login time).
+ */
+export interface Account {
+  id: string; // newId('acct_')
+  name: string;
+  /** Absolute URL, normalized at save time. */
+  address: string;
+  username: string;
+  encryptedPassword?: EncryptedSecret;
+  useDefaultPassword: boolean;
+  usernameField: AccountLocator;
+  passwordField: AccountLocator;
+  loginButton: AccountLocator;
+  /** Free-text group label (e.g. "Group A"); absent/blank falls into the
+   *  "Default" bucket shown on the Accounts tab's main list. */
+  group?: string;
+  /** Optional free-text note shown as a tooltip after hovering the account
+   *  in the list (delay configurable in Settings). */
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/**
+ * The wire shape SAVE_ACCOUNT carries. Deliberately not `Account`: the panel
+ * never holds a plaintext password to send, so "set/change this account's
+ * password" (`newPassword` present) must be distinguishable from "leave the
+ * existing password alone" (`newPassword` omitted) without the panel needing
+ * to know the current ciphertext.
+ */
+export interface AccountDraft {
+  id: string;
+  name: string;
+  address: string;
+  username: string;
+  useDefaultPassword: boolean;
+  newPassword?: string;
+  usernameField: AccountLocator;
+  passwordField: AccountLocator;
+  loginButton: AccountLocator;
+  group?: string;
+  description?: string;
+}
+
+/** The one shared "default password" accounts can opt into. Encrypted the
+ *  same way as an account's own password — it is just as sensitive. */
+export interface DefaultPasswordRecord {
+  encryptedPassword: EncryptedSecret;
+  updatedAt: number;
+}
+
+/** What GET_DEFAULT_PASSWORD_STATE returns — never the ciphertext, just
+ *  enough for the UI to show "set" / "not set". */
+export interface DefaultPasswordState {
+  isSet: boolean;
+  updatedAt: number | null;
+}
+
+/** Persistent (browser.storage.local) config for the PIN gate. The salt and
+ *  canary are safe to store — both are useless without the PIN itself, which
+ *  is never stored anywhere. */
+export interface AccountsSecurityConfig {
+  /** Base64, random 16 bytes, generated when the PIN is first set. */
+  salt: string;
+  /** A fixed known string encrypted with the PIN-derived key — decrypting it
+   *  successfully is how a PIN attempt is verified. */
+  pinCheck: EncryptedSecret;
+  /** Minutes an unlocked session lasts before the PIN is required again. 1-360. */
+  sessionMinutes: number;
+  updatedAt: number;
+}
+
+/** What GET_ACCOUNTS_LOCK_STATE returns — never anything sensitive. */
+export interface AccountsLockState {
+  isPinSet: boolean;
+  isUnlocked: boolean;
+  sessionMinutes: number;
 }

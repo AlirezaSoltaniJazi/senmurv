@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import { buildStateAssertions } from '@/shared/tools/state-assertions';
@@ -62,8 +63,8 @@ export function AssertTool(): ReactElement {
         setPicked(message.payload);
       }
     }
-    chrome.runtime.onMessage.addListener(onMessage);
-    return () => chrome.runtime.onMessage.removeListener(onMessage);
+    browser.runtime.onMessage.addListener(onMessage);
+    return () => browser.runtime.onMessage.removeListener(onMessage);
   }, []);
 
   const assertions =

@@ -3,7 +3,8 @@ name: PR - Version Check
 # Guards against accidental version downgrades: fails a PR whose package.json
 # version is LOWER than the base branch. Equal is allowed (the Release workflow
 # bumps at release time); higher is allowed (a deliberate in-PR bump). Also
-# asserts package.json and manifest.json versions stay in lockstep.
+# asserts package.json, manifest.json and manifest.firefox.json versions stay
+# in lockstep.
 on:
   pull_request:
     branches: [main]
@@ -27,26 +28,28 @@ jobs:
           set -euo pipefail
           HEAD_PKG=$(node -p "require('./package.json').version")
           HEAD_MANIFEST=$(node -p "require('./manifest.json').version")
+          HEAD_MANIFEST_FIREFOX=$(node -p "require('./manifest.firefox.json').version")
 
           git fetch --no-tags --depth=1 origin "$BASE_REF"
           git show "FETCH_HEAD:package.json" > "$RUNNER_TEMP/base-package.json"
           BASE_PKG=$(node -p "require('$RUNNER_TEMP/base-package.json').version")
 
           cat > "$RUNNER_TEMP/vercheck.mjs" <<'EOF'
-          const [base, head, manifest] = process.argv.slice(2);
+          const [base, head, manifest, manifestFirefox] = process.argv.slice(2);
           const semverRe = /^\d+\.\d+\.\d+$/;
           for (const [name, v] of [
             ['base package.json', base],
             ['PR package.json', head],
             ['PR manifest.json', manifest],
+            ['PR manifest.firefox.json', manifestFirefox],
           ]) {
             if (!semverRe.test(v)) {
               console.error(`::error::${name} version "${v}" is not MAJOR.MINOR.PATCH.`);
               process.exit(1);
             }
           }
-          if (head !== manifest) {
-            console.error(`::error::package.json (${head}) and manifest.json (${manifest}) differ. Keep them in sync.`);
+          if (head !== manifest || head !== manifestFirefox) {
+            console.error(`::error::package.json (${head}), manifest.json (${manifest}) and manifest.firefox.json (${manifestFirefox}) differ. Keep them in sync.`);
             process.exit(1);
           }
           const cmp = (a, b) => {
@@ -66,4 +69,4 @@ jobs:
               : `PR bumps version ${base} -> ${head}.`
           );
           EOF
-          node "$RUNNER_TEMP/vercheck.mjs" "$BASE_PKG" "$HEAD_PKG" "$HEAD_MANIFEST"
+          node "$RUNNER_TEMP/vercheck.mjs" "$BASE_PKG" "$HEAD_PKG" "$HEAD_MANIFEST" "$HEAD_MANIFEST_FIREFOX"

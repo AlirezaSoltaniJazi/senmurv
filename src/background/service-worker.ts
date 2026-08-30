@@ -1,13 +1,40 @@
-import { BLOCKED_URL_PREFIXES, BYPASS_CSS, MESSAGE_TYPES } from '@/shared/constants';
+import type { Cookies, Runtime, Tabs } from 'webextension-polyfill';
+import { browser } from '@/shared/browser-api';
+import {
+  ACCOUNTS_PIN_MAX_LENGTH,
+  ACCOUNTS_PIN_MIN_LENGTH,
+  BLOCKED_URL_PREFIXES,
+  BYPASS_CSS,
+  FIND_TIMEOUT_SECONDS_DEFAULT,
+  MESSAGE_TYPES,
+} from '@/shared/constants';
+import {
+  changePin,
+  decryptSecret,
+  decryptSecretsWithPin,
+  encryptSecret,
+  getLockState,
+  lockAccounts,
+  setSessionMinutes,
+  setUpPin,
+  unlockWithPin,
+} from '@/shared/crypto';
+import { duplicateAccount, isValidPin, renameGroup, validateAccount } from '@/shared/accounts';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
+import { uniqueName } from '@/shared/script-io';
+import type { ImportedAccount } from '@/shared/data-io';
 import {
+  clearDefaultPasswordRecord,
+  deleteAccount,
   deleteChecklist,
   deleteNote,
   deleteQueryParamSet,
   deleteScript,
   deleteTask,
+  getAccounts,
   getChecklists,
+  getDefaultPasswordRecord,
   getNotes,
   getPrefs,
   deleteProfile,
@@ -15,6 +42,7 @@ import {
   getQueryParamSets,
   getScripts,
   getTasks,
+  saveAccounts,
   saveChecklists,
   saveNotes,
   saveProfiles,
@@ -22,7 +50,9 @@ import {
   saveScripts,
   saveTasks,
   savePrefs,
+  setDefaultPasswordRecord,
   transformTasks,
+  upsertAccountStored,
   upsertProfileStored,
   upsertChecklist,
   upsertNote,
@@ -33,13 +63,18 @@ import {
 import { cookieWriteWarning, parseCookieUrl, urlForPath } from '@/shared/cookie-url';
 import { clearTagInEntries, renameTagInEntries } from '@/shared/tasks';
 import { buildClearPlan } from '@/shared/tools/site-data';
+import { newId } from '@/utils/id';
 import type {
+  Account,
+  AccountDraft,
   ClearOutcome,
   ClearTypeId,
   CookieEdit,
   CookieRow,
   BypassReport,
   BypassState,
+  DefaultPasswordRecord,
+  EncryptedSecret,
   LocatorKind,
   LogicalNameRecord,
   LogicalNamesReport,
@@ -57,16 +92,29 @@ import type {
 // Side panel behavior
 // ---------------------------------------------------------------------------
 
+// chrome.sidePanel has no webextension-polyfill typing — it's a Chrome-only
+// API with no Firefox equivalent, so this one check stays on the native
+// `chrome` global rather than `browser`. In Firefox, `chrome` still exists
+// (as a compatibility alias) but never defines `.sidePanel`, so the check is
+// safely falsy there rather than throwing.
 function enableSidePanelOnActionClick(): void {
-  chrome.sidePanel
-    .setPanelBehavior({ openPanelOnActionClick: true })
-    .catch((err) => console.error('[Senmurv] setPanelBehavior failed:', err));
+  if (chrome.sidePanel) {
+    chrome.sidePanel
+      .setPanelBehavior({ openPanelOnActionClick: true })
+      .catch((err) => console.error('[Senmurv] setPanelBehavior failed:', err));
+  } else if (browser.sidebarAction) {
+    browser.action.onClicked.addListener(() => {
+      // Must be the first synchronous statement — Firefox revokes the
+      // "user gesture" flag after any await (Bugzilla 1800401).
+      void browser.sidebarAction.toggle();
+    });
+  }
 }
 
 // Runs whenever the service worker wakes — cheap and idempotent.
 enableSidePanelOnActionClick();
 
-chrome.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener(() => {
   enableSidePanelOnActionClick();
 });
 
@@ -88,12 +136,12 @@ function isRunnableUrl(url: string | undefined): boolean {
 // modes on that tab when the panel closes (see the onConnect handler below).
 let drivenTabId: number | undefined;
 
-async function getActiveTab(): Promise<chrome.tabs.Tab | undefined> {
+async function getActiveTab(): Promise<Tabs.Tab | undefined> {
   try {
-    const [tab] = await chrome.tabs.query({ active: true, lastFocusedWindow: true });
+    const [tab] = await browser.tabs.query({ active: true, lastFocusedWindow: true });
     return tab;
   } catch {
-    // chrome.tabs.query can reject during window teardown / no-window states.
+    // browser.tabs.query can reject during window teardown / no-window states.
     // Treat it as "no active tab" so the caller answers cleanly instead of hanging.
     return undefined;
   }
@@ -134,12 +182,65 @@ async function withActiveRunnableTab<T>(
   return withActiveTab((tab) => fn(tab.id));
 }
 
+/**
+ * Resolve the active tab WITHOUT the current-URL runnable check — Accounts'
+ * login flow is about to navigate this tab away from whatever it currently
+ * shows (which could legitimately be `chrome://newtab`), so gating on the
+ * tab's URL before that navigation happens would be wrong. `isRunnableUrl` is
+ * still applied to the account's saved address itself, in `runAccountLogin`.
+ */
+async function withAnyActiveTab<T>(fn: (tabId: number) => Promise<Result<T>>): Promise<Result<T>> {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.id) return { ok: false, error: 'No active tab found.' };
+    drivenTabId = tab.id;
+    return await fn(tab.id);
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+const NAVIGATE_TIMEOUT_MS = 20_000;
+
+/**
+ * Navigate `tabId` to `url` and wait for it to finish loading. No precedent
+ * for this existed anywhere in the codebase before Accounts — the one other
+ * `tabs.update` call site (QueryParamsTool) is fire-and-forget.
+ */
+function navigateAndWaitForLoad(tabId: number, url: string): Promise<Result<void>> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: Result<void>): void => {
+      if (settled) return;
+      settled = true;
+      browser.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timer);
+      resolve(result);
+    };
+    // Filtered by hand inside the callback, NOT via the `{tabId}` filter-object
+    // overload some engines accept — that overload is Chrome-only and silently
+    // unsupported on Firefox, which this codebase also targets.
+    function onUpdated(updatedTabId: number, changeInfo: Tabs.OnUpdatedChangeInfoType): void {
+      if (updatedTabId !== tabId) return;
+      if (changeInfo.status === 'complete') finish({ ok: true, value: undefined });
+    }
+    const timer = setTimeout(
+      () => finish({ ok: false, error: 'Timed out waiting for the page to finish loading.' }),
+      NAVIGATE_TIMEOUT_MS
+    );
+    browser.tabs.onUpdated.addListener(onUpdated);
+    void browser.tabs
+      .update(tabId, { url })
+      .catch((err) => finish({ ok: false, error: errorMessage(err) }));
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Execute JS Script — MAIN-world injection
 // ---------------------------------------------------------------------------
 
 /**
- * Injected into the page's MAIN world and serialized by chrome.scripting, so it
+ * Injected into the page's MAIN world and serialized by browser.scripting, so it
  * MUST be self-contained (no closures, no imports). It evaluates user-provided
  * code via `new Function` — this is the extension's purpose and runs under the
  * PAGE's CSP, exactly like a `javascript:` bookmarklet, never the extension's.
@@ -179,7 +280,7 @@ function runUserScript(
 
 async function runScriptInPage(tabId: number, code: string): Promise<Result<void>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: runUserScript,
@@ -203,7 +304,7 @@ async function runScriptInPage(tabId: number, code: string): Promise<Result<void
  */
 async function stopFlowInPage(tabId: number): Promise<Result<void>> {
   try {
-    await chrome.scripting.executeScript({
+    await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: () => {
@@ -238,9 +339,9 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * open before the extension loaded, so `document_idle` never ran for it.
  */
 async function injectPicker(tabId: number): Promise<void> {
-  const files = (chrome.runtime.getManifest().content_scripts ?? []).flatMap((cs) => cs.js ?? []);
+  const files = (browser.runtime.getManifest().content_scripts ?? []).flatMap((cs) => cs.js ?? []);
   if (files.length === 0) throw new Error('No content script registered.');
-  await chrome.scripting.executeScript({ target: { tabId }, files });
+  await browser.scripting.executeScript({ target: { tabId }, files });
 }
 
 /** Send a message, retrying briefly while a just-injected content script loads. */
@@ -350,7 +451,7 @@ async function testLocator(
   kind: LocatorKind
 ): Promise<Result<{ count: number }>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       func: countMatchesInPage,
       args: [query, kind],
@@ -382,7 +483,7 @@ async function bypassPage(tabId: number, message: RuntimeMessage): Promise<Resul
   // Extension-injected CSS is immune to the page's style-src CSP; an appended
   // <style> element would not be.
   try {
-    await chrome.scripting.insertCSS({ target: { tabId }, ...BYPASS_SHEET });
+    await browser.scripting.insertCSS({ target: { tabId }, ...BYPASS_SHEET });
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
@@ -392,7 +493,7 @@ async function bypassPage(tabId: number, message: RuntimeMessage): Promise<Resul
 async function restorePage(tabId: number, message: RuntimeMessage): Promise<Result<BypassReport>> {
   const result = await askTab<BypassReport>(tabId, message);
   try {
-    await chrome.scripting.removeCSS({ target: { tabId }, ...BYPASS_SHEET });
+    await browser.scripting.removeCSS({ target: { tabId }, ...BYPASS_SHEET });
   } catch {
     // Nothing was injected, or the tab navigated away — the attributes that
     // matter are already restored, so this is not worth failing the call for.
@@ -408,7 +509,7 @@ function detectXrm(): boolean {
 
 async function probeXrm(tabId: number): Promise<boolean> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: detectXrm,
@@ -508,7 +609,7 @@ function xrmBypass(): {
 
 async function bypassXrm(tabId: number): Promise<Result<XrmReport>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: xrmBypass,
@@ -537,7 +638,7 @@ async function bypassXrm(tabId: number): Promise<Result<XrmReport>> {
  * Serialized, therefore self-contained: no closures, no imports, and the Xrm
  * shapes are declared inline (types erase; only runtime code is transferred).
  * `Xrm.Utility.getEntityMetadata` is async, so this func is async too —
- * `chrome.scripting.executeScript` awaits a returned promise before handing
+ * `browser.scripting.executeScript` awaits a returned promise before handing
  * back `results[0].result` (see probeStorageInPage for the same shape).
  */
 async function readXrmWebApiUrl(): Promise<{
@@ -596,7 +697,7 @@ async function readXrmWebApiUrl(): Promise<{
 
 async function xrmWebApiUrl(tabId: number): Promise<Result<XrmWebApiRecord>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: readXrmWebApiUrl,
@@ -688,7 +789,7 @@ function readXrmLogicalNames(): {
 async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesReport>> {
   let records: LogicalNameRecord[];
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: readXrmLogicalNames,
@@ -934,7 +1035,7 @@ async function clearStorageInPage(
 
 async function probeSiteStorage(tabId: number): Promise<Result<StorageProbe>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       func: probeStorageInPage,
     });
@@ -959,7 +1060,7 @@ async function clearSiteData(
   try {
     // ISOLATED world (no `world` key): a content script's storage is the page
     // origin's, which is what we clear. `types` is already validated.
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       func: clearStorageInPage,
       args: [[...plan.value.types]],
@@ -981,7 +1082,7 @@ async function clearSiteData(
     try {
       // The one way past the HTTP cache, which no extension API can clear for a
       // single origin.
-      await chrome.tabs.reload(tabId, { bypassCache: true });
+      await browser.tabs.reload(tabId, { bypassCache: true });
       didReload = true;
     } catch {
       // The tab may have gone; the data is still cleared.
@@ -1252,7 +1353,7 @@ function regionStateShim(): { active: boolean; config: RegionConfig | null } {
 
 async function applyRegion(tabId: number, config: RegionConfig): Promise<Result<void>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: applyRegionShim,
@@ -1268,7 +1369,7 @@ async function applyRegion(tabId: number, config: RegionConfig): Promise<Result<
 
 async function restoreRegion(tabId: number): Promise<Result<void>> {
   try {
-    await chrome.scripting.executeScript({
+    await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: restoreRegionShim,
@@ -1283,7 +1384,7 @@ async function getRegionState(
   tabId: number
 ): Promise<Result<{ active: boolean; config: RegionConfig | null }>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: regionStateShim,
@@ -1369,7 +1470,7 @@ function clearWebStorageInPage(area: 'local' | 'session'): string | null {
 
 async function readWebStorage(tabId: number): Promise<Result<WebStorageSnapshot>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       func: readWebStorageInPage,
     });
@@ -1388,7 +1489,7 @@ async function mutateWebStorage(
   args: unknown[]
 ): Promise<Result<void>> {
   try {
-    const results = await chrome.scripting.executeScript({
+    const results = await browser.scripting.executeScript({
       target: { tabId },
       func: func as (...a: unknown[]) => string | null,
       args,
@@ -1402,20 +1503,20 @@ async function mutateWebStorage(
 }
 
 // ---------------------------------------------------------------------------
-// Cookies tab — chrome.cookies against the active tab's URL
+// Cookies tab — browser.cookies against the active tab's URL
 // ---------------------------------------------------------------------------
 
 /**
  * Validate the tab's URL as a cookie-addressable http(s) page. Takes the URL
  * directly (already resolved by withActiveTab) rather than re-fetching the
- * tab via chrome.tabs.get — every caller here is reached through
- * withActiveTab, which already paid for exactly one chrome.tabs.query.
+ * tab via browser.tabs.get — every caller here is reached through
+ * withActiveTab, which already paid for exactly one browser.tabs.query.
  */
 function cookieUrlFrom(url: string | undefined): Result<URL> {
   return parseCookieUrl(url ?? '');
 }
 
-function toCookieRow(c: chrome.cookies.Cookie): CookieRow {
+function toCookieRow(c: Cookies.Cookie): CookieRow {
   return {
     name: c.name,
     value: c.value,
@@ -1442,7 +1543,7 @@ async function listCookies(
   const urlRes = cookieUrlFrom(url);
   if (!urlRes.ok) return urlRes;
   try {
-    const all = await chrome.cookies.getAll({ domain: urlRes.value.hostname });
+    const all = await browser.cookies.getAll({ domain: urlRes.value.hostname });
     const rows = all.map(toCookieRow).sort((a, b) => a.name.localeCompare(b.name));
     return { ok: true, value: { origin: urlRes.value.origin, rows } };
   } catch (err) {
@@ -1459,7 +1560,7 @@ async function setCookie(url: string | undefined, edit: CookieEdit): Promise<Res
   try {
     // `domain` is deliberately omitted so Chrome derives a host-only cookie from
     // the URL — that side-steps the leading-dot rule and the __Host- prefix trap.
-    const details: chrome.cookies.SetDetails = {
+    const details: Cookies.SetDetailsType = {
       url: urlForPath(urlRes.value, path),
       name: edit.name.trim(),
       value: edit.value,
@@ -1469,7 +1570,7 @@ async function setCookie(url: string | undefined, edit: CookieEdit): Promise<Res
       sameSite: edit.sameSite,
     };
     if (edit.expirationDate !== null) details.expirationDate = edit.expirationDate;
-    const written = await chrome.cookies.set(details);
+    const written = await browser.cookies.set(details);
     if (written === null) {
       return { ok: false, error: 'Chrome rejected the cookie (check Secure / SameSite / name).' };
     }
@@ -1487,7 +1588,7 @@ async function removeCookie(
   const urlRes = cookieUrlFrom(url);
   if (!urlRes.ok) return urlRes;
   try {
-    await chrome.cookies.remove({ url: urlForPath(urlRes.value, path || '/'), name });
+    await browser.cookies.remove({ url: urlForPath(urlRes.value, path || '/'), name });
     return { ok: true, value: undefined };
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
@@ -1499,12 +1600,14 @@ async function clearCookies(url: string | undefined): Promise<Result<number>> {
   const urlRes = cookieUrlFrom(url);
   if (!urlRes.ok) return urlRes;
   try {
-    const all = await chrome.cookies.getAll({ domain: urlRes.value.hostname });
+    const all = await browser.cookies.getAll({ domain: urlRes.value.hostname });
     // Concurrent, not sequential — each removal targets an independent
     // name+path pulled from the same snapshot, so nothing depends on order.
     // allSettled (not all) so one un-addressable cookie can't abort the rest.
     const results = await Promise.allSettled(
-      all.map((c) => chrome.cookies.remove({ url: urlForPath(urlRes.value, c.path), name: c.name }))
+      all.map((c) =>
+        browser.cookies.remove({ url: urlForPath(urlRes.value, c.path), name: c.name })
+      )
     );
     const removed = results.filter((r) => r.status === 'fulfilled').length;
     return { ok: true, value: removed };
@@ -1514,17 +1617,292 @@ async function clearCookies(url: string | undefined): Promise<Result<number>> {
 }
 
 // ---------------------------------------------------------------------------
+// Accounts tab — saved logins, PIN-locked encryption
+// ---------------------------------------------------------------------------
+
+const PIN_LENGTH_ERROR = `PIN must be ${ACCOUNTS_PIN_MIN_LENGTH}-${ACCOUNTS_PIN_MAX_LENGTH} digits.`;
+
+/**
+ * Resolve a draft's password state: keep the existing encrypted password,
+ * encrypt a newly-entered one, or drop it entirely for `useDefaultPassword`.
+ * Then validate and persist. `shared/crypto.ts` throws when Accounts are
+ * locked (caught by this handler's `.catch` in the switch below), so a save
+ * that needs to encrypt a password while locked fails with a clear error.
+ */
+async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
+  const now = Date.now();
+  const existing = (await getAccounts()).find((a) => a.id === draft.id);
+
+  let encryptedPassword = existing?.encryptedPassword;
+  if (draft.useDefaultPassword) {
+    encryptedPassword = undefined;
+  } else if (draft.newPassword !== undefined) {
+    if (draft.newPassword.trim() === '') {
+      return { ok: false, error: 'Enter a password, or check "use default password".' };
+    }
+    encryptedPassword = await encryptSecret(draft.newPassword);
+  } else if (!encryptedPassword) {
+    return { ok: false, error: 'Enter a password, or check "use default password".' };
+  }
+
+  const candidate: Account = {
+    id: draft.id,
+    name: draft.name,
+    address: draft.address,
+    username: draft.username,
+    useDefaultPassword: draft.useDefaultPassword,
+    usernameField: draft.usernameField,
+    passwordField: draft.passwordField,
+    loginButton: draft.loginButton,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
+  if (draft.group) candidate.group = draft.group;
+  if (draft.description) candidate.description = draft.description;
+
+  const validated = validateAccount(candidate);
+  if (!validated.ok) return validated;
+  return { ok: true, value: await upsertAccountStored(validated.value) };
+}
+
+/** Clone a saved account (fresh id, de-duplicated name). Crypto-free — the
+ *  copied ciphertext is valid under any id — so this works even while
+ *  Accounts is locked. */
+async function duplicateAccountInStore(id: string): Promise<Result<Account[]>> {
+  const accounts = await getAccounts();
+  const cloned = duplicateAccount(accounts, id, Date.now());
+  if (!cloned.ok) return cloned;
+  return { ok: true, value: await upsertAccountStored(cloned.value) };
+}
+
+/** Rename a group across every account that carries it. Pure/crypto-free —
+ *  works even while Accounts is locked, same as duplicateAccountInStore. */
+async function renameGroupInStore(from: string, to: string): Promise<Account[]> {
+  const renamed = renameGroup(await getAccounts(), from, to);
+  await saveAccounts(renamed);
+  return renamed;
+}
+
+/**
+ * Decrypt `ids` (or every saved account, if omitted) plus the shared default
+ * password, for the Accounts export. Re-verifies `pin` directly via
+ * decryptSecretsWithPin — independent of whatever the ambient unlock session
+ * is, since exporting plaintext passwords always re-requires the PIN.
+ */
+async function exportAccounts(
+  pin: string,
+  ids: string[] | undefined
+): Promise<Result<{ accounts: ImportedAccount[]; defaultPassword?: string }>> {
+  const all = await getAccounts();
+  const accounts = ids ? all.filter((a) => ids.includes(a.id)) : all;
+
+  const secrets: EncryptedSecret[] = [];
+  const secretIndexByAccountId = new Map<string, number>();
+  for (const a of accounts) {
+    if (a.encryptedPassword) {
+      secretIndexByAccountId.set(a.id, secrets.length);
+      secrets.push(a.encryptedPassword);
+    }
+  }
+  const defaultRecord = await getDefaultPasswordRecord();
+  const defaultPasswordIndex = defaultRecord ? secrets.length : -1;
+  if (defaultRecord) secrets.push(defaultRecord.encryptedPassword);
+
+  const decrypted = await decryptSecretsWithPin(pin, secrets);
+  if (!decrypted.ok) return decrypted;
+
+  const exported: ImportedAccount[] = accounts.map((a) => {
+    const out: ImportedAccount = {
+      name: a.name,
+      address: a.address,
+      username: a.username,
+      useDefaultPassword: a.useDefaultPassword,
+      usernameField: a.usernameField,
+      passwordField: a.passwordField,
+      loginButton: a.loginButton,
+    };
+    const idx = secretIndexByAccountId.get(a.id);
+    if (idx !== undefined) out.password = decrypted.value[idx]!;
+    if (a.group) out.group = a.group;
+    if (a.description) out.description = a.description;
+    return out;
+  });
+
+  const result: { accounts: ImportedAccount[]; defaultPassword?: string } = { accounts: exported };
+  if (defaultPasswordIndex !== -1) result.defaultPassword = decrypted.value[defaultPasswordIndex]!;
+  return { ok: true, value: result };
+}
+
+/**
+ * Encrypt and add every imported account as a new entry (fresh id, name
+ * de-duplicated against the current list via the same `uniqueName` helper
+ * `duplicateAccount` uses) — never overwrites an existing account by id,
+ * since an imported id came from a different install and matching it against
+ * a local one would be a coincidence, not intent. Requires Accounts to be
+ * unlocked: encryptSecret throws the standard "locked" error otherwise, which
+ * propagates to this message's response like any other Accounts write.
+ */
+async function importAccountsInStore(
+  imported: ImportedAccount[],
+  defaultPassword: string | undefined
+): Promise<Result<Account[]>> {
+  const now = Date.now();
+  const current = await getAccounts();
+  const names = new Set(current.map((a) => a.name));
+  const additions: Account[] = [];
+
+  for (const imp of imported) {
+    let encryptedPassword: EncryptedSecret | undefined;
+    if (!imp.useDefaultPassword) {
+      if (!imp.password) {
+        return { ok: false, error: `"${imp.name}" needs a password, or useDefaultPassword: true.` };
+      }
+      encryptedPassword = await encryptSecret(imp.password);
+    }
+    const name = uniqueName(imp.name, names);
+    names.add(name);
+    const candidate: Account = {
+      id: newId('acct_'),
+      name,
+      address: imp.address,
+      username: imp.username,
+      useDefaultPassword: imp.useDefaultPassword,
+      usernameField: imp.usernameField,
+      passwordField: imp.passwordField,
+      loginButton: imp.loginButton,
+      createdAt: now,
+      updatedAt: now,
+    };
+    if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
+    if (imp.group) candidate.group = imp.group;
+    if (imp.description) candidate.description = imp.description;
+    const validated = validateAccount(candidate);
+    if (!validated.ok) return validated;
+    additions.push(validated.value);
+  }
+
+  let defaultPasswordRecord: DefaultPasswordRecord | undefined;
+  if (defaultPassword) {
+    defaultPasswordRecord = {
+      encryptedPassword: await encryptSecret(defaultPassword),
+      updatedAt: now,
+    };
+  }
+
+  const next = [...current, ...additions];
+  await saveAccounts(next);
+  if (defaultPasswordRecord) await setDefaultPasswordRecord(defaultPasswordRecord);
+  return { ok: true, value: next };
+}
+
+/**
+ * Navigate to the saved account's address, wait for the page to load, decrypt
+ * the right password (the account's own, or the shared default), and ask the
+ * content script to fill + click via the saved locators.
+ */
+async function runAccountLogin(tabId: number, id: string): Promise<Result<void>> {
+  const account = (await getAccounts()).find((a) => a.id === id);
+  if (!account) return { ok: false, error: 'Account not found — it may have been deleted.' };
+
+  if (!isRunnableUrl(account.address)) {
+    return { ok: false, error: 'This address is not allowed (chrome://, Web Store, or similar).' };
+  }
+
+  let password: string;
+  try {
+    if (account.useDefaultPassword) {
+      const record = await getDefaultPasswordRecord();
+      if (!record) {
+        return {
+          ok: false,
+          error:
+            'No default password is set — set one in Accounts, or give this account its own password.',
+        };
+      }
+      password = await decryptSecret(record.encryptedPassword);
+    } else {
+      if (!account.encryptedPassword)
+        return { ok: false, error: 'This account has no password saved.' };
+      password = await decryptSecret(account.encryptedPassword);
+    }
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+
+  const navResult = await navigateAndWaitForLoad(tabId, account.address);
+  if (!navResult.ok) return navResult;
+
+  const prefs = await getPrefs();
+  const timeoutMs = (prefs.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000;
+
+  return askTab<void>(tabId, {
+    type: MESSAGE_TYPES.ACCOUNT_LOGIN_FILL,
+    payload: {
+      username: account.username,
+      password,
+      usernameField: account.usernameField,
+      passwordField: account.passwordField,
+      loginButton: account.loginButton,
+      timeoutMs,
+    },
+  });
+}
+
+/**
+ * Change the PIN and re-encrypt every existing secret (every account's own
+ * password, plus the shared default password if one is set) under the new
+ * key. shared/crypto.ts's changePin computes everything before returning —
+ * nothing is written until this function persists it, so a failure never
+ * leaves mixed old-key/new-key ciphertext on disk.
+ */
+async function changeAccountsPin(currentPin: string, newPin: string): Promise<Result<void>> {
+  const accounts = await getAccounts();
+  const defaultRecord = await getDefaultPasswordRecord();
+
+  const secretsToReencrypt: EncryptedSecret[] = [];
+  for (const account of accounts) {
+    if (account.encryptedPassword) secretsToReencrypt.push(account.encryptedPassword);
+  }
+  if (defaultRecord) secretsToReencrypt.push(defaultRecord.encryptedPassword);
+
+  const result = await changePin(currentPin, newPin, secretsToReencrypt);
+  if (!result.ok) return result;
+
+  let cursor = 0;
+  const updatedAccounts = accounts.map((account) => {
+    if (!account.encryptedPassword) return account;
+    const encryptedPassword = result.value.reencrypted[cursor];
+    cursor += 1;
+    return { ...account, encryptedPassword: encryptedPassword! };
+  });
+  await saveAccounts(updatedAccounts);
+
+  if (defaultRecord) {
+    const encryptedPassword = result.value.reencrypted[cursor]!;
+    await setDefaultPasswordRecord({ encryptedPassword, updatedAt: Date.now() });
+  }
+
+  return { ok: true, value: undefined };
+}
+
+// ---------------------------------------------------------------------------
 // Message hub
 // ---------------------------------------------------------------------------
 
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+// The polyfill's OnMessageListener union type checks a listener against ONE
+// of {always-true callback, async, no-response} — it has no way to express
+// "true when responding asynchronously, otherwise undefined", which is the
+// standard MV3 idiom and exactly what this listener does. Cast rather than
+// force every early-exit path to a shape that doesn't match its behavior.
+browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse) => {
   // isRuntimeMessage only validates the `type` discriminant, not the payload
   // shape. A valid-type message with a missing/renamed payload throws
   // synchronously here (e.g. reading `message.payload.script`); catch it so the
   // caller gets an error instead of a hung `sendMessage`. Async branches guard
   // themselves via withActiveTab / the storage `.catch`.
   try {
-    if (!isRuntimeMessage(message)) return false;
+    if (!isRuntimeMessage(message)) return undefined;
 
     switch (message.type) {
       case MESSAGE_TYPES.GET_SCRIPTS:
@@ -1829,16 +2207,138 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
+      case MESSAGE_TYPES.GET_ACCOUNTS:
+        getAccounts()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_ACCOUNT:
+        saveAccount(message.payload.account)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_ACCOUNT:
+        deleteAccount(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DUPLICATE_ACCOUNT:
+        duplicateAccountInStore(message.payload.id)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.RENAME_GROUP:
+        renameGroupInStore(message.payload.from, message.payload.to)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.EXPORT_ACCOUNTS:
+        exportAccounts(message.payload.pin, message.payload.ids)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.IMPORT_ACCOUNTS:
+        importAccountsInStore(message.payload.accounts, message.payload.defaultPassword)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE:
+        getDefaultPasswordRecord()
+          .then((record) =>
+            sendResponse({
+              ok: true,
+              value: { isSet: record !== undefined, updatedAt: record?.updatedAt ?? null },
+            })
+          )
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD: {
+        const password = message.payload.password.trim();
+        if (password === '') {
+          sendResponse({ ok: false, error: 'Enter a password.' });
+          return true;
+        }
+        encryptSecret(password)
+          .then((encryptedPassword) =>
+            setDefaultPasswordRecord({ encryptedPassword, updatedAt: Date.now() })
+          )
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+      }
+
+      case MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD:
+        clearDefaultPasswordRecord()
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE:
+        getLockState()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_ACCOUNTS_PIN:
+        if (!isValidPin(message.payload.pin)) {
+          sendResponse({ ok: false, error: PIN_LENGTH_ERROR });
+          return true;
+        }
+        setUpPin(message.payload.pin, message.payload.sessionMinutes)
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.UNLOCK_ACCOUNTS:
+        unlockWithPin(message.payload.pin)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.CHANGE_ACCOUNTS_PIN:
+        if (!isValidPin(message.payload.newPin)) {
+          sendResponse({ ok: false, error: PIN_LENGTH_ERROR });
+          return true;
+        }
+        changeAccountsPin(message.payload.currentPin, message.payload.newPin)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_ACCOUNTS_SESSION_MINUTES:
+        setSessionMinutes(message.payload.minutes)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.LOCK_ACCOUNTS:
+        lockAccounts()
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.RUN_ACCOUNT_LOGIN:
+        withAnyActiveTab((tabId) => runAccountLogin(tabId, message.payload.id)).then(sendResponse);
+        return true;
+
       default:
         // ELEMENT_PICKED / PICK_CANCELLED / FIELD_PICKED / ACTION_RECORDED are
         // addressed to the side panel, which listens directly.
-        return false;
+        return undefined;
     }
   } catch (err) {
     sendResponse({ ok: false, error: errorMessage(err) });
     return true;
   }
-});
+}) as Runtime.OnMessageListenerCallback);
 
 // ---------------------------------------------------------------------------
 // Side-panel lifecycle — tear down in-page modes when the panel closes
@@ -1854,7 +2354,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 // The panel heartbeats over the port (< the 30s idle threshold) so the SW stays
 // alive while the panel is open — meaning onDisconnect fires ONLY on a genuine
 // close, never on an idle-SW recycle that would wrongly kill an active hover.
-chrome.runtime.onConnect.addListener((port) => {
+browser.runtime.onConnect.addListener((port) => {
   if (port.name !== 'panel') return;
   // Draining heartbeats is enough; their arrival is what keeps the SW awake.
   port.onMessage.addListener(() => {});

@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangeEvent, ReactElement } from 'react';
+import { groupAccounts } from '@/shared/accounts';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import {
@@ -9,18 +10,21 @@ import {
   applyQueryParamSetImport,
   checklistImportConflicts,
   noteImportConflicts,
+  parseAccountsImport,
   parseChecklistsImport,
   parseNotesImport,
   parseProfilesImport,
   parseQueryParamSetsImport,
   profileImportConflicts,
   queryParamSetImportConflicts,
+  serializeAccountsExport,
   serializeChecklists,
   serializeNotes,
   serializeProfiles,
   serializeQueryParamSets,
 } from '@/shared/data-io';
 import type {
+  ImportedAccount,
   ImportedChecklist,
   ImportedNote,
   ImportedProfile,
@@ -35,7 +39,15 @@ import {
   serializeScripts,
 } from '@/shared/script-io';
 import type { ImportedScript, ImportMode } from '@/shared/script-io';
-import type { Checklist, Note, Result, SavedScript, ValueProfile } from '@/shared/types';
+import type {
+  Account,
+  AccountsLockState,
+  Checklist,
+  Note,
+  Result,
+  SavedScript,
+  ValueProfile,
+} from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
 
 interface Props {
@@ -43,7 +55,7 @@ interface Props {
   reloadNonce: number;
 }
 
-type Kind = 'scripts' | 'profiles' | 'queryParams' | 'notes' | 'checklists';
+type Kind = 'scripts' | 'profiles' | 'queryParams' | 'notes' | 'checklists' | 'accounts';
 
 const KINDS: { key: Kind; label: string }[] = [
   { key: 'scripts', label: 'Scripts' },
@@ -51,6 +63,7 @@ const KINDS: { key: Kind; label: string }[] = [
   { key: 'queryParams', label: 'Query params' },
   { key: 'notes', label: 'Notes' },
   { key: 'checklists', label: 'My Tasks' },
+  { key: 'accounts', label: 'Accounts' },
 ];
 
 /** A staged import, tagged with the kind it was parsed as (so a kind switch can't mix them up). */
@@ -59,7 +72,8 @@ type PendingImport =
   | { kind: 'profiles'; items: ImportedProfile[] }
   | { kind: 'queryParams'; items: ImportedQueryParamSet[] }
   | { kind: 'notes'; items: ImportedNote[] }
-  | { kind: 'checklists'; items: ImportedChecklist[] };
+  | { kind: 'checklists'; items: ImportedChecklist[] }
+  | { kind: 'accounts'; items: ImportedAccount[]; defaultPassword?: string };
 
 /** One row in the staged-import panel. */
 interface PendingRow {
@@ -91,6 +105,8 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
   const [sets, setSets] = useState<QueryParamSet[]>([]);
   const [notes, setNotes] = useState<Note[]>([]);
   const [checklists, setChecklists] = useState<Checklist[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountsLockState, setAccountsLockState] = useState<AccountsLockState | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -98,6 +114,14 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
   const [pending, setPending] = useState<PendingImport | null>(null);
   const [pendingSel, setPendingSel] = useState<boolean[]>([]);
   const [importMode, setImportMode] = useState<ImportMode>('overwrite');
+  // Accounts export re-requires the PIN — a small inline confirm form rather
+  // than an immediate download, unlike every other kind's one-click export.
+  const [showExportPin, setShowExportPin] = useState(false);
+  const [exportPin, setExportPin] = useState('');
+  // Off by default even when the import file carries one — overwriting the
+  // shared default password (used by every "use default password" account)
+  // should be an opt-in the user notices, not a silent side effect.
+  const [importDefaultPassword, setImportDefaultPassword] = useState(false);
 
   // Load the active kind's full list on mount and whenever it (or reloadNonce)
   // changes. Only the active kind is fetched — the other four lists are pulled
@@ -139,6 +163,18 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
           if (!cancelled && res.ok) setChecklists(res.value);
           return;
         }
+        case 'accounts': {
+          const [accountsRes, lockRes] = await Promise.all([
+            sendRuntimeMessage<Result<Account[]>>({ type: MESSAGE_TYPES.GET_ACCOUNTS }),
+            sendRuntimeMessage<Result<AccountsLockState>>({
+              type: MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE,
+            }),
+          ]);
+          if (cancelled) return;
+          if (accountsRes.ok) setAccounts(accountsRes.value);
+          if (lockRes.ok) setAccountsLockState(lockRes.value);
+          return;
+        }
       }
     })();
     return () => {
@@ -155,6 +191,9 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
     setPendingSel([]);
     setStatus(null);
     setError(null);
+    setShowExportPin(false);
+    setExportPin('');
+    setImportDefaultPassword(false);
   }, [kind]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
@@ -178,6 +217,23 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
       } else {
         next.delete(folderId);
         for (const id of childIds) next.delete(id);
+      }
+      return next;
+    });
+  }
+
+  /** An Accounts group's checkbox cascades to every account in it — unlike
+   *  toggleSelectFolder, there's no real "group" entity with its own id to
+   *  track, so the checkbox's own state is just "are all its accounts
+   *  currently selected", not a persisted id of its own. */
+  function toggleSelectGroup(ids: string[]): void {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const allSelected = ids.every((id) => next.has(id));
+      if (allSelected) {
+        for (const id of ids) next.delete(id);
+      } else {
+        for (const id of ids) next.add(id);
       }
       return next;
     });
@@ -244,7 +300,45 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
       case 'checklists':
         exportChecklists();
         return;
+      case 'accounts':
+        // Handled by handleExportClick instead — exporting decrypted
+        // passwords always re-requires the PIN, so it can't be a one-click
+        // download like every other kind.
+        return;
     }
+  }
+
+  // Accounts is the one kind whose Export button doesn't download immediately —
+  // it opens the PIN-confirm form below instead.
+  function handleExportClick(): void {
+    if (kind === 'accounts') {
+      setError(null);
+      setStatus(null);
+      setShowExportPin(true);
+      return;
+    }
+    exportCurrent();
+  }
+
+  async function confirmExportAccounts(): Promise<void> {
+    setError(null);
+    const ids = selected.size > 0 ? [...selected] : undefined;
+    const payload: { pin: string; ids?: string[] } = { pin: exportPin };
+    if (ids) payload.ids = ids;
+    const res = await sendRuntimeMessage<
+      Result<{ accounts: ImportedAccount[]; defaultPassword?: string }>
+    >({ type: MESSAGE_TYPES.EXPORT_ACCOUNTS, payload });
+    setExportPin('');
+    if (!res.ok) {
+      setError(res.error);
+      return;
+    }
+    setShowExportPin(false);
+    download(
+      serializeAccountsExport(res.value.accounts, res.value.defaultPassword),
+      'senmurv-accounts.json'
+    );
+    setStatus(`Exported ${res.value.accounts.length} account(s).`);
   }
 
   function currentCount(): number {
@@ -259,6 +353,8 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
         return notes.length;
       case 'checklists':
         return checklists.length;
+      case 'accounts':
+        return accounts.length;
     }
   }
 
@@ -322,6 +418,20 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
         setPendingSel(parsed.value.map(() => true));
         return;
       }
+      case 'accounts': {
+        const parsed = parseAccountsImport(text);
+        if (!parsed.ok) {
+          setError(parsed.error);
+          return;
+        }
+        const next: PendingImport = { kind: 'accounts', items: parsed.value.accounts };
+        if (parsed.value.defaultPassword !== undefined) {
+          next.defaultPassword = parsed.value.defaultPassword;
+        }
+        setPending(next);
+        setPendingSel(parsed.value.accounts.map(() => true));
+        return;
+      }
     }
   }
 
@@ -358,6 +468,17 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
           label: imp.title,
           conflict: checklistImportConflicts(checklists, imp),
         }));
+      case 'accounts':
+        // Accounts always keeps both (fresh id, de-duplicated name) rather
+        // than offering an overwrite mode — an imported id came from a
+        // different install, so matching it against a local account would be
+        // a coincidence, not intent. "conflict" here is informational only:
+        // it'll be saved under a suffixed name, not overwritten.
+        return p.items.map((imp, i) => ({
+          key: `${imp.name}-${i}`,
+          label: imp.name,
+          conflict: accounts.some((a) => a.name === imp.name),
+        }));
     }
   }
 
@@ -377,6 +498,18 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
         }
       }
       return next;
+    });
+  }
+
+  // Checking an Accounts import group's checkbox selects every staged account
+  // in that group in one go (and clearing it clears them) — the Accounts
+  // equivalent of togglePending's folder cascade above, just driven by the
+  // `group` field instead of a real staged folder item.
+  function toggleGroupSelection(indices: number[]): void {
+    setPendingSel((prev) => {
+      const allSelected = indices.every((i) => prev[i]);
+      const nextValue = !allSelected;
+      return prev.map((v, i) => (indices.includes(i) ? nextValue : v));
     });
   }
 
@@ -490,6 +623,31 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
         setStatus(`Imported ${chosen.length} checklist(s) (${importMode}).`);
         return;
       }
+      case 'accounts': {
+        const chosen = pending.items.filter((_, i) => pendingSel[i]);
+        if (chosen.length === 0) {
+          cancelImport();
+          return;
+        }
+        const payload: { accounts: ImportedAccount[]; defaultPassword?: string } = {
+          accounts: chosen,
+        };
+        if (importDefaultPassword && pending.defaultPassword !== undefined) {
+          payload.defaultPassword = pending.defaultPassword;
+        }
+        const res = await sendRuntimeMessage<Result<Account[]>>({
+          type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+          payload,
+        });
+        if (!res.ok) {
+          setError(res.error);
+          return;
+        }
+        setAccounts(res.value);
+        cancelImport();
+        setStatus(`Imported ${chosen.length} account(s).`);
+        return;
+      }
     }
   }
 
@@ -568,6 +726,47 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
     );
   }
 
+  /** Accounts view: grouped like the Accounts tab's own list — a group's
+   *  checkbox selects/deselects every account in it at once. */
+  function renderAccountsList(): ReactElement {
+    if (accounts.length === 0) {
+      return <p className="hint">No saved accounts yet.</p>;
+    }
+    return (
+      <ul className="script-list">
+        {groupAccounts(accounts).map((group) => {
+          const ids = group.accounts.map((a) => a.id);
+          const allSelected = ids.every((id) => selected.has(id));
+          return (
+            <Fragment key={group.name}>
+              <li className="script-row folder-row">
+                <input
+                  type="checkbox"
+                  checked={allSelected}
+                  onChange={() => toggleSelectGroup(ids)}
+                  title="Select/deselect this whole group for export"
+                />
+                <span className="folder-name script-name">{group.name}</span>
+                <span className="dim">{ids.length}</span>
+              </li>
+              {group.accounts.map((a) => (
+                <li key={a.id} className="script-row script-child">
+                  <input
+                    type="checkbox"
+                    checked={selected.has(a.id)}
+                    onChange={() => toggleSelect(a.id)}
+                    title="Select for export"
+                  />
+                  <span className="script-name">{a.name || a.address}</span>
+                </li>
+              ))}
+            </Fragment>
+          );
+        })}
+      </ul>
+    );
+  }
+
   function renderList(): ReactElement {
     switch (kind) {
       case 'scripts':
@@ -595,6 +794,8 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
           checklists.map((c) => ({ id: c.id, label: c.title })),
           'No saved tasks yet.'
         );
+      case 'accounts':
+        return renderAccountsList();
     }
   }
 
@@ -604,10 +805,19 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
   const rows = useMemo(
     () => (pending ? pendingRows(pending) : []),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [pending, scripts, profiles, sets, notes, checklists]
+    [pending, scripts, profiles, sets, notes, checklists, accounts]
   );
   const hasConflicts = rows.some((r) => r.conflict);
   const selectedInPending = pendingSel.filter(Boolean).length;
+
+  // Groups the staged Accounts import by `group` (Default-first, then
+  // alphabetical — same bucketing as the main Accounts list), keeping each
+  // entry's original index into pending.items/pendingSel so a group's
+  // checkbox can select/deselect all of its members at once.
+  const accountPendingGroups = useMemo(() => {
+    if (!pending || pending.kind !== 'accounts') return [];
+    return groupAccounts(pending.items.map((item, index) => ({ group: item.group, index })));
+  }, [pending]);
 
   return (
     <div className="tab">
@@ -626,11 +836,24 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
         </div>
       </div>
 
+      <p className="hint">
+        Pick a data type above, then Export the checked items (or everything, if none are checked)
+        as a JSON file — or Import one back in and review what it contains before confirming.
+      </p>
+
       <div className="row">
-        <button type="button" onClick={exportCurrent} disabled={currentCount() === 0}>
+        <button
+          type="button"
+          onClick={handleExportClick}
+          disabled={currentCount() === 0 || (kind === 'accounts' && !accountsLockState?.isPinSet)}
+        >
           Export{selected.size ? ` (${selected.size})` : ''}
         </button>
-        <button type="button" onClick={() => fileInputRef.current?.click()}>
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={kind === 'accounts' && !accountsLockState?.isPinSet}
+        >
           Import
         </button>
         <input
@@ -642,10 +865,47 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
         />
       </div>
 
+      {kind === 'accounts' && !accountsLockState?.isPinSet && (
+        <p className="hint">Set a PIN in the Accounts tab first to export or import accounts.</p>
+      )}
+
+      {showExportPin && (
+        <div className="row">
+          <input
+            className="name-input"
+            type="password"
+            inputMode="numeric"
+            placeholder="Enter your PIN to export"
+            aria-label="PIN to export accounts"
+            value={exportPin}
+            onChange={(e) => setExportPin(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void confirmExportAccounts();
+            }}
+          />
+          <button type="button" className="primary" onClick={() => void confirmExportAccounts()}>
+            Confirm export
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowExportPin(false);
+              setExportPin('');
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       {pending && (
         <div className="import-panel">
           <h3 className="section-title">Import {pending.items.length} item(s)</h3>
-          {hasConflicts && (
+          <p className="hint">
+            Everything found in the file is selected by default — uncheck anything below you don't
+            want to import.
+          </p>
+          {hasConflicts && pending.kind !== 'accounts' && (
             <div className="row">
               <span className="field-label">Some already exist:</span>
               <label className="checkbox-inline">
@@ -668,19 +928,66 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
               </label>
             </div>
           )}
-          <ul className="script-list">
-            {rows.map((row, i) => (
-              <li key={row.key} className="script-row">
-                <input
-                  type="checkbox"
-                  checked={pendingSel[i] ?? false}
-                  onChange={() => togglePending(i)}
-                />
-                <span className="script-name">{row.label}</span>
-                {row.conflict && <span className="badge conflict">exists</span>}
-              </li>
-            ))}
-          </ul>
+          {pending.kind === 'accounts' && pending.defaultPassword !== undefined && (
+            <label className="checkbox-inline">
+              <input
+                type="checkbox"
+                checked={importDefaultPassword}
+                onChange={(e) => setImportDefaultPassword(e.target.checked)}
+              />
+              Also import the default password (overwrites the current one)
+            </label>
+          )}
+          {pending.kind === 'accounts' ? (
+            <ul className="script-list">
+              {accountPendingGroups.map((group) => {
+                const indices = group.accounts.map((entry) => entry.index);
+                const allSelected = indices.every((i) => pendingSel[i]);
+                return (
+                  <Fragment key={group.name}>
+                    <li className="script-row folder-row">
+                      <input
+                        type="checkbox"
+                        checked={allSelected}
+                        onChange={() => toggleGroupSelection(indices)}
+                        title="Select/deselect this whole group"
+                      />
+                      <span className="folder-name script-name">{group.name}</span>
+                      <span className="dim">{indices.length}</span>
+                    </li>
+                    {indices.map((i) => {
+                      const row = rows[i]!;
+                      return (
+                        <li key={row.key} className="script-row script-child">
+                          <input
+                            type="checkbox"
+                            checked={pendingSel[i] ?? false}
+                            onChange={() => togglePending(i)}
+                          />
+                          <span className="script-name">{row.label}</span>
+                          {row.conflict && <span className="badge conflict">exists</span>}
+                        </li>
+                      );
+                    })}
+                  </Fragment>
+                );
+              })}
+            </ul>
+          ) : (
+            <ul className="script-list">
+              {rows.map((row, i) => (
+                <li key={row.key} className="script-row">
+                  <input
+                    type="checkbox"
+                    checked={pendingSel[i] ?? false}
+                    onChange={() => togglePending(i)}
+                  />
+                  <span className="script-name">{row.label}</span>
+                  {row.conflict && <span className="badge conflict">exists</span>}
+                </li>
+              ))}
+            </ul>
+          )}
           <div className="row">
             <button type="button" className="primary" onClick={() => void confirmImport()}>
               Import {selectedInPending}
@@ -692,6 +999,12 @@ export function DataIOTab({ reloadNonce }: Props): ReactElement {
         </div>
       )}
 
+      {kind === 'accounts' && (
+        <p className="hint">
+          Check individual accounts to export just those, or a group's box to select everything in
+          it — leave everything unchecked to export all.
+        </p>
+      )}
       {renderList()}
 
       {status && <p className="status">{status}</p>}

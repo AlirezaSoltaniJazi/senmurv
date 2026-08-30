@@ -28,6 +28,12 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "tests/**/*", "vite.config.ts", "vitest.config.ts"],
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "vite.config.ts",
+    "vite.config.firefox.ts",
+    "vitest.config.ts"
+  ],
   "exclude": ["node_modules", "dist", "release", "coverage"]
 }

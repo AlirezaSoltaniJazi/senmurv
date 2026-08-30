@@ -1,4 +1,4 @@
-/** chrome.storage.local keys. */
+/** browser.storage.local keys. */
 export const STORAGE_KEYS = {
   SCRIPTS: 'senmurv:scripts',
   TASKS: 'senmurv:tasks',
@@ -7,6 +7,9 @@ export const STORAGE_KEYS = {
   PREFS: 'senmurv:prefs',
   PROFILES: 'senmurv:profiles',
   QUERY_PARAM_SETS: 'senmurv:queryParamSets',
+  ACCOUNTS: 'senmurv:accounts',
+  DEFAULT_PASSWORD: 'senmurv:defaultPassword',
+  ACCOUNTS_SECURITY: 'senmurv:accountsSecurity',
 } as const;
 
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
@@ -92,7 +95,7 @@ export const MESSAGE_TYPES = {
   WRITE_WEB_STORAGE: 'WRITE_WEB_STORAGE',
   REMOVE_WEB_STORAGE: 'REMOVE_WEB_STORAGE',
   CLEAR_WEB_STORAGE: 'CLEAR_WEB_STORAGE',
-  // Cookies tab — chrome.cookies against the active tab's URL. Requires the
+  // Cookies tab — browser.cookies against the active tab's URL. Requires the
   // "cookies" permission; it is the only way to see or edit HttpOnly cookies.
   LIST_COOKIES: 'LIST_COOKIES',
   SET_COOKIE: 'SET_COOKIE',
@@ -109,6 +112,27 @@ export const MESSAGE_TYPES = {
   SAVE_QUERY_PARAM_SET: 'SAVE_QUERY_PARAM_SET',
   SET_QUERY_PARAM_SETS: 'SET_QUERY_PARAM_SETS',
   DELETE_QUERY_PARAM_SET: 'DELETE_QUERY_PARAM_SET',
+  // Accounts tab — saved login credentials + one-click login. Encryption is
+  // exclusive to the service worker (shared/crypto.ts); the panel never sees
+  // plaintext, and never asks for it back.
+  GET_ACCOUNTS: 'GET_ACCOUNTS',
+  SAVE_ACCOUNT: 'SAVE_ACCOUNT',
+  DELETE_ACCOUNT: 'DELETE_ACCOUNT',
+  DUPLICATE_ACCOUNT: 'DUPLICATE_ACCOUNT',
+  RENAME_GROUP: 'RENAME_GROUP',
+  GET_DEFAULT_PASSWORD_STATE: 'GET_DEFAULT_PASSWORD_STATE',
+  SAVE_DEFAULT_PASSWORD: 'SAVE_DEFAULT_PASSWORD',
+  CLEAR_DEFAULT_PASSWORD: 'CLEAR_DEFAULT_PASSWORD',
+  GET_ACCOUNTS_LOCK_STATE: 'GET_ACCOUNTS_LOCK_STATE',
+  SET_ACCOUNTS_PIN: 'SET_ACCOUNTS_PIN',
+  UNLOCK_ACCOUNTS: 'UNLOCK_ACCOUNTS',
+  CHANGE_ACCOUNTS_PIN: 'CHANGE_ACCOUNTS_PIN',
+  SET_ACCOUNTS_SESSION_MINUTES: 'SET_ACCOUNTS_SESSION_MINUTES',
+  LOCK_ACCOUNTS: 'LOCK_ACCOUNTS',
+  RUN_ACCOUNT_LOGIN: 'RUN_ACCOUNT_LOGIN',
+  ACCOUNT_LOGIN_FILL: 'ACCOUNT_LOGIN_FILL',
+  EXPORT_ACCOUNTS: 'EXPORT_ACCOUNTS',
+  IMPORT_ACCOUNTS: 'IMPORT_ACCOUNTS',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -202,6 +226,15 @@ export const FIND_TIMEOUT_SECONDS_MIN = 1;
 export const FIND_TIMEOUT_SECONDS_MAX = 120;
 export const FIND_TIMEOUT_SECONDS_DEFAULT = 10;
 
+/** Accounts tab PIN length bounds (digits only). */
+export const ACCOUNTS_PIN_MIN_LENGTH = 6;
+export const ACCOUNTS_PIN_MAX_LENGTH = 15;
+
+/** Account description tooltip hover-delay bounds + default, in seconds. */
+export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN = 1;
+export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX = 10;
+export const ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT = 2;
+
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;
 
@@ -218,6 +251,7 @@ export const BLOCKED_URL_PREFIXES = [
   'chrome://',
   'chrome-extension://',
   'edge://',
+  'moz-extension://',
   'about:',
   // The declared content script matches http/https only, so these never have a
   // picker to talk to; naming them turns a confusing injection failure into a
@@ -226,6 +260,7 @@ export const BLOCKED_URL_PREFIXES = [
   'view-source:',
   'https://chrome.google.com/webstore',
   'https://chromewebstore.google.com',
+  'https://addons.mozilla.org',
 ] as const;
 
 // ---------------------------------------------------------------------------
@@ -273,7 +308,7 @@ export const BYPASS_LOCK_ATTRS = [
 ] as const;
 
 /**
- * The Bypass override sheet, injected with `chrome.scripting.insertCSS` and
+ * The Bypass override sheet, injected with `browser.scripting.insertCSS` and
  * removed with `removeCSS`.
  *
  * Injected CSS is immune to the page's `style-src` CSP, which an appended

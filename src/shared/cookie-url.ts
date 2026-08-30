@@ -2,10 +2,10 @@ import type { CookieRow, CookieSameSite, Result } from '@/shared/types';
 
 /**
  * Pure URL/attribute logic for the Cookies tab. Chrome-free so it unit-tests
- * cleanly; the `chrome.cookies` calls themselves live in the service worker.
+ * cleanly; the `browser.cookies` calls themselves live in the service worker.
  */
 
-/** Schemes chrome.cookies can address. Anything else has no cookie jar to show. */
+/** Schemes browser.cookies can address. Anything else has no cookie jar to show. */
 const SUPPORTED_SCHEMES = ['http:', 'https:'] as const;
 
 /**
@@ -30,7 +30,7 @@ export function parseCookieUrl(rawUrl: string): Result<URL> {
 }
 
 /**
- * The URL to hand `chrome.cookies` for a cookie scoped to `path`.
+ * The URL to hand `browser.cookies` for a cookie scoped to `path`.
  *
  * Chrome matches a cookie's path as a PREFIX of the request path, so querying
  * `https://site/` never returns a cookie scoped to `/api/admin/`. Rewriting the

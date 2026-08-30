@@ -1,6 +1,7 @@
 /.idea/
 node_modules/
 dist/
+dist-firefox/
 release/
 coverage/
 *.local

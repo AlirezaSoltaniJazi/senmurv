@@ -6,6 +6,38 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Firefox support** — Senmurv now works in Firefox, with the same tools and
+  side-panel experience as Chrome.
+- **Accounts tab** — save a site's login (address, account/email, password,
+  and CSS/XPath locators for the username field, password field, and login
+  button) and sign in with one click: navigates to the saved address, fills
+  both fields, and clicks Login. Passwords are never stored in plaintext —
+  encrypted with a key derived from a 6-15 digit PIN (itself never
+  persisted), with a configurable "stay unlocked" session (default 30
+  minutes, up to 6 hours) and a **Change PIN** flow (current → new →
+  confirm) in the tab's own Security section. A shared **Default password**
+  can be set once and reused by any account's "use default password"
+  checkbox (disabled until one exists; clearing it warns first if any
+  account still depends on it). Accounts can be **duplicated** and organized
+  into **Groups** — collapsed by default in the main list with an account
+  count, click to expand, and an inline **Rename** for any group but
+  Default — plus an optional **Description** that shows as a tooltip after
+  hovering an account (delay configurable in Settings).
+- **Locator → General chip** — a framework-agnostic filter alongside
+  All/Playwright/WebdriverIO/Cypress/Selenium/Robot Framework, showing just
+  the raw locator value, plus an **Add to account** button on each
+  suggestion to seed it straight into the Username/Password/Login-button
+  field of the account you're building.
+- **Export/Import → Accounts** — export (re-enters your PIN, since it
+  decrypts real passwords into the file) or import (requires a PIN to
+  already be set) saved accounts and the default password as JSON. Both the
+  export selection list and the staged-import panel group accounts the same
+  way the Accounts tab does, with a group checkbox that selects everything
+  inside it; import always keeps both (fresh id, de-duplicated name) rather
+  than overwriting an existing account.
+
 ## [0.9.0] - 2026-08-14
 
 ### Added

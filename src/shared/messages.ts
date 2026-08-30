@@ -1,5 +1,9 @@
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
+import type { ImportedAccount } from '@/shared/data-io';
 import type {
+  AccountDraft,
+  AccountLocator,
   Checklist,
   ClearTypeId,
   CookieEdit,
@@ -140,7 +144,7 @@ export type RuntimeMessage =
     }
   | { type: typeof MESSAGE_TYPES.REMOVE_WEB_STORAGE; payload: { area: StorageArea; key: string } }
   | { type: typeof MESSAGE_TYPES.CLEAR_WEB_STORAGE; payload: { area: StorageArea } }
-  // Cookies tab — chrome.cookies against the active tab's URL ("cookies" permission).
+  // Cookies tab — browser.cookies against the active tab's URL ("cookies" permission).
   | { type: typeof MESSAGE_TYPES.LIST_COOKIES }
   | { type: typeof MESSAGE_TYPES.SET_COOKIE; payload: { cookie: CookieEdit } }
   | { type: typeof MESSAGE_TYPES.REMOVE_COOKIE; payload: { name: string; path: string } }
@@ -154,7 +158,49 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.GET_QUERY_PARAM_SETS }
   | { type: typeof MESSAGE_TYPES.SAVE_QUERY_PARAM_SET; payload: { set: QueryParamSet } }
   | { type: typeof MESSAGE_TYPES.SET_QUERY_PARAM_SETS; payload: { sets: QueryParamSet[] } }
-  | { type: typeof MESSAGE_TYPES.DELETE_QUERY_PARAM_SET; payload: { id: string } };
+  | { type: typeof MESSAGE_TYPES.DELETE_QUERY_PARAM_SET; payload: { id: string } }
+  // Accounts tab — saved logins + PIN-locked encryption (shared/crypto.ts).
+  // The panel never receives plaintext, and never sends it except at the
+  // exact instant of setting/changing a password or unlocking.
+  | { type: typeof MESSAGE_TYPES.GET_ACCOUNTS }
+  | { type: typeof MESSAGE_TYPES.SAVE_ACCOUNT; payload: { account: AccountDraft } }
+  | { type: typeof MESSAGE_TYPES.DELETE_ACCOUNT; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.DUPLICATE_ACCOUNT; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.RENAME_GROUP; payload: { from: string; to: string } }
+  | { type: typeof MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE }
+  | { type: typeof MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD; payload: { password: string } }
+  | { type: typeof MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD }
+  | { type: typeof MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE }
+  | {
+      type: typeof MESSAGE_TYPES.SET_ACCOUNTS_PIN;
+      payload: { pin: string; sessionMinutes: number };
+    }
+  | { type: typeof MESSAGE_TYPES.UNLOCK_ACCOUNTS; payload: { pin: string } }
+  | {
+      type: typeof MESSAGE_TYPES.CHANGE_ACCOUNTS_PIN;
+      payload: { currentPin: string; newPin: string };
+    }
+  | { type: typeof MESSAGE_TYPES.SET_ACCOUNTS_SESSION_MINUTES; payload: { minutes: number } }
+  | { type: typeof MESSAGE_TYPES.LOCK_ACCOUNTS }
+  | { type: typeof MESSAGE_TYPES.RUN_ACCOUNT_LOGIN; payload: { id: string } }
+  | {
+      type: typeof MESSAGE_TYPES.ACCOUNT_LOGIN_FILL;
+      payload: {
+        username: string;
+        // Decrypted by the service worker moments earlier; valid only for
+        // this one message, never persisted, logged, or sent anywhere else.
+        password: string;
+        usernameField: AccountLocator;
+        passwordField: AccountLocator;
+        loginButton: AccountLocator;
+        timeoutMs: number;
+      };
+    }
+  | { type: typeof MESSAGE_TYPES.EXPORT_ACCOUNTS; payload: { pin: string; ids?: string[] } }
+  | {
+      type: typeof MESSAGE_TYPES.IMPORT_ACCOUNTS;
+      payload: { accounts: ImportedAccount[]; defaultPassword?: string };
+    };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 
@@ -169,7 +215,7 @@ export function isRuntimeMessage(value: unknown): value is RuntimeMessage {
 
 /** Send a typed message to the extension (service worker / other extension pages). */
 export async function sendRuntimeMessage<T = unknown>(message: RuntimeMessage): Promise<T> {
-  return chrome.runtime.sendMessage(message) as Promise<T>;
+  return browser.runtime.sendMessage(message) as Promise<T>;
 }
 
 /** Send a typed message to a specific tab's content script. */
@@ -177,5 +223,5 @@ export async function sendTabMessage<T = unknown>(
   tabId: number,
   message: RuntimeMessage
 ): Promise<T> {
-  return chrome.tabs.sendMessage(tabId, message) as Promise<T>;
+  return browser.tabs.sendMessage(tabId, message) as Promise<T>;
 }

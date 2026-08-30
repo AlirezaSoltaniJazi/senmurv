@@ -2,33 +2,36 @@
 
 ## What This Is
 
-Chrome extension (Manifest V3) that gives QA / test-automation engineers a set of tools inside a **Chrome Side Panel**, routed as tabs in `src/sidepanel/App.tsx`:
+Manifest V3 browser extension — Chrome (primary) and Firefox (local dev/QA build, unpublished) — that gives QA / test-automation engineers a set of tools inside the browser's side panel (Chrome Side Panel / Firefox Sidebar), routed as tabs in `src/sidepanel/App.tsx`:
 
 1. **Generate Random Data** — realistic, locale-aware test data (first/last name, phone, address, postal code, region/county, email, date of birth) via `@faker-js/faker`, with a locale switcher (default `en_GB`), copy-to-clipboard, and regenerate.
 2. **Find Element Locator** — an in-page element picker (hover-highlight, click-capture) that produces ranked locator suggestions (data-testid › id › role+name › CSS › XPath), each with its live **match count / uniqueness**, plus copy-ready snippets for **Playwright, WebdriverIO, Cypress, Selenium, and Robot Framework**. Also includes a "Test a locator" box (with match-highlighting) to count matches for any CSS/XPath.
 3. **Recorder** — record clicks/inputs/selects into an editable step list (or build by hand), then run/run-from-step/stop, save as a script, or export as a spec for the frameworks above.
-4. **Execute JS Script** — save / edit / import (`javascript:` bookmarklets) JS scripts in `chrome.storage.local` and run a chosen script in the page's **MAIN world** via `chrome.scripting`.
-5. **Tools** — a launcher of page-inspection/utility tools (Bypass, Site data, Measure, Colour, Tab order, Accessibility, Fonts, Assertions, Stacking, Validation, Region, Harden selector, JWT decoder, JSON Formatter, Query params, Logical names, Auto refresh) — registry in `src/shared/tools.ts`.
-6. **Cookies** / **Storage** — view and edit the current site's cookies (incl. HttpOnly) and localStorage/sessionStorage, with saved **value profiles** for values you switch between often.
-7. **Track**, **My Tasks**, **Notes** — a tagged time-tracking stopwatch, checklist tasks with deadlines, and free-form notes.
-8. **Settings** — panel font size, Flow/HUD timings, and Track-tag management.
+4. **Execute JS Script** — save / edit / import (`javascript:` bookmarklets) JS scripts in `browser.storage.local` and run a chosen script in the page's **MAIN world** via `browser.scripting`.
+5. **Accounts** — save a site's login (address, account/email, password, and CSS/XPath locators for the username field, password field, and login button) and log in with one click (navigate → fill → click, in the content script's ISOLATED world). Passwords are never stored in plaintext: encrypted with a key derived from a 6-15 digit PIN (never itself persisted) via PBKDF2 + AES-GCM in `shared/crypto.ts` (service-worker only), with a configurable "stay unlocked" session (default 30 min, up to 6h) and a Change PIN flow. A shared **Default password** can be reused by any account's "use default password" checkbox; accounts can be **duplicated** and organized into **Groups** (with rename), plus an optional **Description** shown as a hover tooltip.
+6. **Tools** — a launcher of page-inspection/utility tools (Bypass, Site data, Measure, Colour, Tab order, Accessibility, Fonts, Assertions, Stacking, Validation, Region, Harden selector, JWT decoder, JSON Formatter, Query params, Logical names, Auto refresh) — registry in `src/shared/tools.ts`.
+7. **Cookies** / **Storage** — view and edit the current site's cookies (incl. HttpOnly) and localStorage/sessionStorage, with saved **value profiles** for values you switch between often.
+8. **Track**, **My Tasks**, **Notes** — a tagged time-tracking stopwatch, checklist tasks with deadlines, and free-form notes.
+9. **Settings** — panel font size, Flow/HUD timings, Accounts description-tooltip delay, and Track-tag management.
+10. **Export/Import** — export or import Scripts (with folders), Cookie/Storage value profiles, Query-param sets, Notes, My Tasks, and Accounts as JSON, with per-item selection and Overwrite/Keep-both conflict handling (Accounts always keeps both — fresh id, de-duplicated name — and is crypto-gated: export re-enters the PIN, import requires one to already be set).
 
-Built with TypeScript (strict, no `any`), React 19, Vite + CRXJS.
+Built with TypeScript (strict, no `any`), React 19, Vite. Two separate build pipelines: `@crxjs/vite-plugin` for Chrome, a hand-rolled `vite.config.firefox.ts` for Firefox (see Known Gotchas — `vite-plugin-web-extension` is NOT viable on this stack).
 
 ## Stack
 
-| Layer    | Technology                                         |
-| -------- | -------------------------------------------------- |
-| Language | TypeScript strict (no `any`)                       |
-| UI       | React 19                                           |
-| Build    | Vite 8 + @crxjs/vite-plugin                        |
-| Test     | Vitest + happy-dom                                 |
-| Lint     | ESLint (flat config) + Prettier                    |
-| Runtime  | Chrome Extension Manifest V3                       |
-| Surface  | Side Panel (`chrome.sidePanel`)                    |
-| Storage  | `chrome.storage.local` (typed wrappers)            |
-| Cookies  | `chrome.cookies` (Cookies tab)                     |
-| Scripts  | `chrome.scripting.executeScript` (`world: 'MAIN'`) |
+| Layer             | Technology                                                                                |
+| ----------------- | ----------------------------------------------------------------------------------------- |
+| Language          | TypeScript strict (no `any`)                                                              |
+| UI                | React 19                                                                                  |
+| Build             | Vite 8 (Rolldown engine) + `@crxjs/vite-plugin` (Chrome) / hand-rolled config (Firefox)   |
+| Test              | Vitest + happy-dom                                                                        |
+| Lint              | ESLint (flat config) + Prettier                                                           |
+| Runtime           | Manifest V3 — Chrome, Firefox (128+, local dev/QA only)                                   |
+| Surface           | Chrome Side Panel (`chrome.sidePanel`) / Firefox Sidebar (`sidebarAction`)                |
+| Cross-browser API | `webextension-polyfill` via `src/shared/browser-api.ts` — `browser.*`, not raw `chrome.*` |
+| Storage           | `browser.storage.local` (typed wrappers)                                                  |
+| Cookies           | `browser.cookies` (Cookies tab)                                                           |
+| Scripts           | `browser.scripting.executeScript` (`world: 'MAIN'`)                                       |
 
 ## Project Structure
 
@@ -38,26 +41,42 @@ src/
 │   └── service-worker.ts   # sidePanel behavior, message hub, script execution, locator-match counting
 ├── content/
 │   ├── picker.ts           # message router + mode arbiter; picks elements; lazily imports ./tools
+│   ├── picker-loader.js    # Firefox-only classic-script bridge into picker.ts's real ESM bundle
 │   ├── context.ts          # contextAlive + notify (terminal) / notifyQuiet (streams)
 │   ├── overlay.ts          # the one Shadow-DOM overlay: rect pool, tones, isOurHost
 │   ├── recorder.ts         # passive interaction recorder
 │   ├── match-highlight.ts  # Locator tab's "highlight every match" in-page mode
 │   ├── raf-throttle.ts     # rAF-throttled hover/scroll handlers shared by Tools modes
+│   ├── account-login.ts    # ISOLATED-world fill-and-click for one-click Accounts login
 │   ├── tools.ts            # DYNAMIC-import entry for the Tools-tab in-page modes
 │   └── tools/               # per-tool in-page bridges (bypass, measure, a11y, stacking, …)
 ├── sidepanel/
 │   ├── index.html
 │   ├── main.tsx            # React root
-│   ├── App.tsx             # tab routing: Data | Locator | Recorder | Scripts | Tools | Cookies | Storage | Track | My Tasks | Notes | Settings
-│   └── components/         # GenerateDataTab, LocatorTab, RecorderTab, ScriptsTab, ToolsTab, CookiesTab, StorageTab, TrackTab, MyTasksTab, NotesTab, SettingsTab, tools/*
+│   ├── App.tsx             # tab routing: Data | Locator | Recorder | Scripts | Accounts | Tools |
+│   │                       #   Cookies | Storage | Track | My Tasks | Notes | Settings | Export/Import
+│   ├── locator-tab-state.ts # LocatorTabState + its initial value — split out of LocatorTab.tsx so
+│   │                       #   App.tsx can hold it without eagerly bundling the lazy-loaded tab
+│   └── components/         # GenerateDataTab, LocatorTab, RecorderTab, ScriptsTab, AccountsTab,
+│                           # ToolsTab, CookiesTab, StorageTab, TrackTab, MyTasksTab, NotesTab,
+│                           # SettingsTab, DataIOTab, accounts/* (AccountEditor, AccountList,
+│                           # AccountsSecurity, DefaultPasswordSettings), tools/*
 ├── shared/                 # types, messages, constants, locators, faker-data, storage, bookmarklet,
-│                           # profiles, tasks, checklists, cookie-url, csv, workflow, tools/*
+│                           # profiles, tasks, checklists, cookie-url, csv, workflow, data-io,
+│                           # accounts, crypto, tools/*
+│   └── browser-api.ts      # `export const browser` — the webextension-polyfill instance every
+│                           # module imports instead of the raw `chrome` global
 └── utils/                  # id generation
 tests/                      # Vitest tests mirroring src/ structure
 docs/                       # getting-started, architecture, tools
-scripts/                    # bump-version.mjs, zip-extension.mjs
+scripts/                    # bump-version.mjs, zip-extension.mjs, build-firefox.mjs
 public/icons/               # Extension icons (16/32/48/128)
 .data/skills/               # AI skill definitions and reference guides
+manifest.json                # Chrome manifest — canonical, source-path-referencing, CRXJS-built
+manifest.firefox.json        # Firefox manifest — same shape, no `sidePanel`; adds `sidebar_action`
+                              # and `browser_specific_settings.gecko`
+vite.config.ts                # Chrome build — @crxjs/vite-plugin
+vite.config.firefox.ts        # Firefox build — plain rollupOptions, no extension-specific plugin
 ```
 
 ## How To Run
@@ -66,13 +85,18 @@ public/icons/               # Extension icons (16/32/48/128)
 npm install              # install dependencies (incl. @faker-js/faker)
 npm run dev              # dev build; load dist/ as unpacked extension in Chrome
 npm run build            # production build → dist/
+npm run build:firefox    # production build → dist-firefox/ (see scripts/build-firefox.mjs)
+npm run dev:firefox      # Firefox build in watch mode — reload manually via about:debugging
 npm test                 # run tests once
 npm run lint && npm run format:check && npm run typecheck
 npm run release          # full pipeline: lint, format, typecheck, test, package
 npm run package          # build + zip → release/
+npm run package:firefox  # build + zip → release/senmurv-firefox-<version>.zip
 ```
 
 Load in Chrome: `chrome://extensions` → Developer mode → **Load unpacked** → select `dist/`. Click the toolbar icon to open the side panel.
+
+Load in Firefox: `about:debugging#/runtime/this-firefox` → **Load Temporary Add-on…** → select `dist-firefox/manifest.json`. Temporary-load only (no Mozilla signing yet, no AMO listing) — reload after each Firefox restart.
 
 ## Development Conventions
 
@@ -108,12 +132,17 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 
 - Result objects `{ ok: true; value: T } | { ok: false; error: string }` for fallible ops
 - Type guards validate all untrusted data (messages, stored JSON) before use
-- `chrome.runtime.lastError` always checked in chrome API callbacks
+- All extension API calls go through `browser.*` (from `@/shared/browser-api`), which is
+  promise-based — no `chrome.runtime.lastError` checks, `try`/`catch` or `.catch()` instead.
+  `chrome.sidePanel` is the one deliberate exception (see Architecture Rules)
 - React components: try/catch with `setError()` state
 
 ## Architecture Rules
 
-- **Service worker is the coordinator** — side-panel UI sends typed messages; the worker performs `chrome.scripting` / `chrome.tabs` operations and storage mutations.
+- **`browser.*` (webextension-polyfill), not raw `chrome.*`** — every module imports `browser` from `@/shared/browser-api` and calls `browser.scripting`/`browser.storage`/`browser.tabs`/etc. `chrome.sidePanel` is the ONE deliberate exception: it's a Chrome-only API with no `webextension-polyfill` typing and no Firefox equivalent, so `src/background/service-worker.ts`'s `enableSidePanelOnActionClick` checks the raw `chrome.sidePanel` global directly and falls back to `browser.action.onClicked` → `browser.sidebarAction.toggle()` when it's absent (Firefox). Do not widen that exception to other APIs — everything else has a `browser.*` form.
+- **Two manifests, one source tree** — `manifest.json` (Chrome, canonical) and `manifest.firefox.json` (Firefox: no `sidePanel` permission, adds `sidebar_action` + `browser_specific_settings.gecko`, dual `background.service_worker`/`background.scripts` keys) both reference the SAME `src/` files by source path. Never hand-edit `manifest.json` to add Firefox-only content — it must stay a zero-diff, Chrome-canonical file so CRXJS's manifest-driven entry discovery is never affected by a key it doesn't expect.
+- **The Firefox content script is a two-stage bridge** — `src/content/picker-loader.js` is a deliberately import-free classic script (Firefox can't declare `content_scripts` as ES modules) that does one thing: `browser.runtime.getURL('picker.js')` + dynamic `import()` to jump into the real ESM bundle. From inside that module, `picker.ts`'s own relative `import('./tools')` resolves correctly against ITS OWN url — the same trick CRXJS's auto-generated Chrome loader uses. `scripts/build-firefox.mjs` copies this file in verbatim (never through Vite) and rewrites `dist-firefox/manifest.json`'s `content_scripts[].js` to point at it. **This bridge only works because `manifest.firefox.json` declares `web_accessible_resources: [{ resources: ["picker.js", "assets/*"], matches: [...] }]`** — without it Firefox silently refuses the content-script-initiated `import()`, `picker.js` never loads, its `runtime.onMessage` listener never registers, and every page-requiring feature (Tools, Locator, Recorder) fails with "Could not reach the page" (this exact regression shipped once — CRXJS auto-generates the Chrome equivalent, so there was nothing to copy from when the Firefox manifest was hand-authored). `picker.js` and `assets/*` are stable, non-hashed path patterns per `vite.config.firefox.ts`'s `entryFileNames`/`chunkFileNames`, so this can be a static entry in `manifest.firefox.json` — it does not need to be computed per-build.
+- **Service worker is the coordinator** — side-panel UI sends typed messages; the worker performs `browser.scripting` / `browser.tabs` operations and storage mutations.
 - **Typed discriminated unions for messages** — `RuntimeMessage` uses a `type` field; validate with type guards before handling.
 - **Business logic in `shared/`** — `locators.ts` and `faker-data.ts` are PURE and unit-testable; keep components thin.
 - **The one carve-out from that purity rule** — `shared/tools/bypass.ts` MUTATES the DOM, and `field-detect.ts` reads it. They stay chrome-free and take their root (and, for bypass, a `BypassEnv` for the two reads needing a layout engine) as arguments, so happy-dom still drives them. Injecting the environment rather than reaching for globals is what keeps them testable — follow that shape rather than adding more DOM-touching modules to `shared/`.
@@ -123,50 +152,63 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 - **Keep the Tools chunk lazy** — `picker.ts` parses on every http/https page load, so the Tools modes sit behind `import('./tools')`. Nothing reachable from `src/shared/tools/*` may also be reachable from `picker.ts`'s _static_ graph. `tests/build/bundle-placement.test.ts` enforces this against `dist/`.
 - **Shadow DOM for injected UI** — the picker's highlight overlay must not pollute host-page styles.
 - **Side panel over popup** — the panel persists while the user interacts with the page (required for element picking).
+- **Accounts encryption is PIN-derived, never a stored key** — `shared/crypto.ts` (service-worker only) derives an AES-256-GCM key from a 6-15 digit PIN via PBKDF2 (600,000 iterations) + a random salt; the PIN itself is never persisted anywhere. Only ciphertext (`EncryptedSecret {ciphertext, iv}`) ever touches `browser.storage.local`. The derived raw key is cached in `browser.storage.session` (MV3's memory-only storage area — cleared on browser close, survives service-worker restarts within a session) for a configurable sliding-window session (default 30 min, up to 6h), so the user isn't re-prompted on every login; every real encrypt/decrypt use pushes the expiry back out. `shared/accounts.ts` stays crypto-free and only ever sees an already-encrypted-or-absent `encryptedPassword`; `shared/storage.ts` persists whatever it's handed without ever importing `crypto.ts`. Exporting an account's password re-verifies the PIN independently of the cached session (`decryptSecretsWithPin`) and never changes the current lock state either way. Never widen `crypto.ts`'s reach beyond the service worker — the side panel and content scripts must never see a raw PIN or derived key.
 
 ## Files To Know
 
-| File                               | Purpose                                                                                              |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting                       |
-| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader                                  |
-| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                                           |
-| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                                          |
-| `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting                                    |
-| `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                                                  |
-| `src/shared/messages.ts`           | `RuntimeMessage` union, `sendRuntimeMessage`/`sendTabMessage` helpers, type guards                   |
-| `src/shared/constants.ts`          | `STORAGE_KEYS`, `MESSAGE_TYPES`, locales, `LOCATOR_PRIORITY`                                         |
-| `src/shared/storage.ts`            | Typed `chrome.storage.local` wrapper for scripts, tasks, checklists, notes, prefs and value profiles |
-| `src/sidepanel/App.tsx`            | Side panel React app with tab routing                                                                |
-| `manifest.json`                    | MV3 manifest — permissions, entry points, side_panel                                                 |
-| `vite.config.ts`                   | Build config — CRXJS plugin, path aliases                                                            |
-| `tests/setup.ts`                   | Chrome API mocks for all test files                                                                  |
+| File                               | Purpose                                                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting                                 |
+| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader                                            |
+| `src/content/picker-loader.js`     | Firefox-only classic-script bridge into `picker.ts`'s real ESM bundle (see Architecture Rules)                 |
+| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                                                     |
+| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                                                    |
+| `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting                                              |
+| `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                                                            |
+| `src/shared/messages.ts`           | `RuntimeMessage` union, `sendRuntimeMessage`/`sendTabMessage` helpers, type guards                             |
+| `src/shared/constants.ts`          | `STORAGE_KEYS`, `MESSAGE_TYPES`, locales, `LOCATOR_PRIORITY`                                                   |
+| `src/shared/storage.ts`            | Typed `browser.storage.local` wrapper for scripts, tasks, checklists, notes, prefs and value profiles          |
+| `src/shared/browser-api.ts`        | The one `webextension-polyfill` import point — `export const browser`                                          |
+| `src/shared/crypto.ts`             | PIN-derived AES-GCM encryption for Accounts — service-worker only, session cached in `browser.storage.session` |
+| `src/shared/accounts.ts`           | Pure Accounts logic — validation, grouping, duplicate, rename-group; crypto-free                               |
+| `src/shared/data-io.ts`            | Export/Import parse/serialize for every data kind, incl. Accounts (shape-only — crypto stays in `crypto.ts`)   |
+| `src/content/account-login.ts`     | ISOLATED-world fill-and-click for one-click Accounts login                                                     |
+| `src/sidepanel/App.tsx`            | Side panel React app with tab routing                                                                          |
+| `manifest.json`                    | Chrome MV3 manifest — permissions, entry points, `side_panel`                                                  |
+| `manifest.firefox.json`            | Firefox MV3 manifest — `sidebar_action`, `browser_specific_settings.gecko`, no `sidePanel`                     |
+| `vite.config.ts`                   | Chrome build config — CRXJS plugin, path aliases                                                               |
+| `vite.config.firefox.ts`           | Firefox build config — plain `rollupOptions`, no extension-specific plugin                                     |
+| `scripts/build-firefox.mjs`        | Runs the Firefox Vite build, rewrites `dist-firefox/manifest.json`, copies `picker-loader.js`                  |
+| `tests/setup.ts`                   | `chrome`/`browser` (via a `webextension-polyfill` mock) API mocks for all test files                           |
 
 ## Files To Never Touch
 
-- `dist/` — build output, auto-generated by Vite + CRXJS
-- `release/` — packaged zip artifacts from `npm run package`
+- `dist/`, `dist-firefox/` — build output, auto-generated by Vite (+ CRXJS for Chrome)
+- `release/` — packaged zip artifacts from `npm run package` / `npm run package:firefox`
 - `package-lock.json` — auto-managed by npm
 
 ## Security
 
 - No `eval()` / `new Function()` in extension code — **except** the one sanctioned site below.
-- **Sanctioned exception — the script runner:** the Execute JS Script tool runs user-provided code in the page's MAIN world via `chrome.scripting.executeScript({ target, world: 'MAIN', func: runUserScript, args: [code] })`. The injected `runUserScript(code)` calls `new Function(code)()`. This is the extension's purpose and runs under the **page's** CSP — exactly like a `javascript:` bookmarklet — never under the extension's CSP. Extension pages keep `script-src 'self'`. It is isolated to that one injected function and suppressed with an inline `// eslint-disable-next-line @typescript-eslint/no-implied-eval` and a justifying comment. **Do not widen this beyond the runner, and do not "fix" it away.**
+- **Sanctioned exception — the script runner:** the Execute JS Script tool runs user-provided code in the page's MAIN world via `browser.scripting.executeScript({ target, world: 'MAIN', func: runUserScript, args: [code] })`. The injected `runUserScript(code)` calls `new Function(code)()`. This is the extension's purpose and runs under the **page's** CSP — exactly like a `javascript:` bookmarklet — never under the extension's CSP. Extension pages keep `script-src 'self'`. It is isolated to that one injected function and suppressed with an inline `// eslint-disable-next-line @typescript-eslint/no-implied-eval` and a justifying comment. **Do not widen this beyond the runner, and do not "fix" it away.** Firefox 128+ supports `world: 'MAIN'` scripting with the same page-CSP-governs-injected-code semantics — this has not been empirically re-verified against a live strict-CSP page in Firefox, only inferred from Mozilla's own MDN/Bugzilla documentation of the feature.
 - **`world: 'MAIN'` is NOT the same as the exception.** `BYPASS_XRM` also injects into the MAIN world (`executeScript({ world: 'MAIN', func: xrmBypass })`) because the Dynamics `Xrm` client API only exists in the page's own realm. It passes a **serialized function, not a code string**, and uses neither `eval` nor `new Function` — so it does not widen the sanctioned exception above. The **Region emulator** (`APPLY_REGION` / `RESTORE_REGION` / `GET_REGION_STATE`, funcs `applyRegionShim` / `restoreRegionShim` / `regionStateShim`) is the same shape: MAIN-world `func` injections that override `Date` / `Intl` / `navigator` to emulate a region, passing real functions, never strings. **Logical names** (`SHOW_LOGICAL_NAMES`, func `readXrmLogicalNames`) is the same shape again: it reads the Dynamics `Xrm` form metadata in the MAIN world and returns plain JSON records — `executeScript` results must be serialisable, so it hands back names, never elements, and the content script re-resolves them against `[data-id]` to draw the overlay. **Open in Web API** (`GET_XRM_WEB_API_URL`, func `readXrmWebApiUrl`) is the same shape again: it resolves the current record's id and entity set name via the Dynamics `Xrm` API (async, since `Xrm.Utility.getEntityMetadata` is) and returns a plain JSON record — a Dataverse Web API URL, never a DOM reference. Any future MAIN-world injection must clear the same bar: a real `func`, never a string.
 - **`shared/workflow.ts`'s `PREAMBLE` is a text template, not a second instance.** The Recorder's exported flow script embeds a `runJs` helper whose body is `new Function(...)` — but that whole helper exists only as **text inside a template-literal string** assembled by `buildWorkflowScript()`. The generated script runs like any other saved script, through the one sanctioned runner above; nothing in `workflow.ts` itself executes `new Function` at the extension-code level. A text search (e.g. `grep -rn "new Function" src/`) will still match this string plus prose comments discussing the exception — read the matches, don't just count them.
 - Validate all messages and stored data with type guards before processing.
-- Block script injection / picking on `chrome://`, Chrome Web Store, and `about:` URLs.
+- Block script injection / picking on `chrome://`, `chrome-extension://`, `edge://`, `moz-extension://`, Chrome Web Store, `addons.mozilla.org`, and `about:` URLs (`BLOCKED_URL_PREFIXES` in `src/shared/constants.ts`).
 - Shadow DOM isolation for the picker overlay.
 
 ## Known Gotchas
 
-- **Side Panel API requires Chrome 114+.**
-- **MAIN-world execution follows the page's CSP** — sites that block `unsafe-eval` will reject the runner (same limitation as a bookmarklet); surface the thrown error in the UI.
-- **`chrome.tabs.sendMessage` needs the content script present** — injection is blocked on `chrome://`/Web Store/`about:` pages; handle gracefully.
+- **`vite-plugin-web-extension` (and `@samrum/vite-plugin-web-extension`) are NOT viable for the Firefox build on this stack.** This project's Vite 8 uses the Rolldown bundler engine by default, not classic Rollup. `vite-plugin-web-extension@4.5.1`'s background-script build requests `output.format: 'iife'` together with code-splitting, which Rolldown rejects outright (Rollup was more permissive); it also ignores the configured `outDir` and writes into the shared `dist/`, clobbering the Chrome build, regardless of config or CLI override. Both were reproduced directly, not inferred. `vite.config.firefox.ts` uses plain `rollupOptions` instead — no extension-specific plugin. Re-verify against Rolldown compatibility before ever reaching for one of these plugins again.
+- **`chrome.sidePanel` has no Firefox equivalent and no `webextension-polyfill` typing** — see the Architecture Rules entry above. Firefox's `sidebarAction.toggle()` must be called synchronously as the first statement in the `action.onClicked` handler; it loses "user gesture" status after any `await` (Bugzilla 1800401).
+- **Side Panel API requires Chrome 114+; Firefox sidebar support assumed 128+** (set as `browser_specific_settings.gecko.strict_min_version` in `manifest.firefox.json`, for `world: 'MAIN'` scripting parity).
+- **MAIN-world execution follows the page's CSP** — sites that block `unsafe-eval` will reject the runner (same limitation as a bookmarklet) on both browsers; surface the thrown error in the UI.
+- **`browser.tabs.sendMessage` needs the content script present** — injection is blocked on `chrome://`/Web Store/`about:`/`moz-extension://`/AMO pages; handle gracefully.
 - **Element picker can't pierce cross-origin iframes.**
-- **CRXJS HMR quirks** — the service worker doesn't auto-reload; manually reload the extension after background changes.
+- **CRXJS HMR quirks** — the service worker doesn't auto-reload; manually reload the extension after background changes. The Firefox build has no HMR at all — `npm run dev:firefox` rebuilds on change but you reload manually via `about:debugging`.
 - **`exactOptionalPropertyTypes` is ON** — can't assign `undefined` to optional props; omit the key instead.
 - **Test environment is happy-dom, not jsdom** — some browser APIs differ.
+- **The real `webextension-polyfill` throws synchronously unless `chrome.runtime.id` is truthy, and wraps every method assuming Chrome's callback-based signatures** — `tests/setup.ts` mocks the whole `webextension-polyfill` MODULE (`vi.mock('webextension-polyfill', () => ({ default: chromeMock }))`) rather than relying on the real polyfill to wrap `chromeMock`'s already-promise-returning functions; the real polyfill would wait forever on a callback `chromeMock` never invokes.
 
 ## Common Patterns
 
@@ -189,7 +231,7 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 
 ### Adding a Tools sub-tool
 
-1. Pure logic in `src/shared/tools/<tool>.ts` — chrome-free and `Document`-injectable so happy-dom can drive it. Never import it from `picker.ts`'s static graph.
+1. Pure logic in `src/shared/tools/<tool>.ts` — no extension API calls, `Document`-injectable so happy-dom can drive it. Never import it from `picker.ts`'s static graph.
 2. In-page bridge in `src/content/tools/<tool>.ts`, registered in the `HANDLERS` map in `src/content/tools.ts` (only if it needs an interactive mode).
 3. UI in `src/sidepanel/components/tools/<Tool>Tool.tsx`, rendered by `ToolsTab` inside `ToolShell` — which already owns the title, the standing limits and stop-on-unmount.
 4. Flip `isReady: true` on its entry in `src/shared/tools.ts`, and add any new `PageMode` member to `src/shared/types.ts`.
@@ -201,7 +243,7 @@ Imports from these nested directories must use `@/` aliases (`@/content/overlay`
 
 - **Framework**: Vitest + happy-dom (not Jest)
 - **Structure**: `tests/` mirrors `src/`
-- **Chrome mocks**: global setup in `tests/setup.ts` — mocks `chrome.runtime`, `chrome.storage.local`, `chrome.tabs`, `chrome.sidePanel`, `chrome.scripting`
+- **Chrome mocks**: global setup in `tests/setup.ts` — mocks `chrome.runtime`, `chrome.storage.local`, `chrome.tabs`, `chrome.sidePanel`, `chrome.scripting`, `chrome.action`, `chrome.sidebarAction` (the last two only exercised by the Firefox-fallback test in `tests/background/service-worker.test.ts`), and mocks the `webextension-polyfill` module itself so `browser.*` resolves to the same mock (see Known Gotchas)
 - **Primary unit targets**: `shared/locators.ts` (DOM fixtures, uniqueness, ranking, framework snippets) and `shared/faker-data.ts` (seeded determinism, all fields present per locale)
 - **Run**: `npm test`, `npm run test:coverage`
 

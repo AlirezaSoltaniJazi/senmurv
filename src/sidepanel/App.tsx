@@ -1,6 +1,8 @@
 import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
+import { browser } from '@/shared/browser-api';
 import {
+  ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
   FIND_TIMEOUT_SECONDS_DEFAULT,
   FONT_PRESET_ZOOM,
   FONT_SCALE_MAX,
@@ -10,11 +12,15 @@ import {
   MAX_PINNED_TOOLS,
   MESSAGE_TYPES,
 } from '@/shared/constants';
+import { applyLocatorSeed, newAccount } from '@/shared/accounts';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { togglePinned, validPinnedTools } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
-import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
+import type { AccountLocatorSeed, FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
+import type { AccountEditingState } from './components/AccountsTab';
+import { INITIAL_LOCATOR_TAB_STATE } from './locator-tab-state';
+import type { LocatorTabState } from './locator-tab-state';
 
 // Lazy-load each tab so the panel shell renders instantly; heavy deps (faker
 // locales in Data/Fill, js-beautify in Scripts) load only when that tab opens.
@@ -29,6 +35,9 @@ const RecorderTab = lazy(() =>
 );
 const ScriptsTab = lazy(() =>
   import('./components/ScriptsTab').then((m) => ({ default: m.ScriptsTab }))
+);
+const AccountsTab = lazy(() =>
+  import('./components/AccountsTab').then((m) => ({ default: m.AccountsTab }))
 );
 const ToolsTab = lazy(() => import('./components/ToolsTab').then((m) => ({ default: m.ToolsTab })));
 const CookiesTab = lazy(() =>
@@ -54,6 +63,7 @@ type TabKey =
   | 'locator'
   | 'recorder'
   | 'scripts'
+  | 'accounts'
   | 'tools'
   | 'cookies'
   | 'storage'
@@ -68,6 +78,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'locator', label: 'Locator' },
   { key: 'recorder', label: 'Recorder' },
   { key: 'scripts', label: 'Scripts' },
+  { key: 'accounts', label: 'Accounts' },
   { key: 'tools', label: 'Tools' },
   { key: 'cookies', label: 'Cookies' },
   { key: 'storage', label: 'Storage' },
@@ -78,11 +89,14 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'dataio', label: 'Export/Import' },
 ];
 
-const VERSION = chrome.runtime.getManifest().version;
-const LOGO_URL = chrome.runtime.getURL('public/icons/icon-32.png');
+const VERSION = browser.runtime.getManifest().version;
+// Unprefixed — both builds' publicDir copy lands assets at icons/*; Chrome's
+// dist/ additionally has a public/icons/* duplicate (CRXJS preserves the
+// manifest-declared path too), but the Firefox build only has the former.
+const LOGO_URL = browser.runtime.getURL('icons/icon-32.png');
 
 function openFullPage(): void {
-  void chrome.tabs.create({ url: chrome.runtime.getURL('src/sidepanel/index.html') });
+  void browser.tabs.create({ url: browser.runtime.getURL('src/sidepanel/index.html') });
 }
 
 export function App(): ReactElement {
@@ -93,6 +107,14 @@ export function App(): ReactElement {
   // Same reason: lazy tabs unmount on switch, so the open tool lives up here.
   const [tool, setTool] = useState<ToolKey | null>(null);
   const [scriptSeed, setScriptSeed] = useState<ScriptSeed | null>(null);
+  // Lifted so the Locator tab survives switching away and back (picked
+  // element, test query/results, highlight state) without losing progress.
+  const [locatorState, setLocatorState] = useState<LocatorTabState>(INITIAL_LOCATOR_TAB_STATE);
+  // Same reason: the Accounts tab's in-progress draft (and the generation
+  // counter that forces its editor to remount when a new locator is seeded
+  // into an already-open draft) survive switching away and back too.
+  const [accountEditing, setAccountEditing] = useState<AccountEditingState | null>(null);
+  const [accountSeedGeneration, setAccountSeedGeneration] = useState(0);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
   const [fontScale, setFontScale] = useState<number | undefined>(undefined);
@@ -101,6 +123,10 @@ export function App(): ReactElement {
   // Seconds a Flow step waits for its element before giving up; baked into flows.
   const [findTimeoutSeconds, setFindTimeoutSeconds] = useState<number>(
     FIND_TIMEOUT_SECONDS_DEFAULT
+  );
+  // Seconds a saved account must be hovered before its description tooltip appears.
+  const [accountTooltipDelaySeconds, setAccountTooltipDelaySeconds] = useState<number>(
+    ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT
   );
   // Track-tag colour overrides (tag → palette index), persisted in prefs.
   const [tagColors, setTagColors] = useState<Record<string, number>>({});
@@ -127,6 +153,18 @@ export function App(): ReactElement {
   }, []);
   const clearScriptSeed = useCallback(() => setScriptSeed(null), []);
 
+  // Locator → Accounts handoff: "Add to account" merges a tested query+kind
+  // into whichever account draft is already open (starting a new one if
+  // none is) WITHOUT switching tabs — the user may still be picking/testing
+  // more elements on this same page before they're done with this account.
+  const addLocatorToAccount = useCallback((seed: AccountLocatorSeed) => {
+    setAccountEditing((prev) => ({
+      account: applyLocatorSeed(prev?.account ?? newAccount(Date.now()), seed),
+      isNew: prev?.isNew ?? true,
+    }));
+    setAccountSeedGeneration((n) => n + 1);
+  }, []);
+
   // Switching tabs should start at the top — the panel otherwise keeps the
   // previous tab's scroll position.
   useEffect(() => {
@@ -143,6 +181,9 @@ export function App(): ReactElement {
         setFontScale(res.value.fontScale);
         setHudSeconds(res.value.hudSeconds ?? HUD_SECONDS_DEFAULT);
         setFindTimeoutSeconds(res.value.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT);
+        setAccountTooltipDelaySeconds(
+          res.value.accountTooltipDelaySeconds ?? ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT
+        );
         setTagColors(res.value.tagColors ?? {});
         setAutoReloadOnChange(res.value.autoReloadOnChange ?? false);
         setPinnedTools(validPinnedTools(res.value.pinnedTools ?? []));
@@ -157,7 +198,12 @@ export function App(): ReactElement {
   // set. Build it from current state, then apply the one field being changed —
   // otherwise changing one preference would wipe the others.
   function currentPrefs(): Prefs {
-    const prefs: Prefs = { fontSize, hudSeconds, findTimeoutSeconds };
+    const prefs: Prefs = {
+      fontSize,
+      hudSeconds,
+      findTimeoutSeconds,
+      accountTooltipDelaySeconds,
+    };
     if (fontScale !== undefined) prefs.fontScale = fontScale;
     if (Object.keys(tagColors).length > 0) prefs.tagColors = tagColors;
     if (autoReloadOnChange) prefs.autoReloadOnChange = true;
@@ -195,6 +241,11 @@ export function App(): ReactElement {
     persistPrefs({ ...currentPrefs(), findTimeoutSeconds: seconds });
   }
 
+  function changeAccountTooltipDelay(seconds: number): void {
+    setAccountTooltipDelaySeconds(seconds);
+    persistPrefs({ ...currentPrefs(), accountTooltipDelaySeconds: seconds });
+  }
+
   function changeAutoReload(next: boolean): void {
     setAutoReloadOnChange(next);
     const prefs = currentPrefs();
@@ -224,8 +275,9 @@ export function App(): ReactElement {
   }
 
   // Cmd/Ctrl + Plus/Minus/0 zooms the panel — the same shortcut the browser
-  // itself uses, since a chrome.sidePanel document doesn't share the host
-  // tab's native zoom. changeFontScale/changeFontSize are recreated every
+  // itself uses, since the panel is its own document (chrome.sidePanel /
+  // sidebar_action) and doesn't share the host tab's native zoom.
+  // changeFontScale/changeFontSize are recreated every
   // render (not memoized), so listing them re-subscribes the listener each
   // render too — cheap, and the only way to guarantee it never reads stale
   // prefs (currentPrefs() closes over several independent state slices).
@@ -253,11 +305,13 @@ export function App(): ReactElement {
 
   // Auto-refresh: start reloads the tab that's active right now, every N seconds.
   const startAutoRefresh = useCallback((seconds: number) => {
-    chrome.tabs.query({ active: true, lastFocusedWindow: true }, (tabs) => {
-      if (chrome.runtime.lastError) return;
-      const id = tabs[0]?.id;
-      if (typeof id === 'number') setAutoRefresh({ tabId: id, seconds });
-    });
+    void browser.tabs
+      .query({ active: true, lastFocusedWindow: true })
+      .then((tabs) => {
+        const id = tabs[0]?.id;
+        if (typeof id === 'number') setAutoRefresh({ tabId: id, seconds });
+      })
+      .catch(() => undefined);
   }, []);
   const stopAutoRefresh = useCallback(() => setAutoRefresh(null), []);
 
@@ -267,7 +321,7 @@ export function App(): ReactElement {
   useEffect(() => {
     if (!autoRefresh) return undefined;
     const id = setInterval(() => {
-      void chrome.tabs.reload(autoRefresh.tabId).catch(() => setAutoRefresh(null));
+      void browser.tabs.reload(autoRefresh.tabId).catch(() => setAutoRefresh(null));
     }, autoRefresh.seconds * 1000);
     return () => clearInterval(id);
   }, [autoRefresh]);
@@ -319,7 +373,13 @@ export function App(): ReactElement {
       <main className="app-body">
         <Suspense fallback={<p className="hint">Loading…</p>}>
           {tab === 'data' && <GenerateDataTab />}
-          {tab === 'locator' && <LocatorTab />}
+          {tab === 'locator' && (
+            <LocatorTab
+              state={locatorState}
+              setState={setLocatorState}
+              onAddToAccount={addLocatorToAccount}
+            />
+          )}
           {tab === 'recorder' && (
             <RecorderTab
               seed={recorderSeed}
@@ -336,6 +396,15 @@ export function App(): ReactElement {
               reloadNonce={reloadNonce}
               seed={scriptSeed}
               onSeedConsumed={clearScriptSeed}
+            />
+          )}
+          {tab === 'accounts' && (
+            <AccountsTab
+              reloadNonce={reloadNonce}
+              editing={accountEditing}
+              setEditing={setAccountEditing}
+              seedGeneration={accountSeedGeneration}
+              tooltipDelaySeconds={accountTooltipDelaySeconds}
             />
           )}
           {tab === 'tools' && (
@@ -369,6 +438,8 @@ export function App(): ReactElement {
               onHudSecondsChange={changeHudSeconds}
               findTimeoutSeconds={findTimeoutSeconds}
               onFindTimeoutChange={changeFindTimeout}
+              accountTooltipDelaySeconds={accountTooltipDelaySeconds}
+              onAccountTooltipDelayChange={changeAccountTooltipDelay}
               tagColors={tagColors}
               onTagColorsChange={changeTagColors}
             />

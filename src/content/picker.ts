@@ -1,3 +1,5 @@
+import type { Runtime } from 'webextension-polyfill';
+import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { detectField } from '@/shared/field-detect';
 import { buildLocatorSet } from '@/shared/locators';
@@ -11,6 +13,7 @@ import type {
   Result,
   ToolMode,
 } from '@/shared/types';
+import { runAccountLoginFill } from './account-login';
 import { contextAlive, notify } from './context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
 import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
@@ -352,32 +355,36 @@ function resolveSelector(
 // ---------------------------------------------------------------------------
 
 function register(): void {
-  chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-    if (!isRuntimeMessage(message)) return false;
+  // See the matching comment in service-worker.ts: the polyfill's
+  // OnMessageListener union can't express "true when responding
+  // asynchronously, otherwise undefined", so this is cast rather than forced
+  // into a shape that doesn't match the listener's actual behavior.
+  browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse) => {
+    if (!isRuntimeMessage(message)) return undefined;
 
     switch (message.type) {
       case MESSAGE_TYPES.START_PICK:
         if (!isRecording()) enterMode('pick-locator');
-        return false;
+        return undefined;
 
       case MESSAGE_TYPES.START_PICK_FIELDS:
         if (!isRecording()) enterMode('pick-fields');
-        return false;
+        return undefined;
 
       case MESSAGE_TYPES.CANCEL_PICK:
         if (pageMode === 'pick-locator' || pageMode === 'pick-fields') enterMode('idle');
-        return false;
+        return undefined;
 
       // Picking and recording stay mutually exclusive, as they were before the
       // arbiter: whichever is already running wins. Switching *within* the pick
       // modes is now handled correctly, which is what the arbiter changed.
       case MESSAGE_TYPES.START_RECORD:
         if (pageMode !== 'pick-locator' && pageMode !== 'pick-fields') enterMode('record');
-        return false;
+        return undefined;
 
       case MESSAGE_TYPES.STOP_RECORD:
         if (pageMode === 'record') enterMode('idle');
-        return false;
+        return undefined;
 
       // Forces the lazy Tools chunk to load and answers once it has, so the
       // panel can tell "page unreachable" from "chunk failed to load".
@@ -423,6 +430,10 @@ function register(): void {
         return true;
       }
 
+      case MESSAGE_TYPES.ACCOUNT_LOGIN_FILL:
+        void runAccountLoginFill(message.payload).then(sendResponse);
+        return true;
+
       case MESSAGE_TYPES.BYPASS_PAGE: {
         const { options, shouldWatch } = message.payload;
         void withTools((tools) => tools.bypassPage(options, shouldWatch)).then(sendResponse);
@@ -465,9 +476,9 @@ function register(): void {
 
       default:
         // Everything else is addressed to the side panel or the worker.
-        return false;
+        return undefined;
     }
-  });
+  }) as Runtime.OnMessageListenerCallback);
 
   // Defense in depth for the panel-close teardown (whose primary path is the
   // worker's port.onDisconnect): a bfcache eviction or SPA soft-navigation can

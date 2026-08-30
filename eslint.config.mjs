@@ -76,5 +76,22 @@ export default [
       'no-undef': 'off',
     },
   },
+  {
+    // Deliberately plain JS, not TS — this is a static asset copied verbatim
+    // into dist-firefox/ by scripts/build-firefox.mjs, never passed through
+    // Vite. `browser` is Firefox's native global, not the webextension-polyfill
+    // import, since this file must stay import-free (see the file for why).
+    files: ['src/content/picker-loader.js'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        browser: 'readonly',
+        console: 'readonly',
+      },
+    },
+    rules: {
+      'no-undef': 'off',
+    },
+  },
   prettier,
 ];

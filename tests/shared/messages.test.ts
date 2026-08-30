@@ -66,6 +66,87 @@ describe('isRuntimeMessage', () => {
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.GET_REGION_STATE })).toBe(true);
   });
 
+  it('accepts the Accounts tab types', () => {
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.GET_ACCOUNTS })).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.SAVE_ACCOUNT,
+        payload: { account: { id: 'acct_1' } },
+      })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.DELETE_ACCOUNT, payload: { id: 'acct_1' } })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.DUPLICATE_ACCOUNT, payload: { id: 'acct_1' } })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.RENAME_GROUP,
+        payload: { from: 'Group A', to: 'Group B' },
+      })
+    ).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE })).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD, payload: { password: 'x' } })
+    ).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD })).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE })).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.SET_ACCOUNTS_PIN,
+        payload: { pin: '123456', sessionMinutes: 30 },
+      })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.UNLOCK_ACCOUNTS, payload: { pin: '123456' } })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.CHANGE_ACCOUNTS_PIN,
+        payload: { currentPin: '111111', newPin: '222222' },
+      })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.SET_ACCOUNTS_SESSION_MINUTES,
+        payload: { minutes: 60 },
+      })
+    ).toBe(true);
+    expect(isRuntimeMessage({ type: MESSAGE_TYPES.LOCK_ACCOUNTS })).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.RUN_ACCOUNT_LOGIN, payload: { id: 'acct_1' } })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.ACCOUNT_LOGIN_FILL,
+        payload: {
+          username: 'user',
+          password: 'pass',
+          usernameField: { kind: 'css', query: '#u' },
+          passwordField: { kind: 'css', query: '#p' },
+          loginButton: { kind: 'css', query: '#go' },
+          timeoutMs: 5000,
+        },
+      })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.EXPORT_ACCOUNTS, payload: { pin: '123456' } })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.EXPORT_ACCOUNTS,
+        payload: { pin: '123456', ids: ['acct_1'] },
+      })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.IMPORT_ACCOUNTS,
+        payload: { accounts: [] },
+      })
+    ).toBe(true);
+  });
+
   it('rejects unknown or malformed values', () => {
     expect(isRuntimeMessage(null)).toBe(false);
     expect(isRuntimeMessage(undefined)).toBe(false);
