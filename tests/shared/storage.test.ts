@@ -447,6 +447,12 @@ describe('account storage', () => {
     expect(isAccount({ ...mk(), group: 42 })).toBe(false);
   });
 
+  it('isAccount accepts a valid description and rejects a non-string one', () => {
+    expect(isAccount({ ...mk(), description: 'Staging login' })).toBe(true);
+    expect(isAccount({ ...mk(), description: undefined })).toBe(true);
+    expect(isAccount({ ...mk(), description: 42 })).toBe(false);
+  });
+
   it('returns [] when nothing is stored, and drops invalid entries', async () => {
     expect(await getAccounts()).toEqual([]);
     store[STORAGE_KEYS.ACCOUNTS] = [mk({ id: 'good' }), { junk: true }];
@@ -561,10 +567,16 @@ describe('prefs storage', () => {
   });
 
   it('round-trips through savePrefs (preset and manual scale)', async () => {
-    // getPrefs always fills the default hudSeconds + findTimeoutSeconds, so a saved
-    // prefs object without them reads back with those defaults (3 / 10).
+    // getPrefs always fills the default hudSeconds/findTimeoutSeconds/
+    // accountTooltipDelaySeconds, so a saved prefs object without them reads
+    // back with those defaults (3 / 10 / 2).
     await savePrefs({ fontSize: 'small' });
-    expect(await getPrefs()).toEqual({ fontSize: 'small', hudSeconds: 3, findTimeoutSeconds: 10 });
+    expect(await getPrefs()).toEqual({
+      fontSize: 'small',
+      hudSeconds: 3,
+      findTimeoutSeconds: 10,
+      accountTooltipDelaySeconds: 2,
+    });
 
     await savePrefs({ fontSize: 'large', fontScale: 1.4 });
     expect(await getPrefs()).toEqual({
@@ -572,6 +584,7 @@ describe('prefs storage', () => {
       fontScale: 1.4,
       hudSeconds: 3,
       findTimeoutSeconds: 10,
+      accountTooltipDelaySeconds: 2,
     });
   });
 
@@ -652,5 +665,25 @@ describe('prefs storage', () => {
 
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 'soon' };
     expect((await getPrefs()).hudSeconds).toBe(3);
+  });
+
+  it('reads a stored accountTooltipDelaySeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', accountTooltipDelaySeconds: 5 };
+    expect((await getPrefs()).accountTooltipDelaySeconds).toBe(5);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', accountTooltipDelaySeconds: 999 };
+    expect((await getPrefs()).accountTooltipDelaySeconds).toBe(10); // ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', accountTooltipDelaySeconds: 0 };
+    expect((await getPrefs()).accountTooltipDelaySeconds).toBe(1); // ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', accountTooltipDelaySeconds: 2.6 };
+    expect((await getPrefs()).accountTooltipDelaySeconds).toBe(3); // rounded
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).accountTooltipDelaySeconds).toBe(2); // default
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', accountTooltipDelaySeconds: 'soon' };
+    expect((await getPrefs()).accountTooltipDelaySeconds).toBe(2); // non-numeric ignored
   });
 });

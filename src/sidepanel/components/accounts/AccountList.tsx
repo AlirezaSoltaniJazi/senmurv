@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { DEFAULT_GROUP_NAME, groupAccounts } from '@/shared/accounts';
 import type { Account } from '@/shared/types';
@@ -9,6 +9,8 @@ interface Props {
   pendingId: string | null;
   /** account id -> error from its most recent Login attempt. */
   loginErrors: Record<string, string>;
+  /** Seconds the mouse must hover an account before its description tooltip appears. */
+  tooltipDelaySeconds: number;
   onLogin: (account: Account) => void;
   onEdit: (account: Account) => void;
   onDuplicate: (account: Account) => void;
@@ -16,10 +18,92 @@ interface Props {
   onRenameGroup: (from: string, to: string) => void;
 }
 
+interface AccountRowProps {
+  account: Account;
+  pending: boolean;
+  loginError: string | undefined;
+  tooltipDelaySeconds: number;
+  onLogin: () => void;
+  onEdit: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+}
+
+/** One account row, plus its own hover-delay tooltip state — a per-row hook
+ *  (start/clear a timer, show/hide) can't live in the parent's .map() body. */
+function AccountRow({
+  account,
+  pending,
+  loginError,
+  tooltipDelaySeconds,
+  onLogin,
+  onEdit,
+  onDuplicate,
+  onDelete,
+}: AccountRowProps): ReactElement {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function startHover(): void {
+    if (!account.description) return;
+    timerRef.current = setTimeout(() => setShowTooltip(true), tooltipDelaySeconds * 1000);
+  }
+  function endHover(): void {
+    if (timerRef.current !== null) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setShowTooltip(false);
+  }
+  useEffect(
+    () => () => {
+      if (timerRef.current !== null) clearTimeout(timerRef.current);
+    },
+    []
+  );
+
+  return (
+    <Fragment>
+      <li className="script-row script-child" onMouseEnter={startHover} onMouseLeave={endHover}>
+        <div className="account-info">
+          <span className="account-name">{account.name || account.address}</span>
+          <span className="account-meta dim">
+            {account.address}
+            {account.username ? ` · ${account.username}` : ''}
+          </span>
+          {showTooltip && account.description && (
+            <div className="account-tooltip" role="tooltip">
+              {account.description}
+            </div>
+          )}
+        </div>
+        <span className="script-actions">
+          <button type="button" className="primary" disabled={pending} onClick={onLogin}>
+            {pending ? 'Logging in…' : 'Login'}
+          </button>
+          <button type="button" onClick={onEdit}>
+            Edit
+          </button>
+          <button type="button" onClick={onDuplicate}>
+            Duplicate
+          </button>
+          <button type="button" className="danger" onClick={onDelete}>
+            Delete
+          </button>
+        </span>
+      </li>
+      {loginError && (
+        <li className="script-child">
+          <p className="error">{loginError}</p>
+        </li>
+      )}
+    </Fragment>
+  );
+}
+
 export function AccountList({
   accounts,
   pendingId,
   loginErrors,
+  tooltipDelaySeconds,
   onLogin,
   onEdit,
   onDuplicate,
@@ -105,41 +189,17 @@ export function AccountList({
           </li>
           {expanded.has(group.name) &&
             group.accounts.map((account) => (
-              <Fragment key={account.id}>
-                <li className="script-row script-child">
-                  <div className="account-info">
-                    <span className="account-name">{account.name || account.address}</span>
-                    <span className="account-meta dim">
-                      {account.address}
-                      {account.username ? ` · ${account.username}` : ''}
-                    </span>
-                  </div>
-                  <span className="script-actions">
-                    <button
-                      type="button"
-                      className="primary"
-                      disabled={pendingId === account.id}
-                      onClick={() => onLogin(account)}
-                    >
-                      {pendingId === account.id ? 'Logging in…' : 'Login'}
-                    </button>
-                    <button type="button" onClick={() => onEdit(account)}>
-                      Edit
-                    </button>
-                    <button type="button" onClick={() => onDuplicate(account)}>
-                      Duplicate
-                    </button>
-                    <button type="button" className="danger" onClick={() => onDelete(account)}>
-                      Delete
-                    </button>
-                  </span>
-                </li>
-                {loginErrors[account.id] && (
-                  <li className="script-child">
-                    <p className="error">{loginErrors[account.id]}</p>
-                  </li>
-                )}
-              </Fragment>
+              <AccountRow
+                key={account.id}
+                account={account}
+                pending={pendingId === account.id}
+                loginError={loginErrors[account.id]}
+                tooltipDelaySeconds={tooltipDelaySeconds}
+                onLogin={() => onLogin(account)}
+                onEdit={() => onEdit(account)}
+                onDuplicate={() => onDuplicate(account)}
+                onDelete={() => onDelete(account)}
+              />
             ))}
         </Fragment>
       ))}

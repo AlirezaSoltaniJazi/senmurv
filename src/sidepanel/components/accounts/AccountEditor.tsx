@@ -95,6 +95,7 @@ export function AccountEditor({
   const [address, setAddress] = useState(initial.address);
   const [username, setUsername] = useState(initial.username);
   const [group, setGroup] = useState(initial.group ?? '');
+  const [description, setDescription] = useState(initial.description ?? '');
   const [useDefaultPassword, setUseDefaultPassword] = useState(initial.useDefaultPassword);
   // Blank means "leave the existing password unchanged" on edit — the editor
   // never receives the old plaintext to prefill.
@@ -116,6 +117,7 @@ export function AccountEditor({
     };
     if (!useDefaultPassword && password.trim() !== '') draft.newPassword = password;
     if (group.trim() !== '') draft.group = group.trim();
+    if (description.trim() !== '') draft.description = description.trim();
     onSave(draft);
   }
 
@@ -149,6 +151,13 @@ export function AccountEditor({
         aria-label="Account or email"
         value={username}
         onChange={(e) => setUsername(e.target.value)}
+      />
+      <textarea
+        className="description-input"
+        placeholder="Description (optional) — shown as a tooltip on hover"
+        aria-label="Description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
       />
 
       <label className="checkbox-inline">

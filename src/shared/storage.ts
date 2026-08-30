@@ -1,6 +1,9 @@
 import { browser } from '@/shared/browser-api';
 import { upsertAccount } from '@/shared/accounts';
 import {
+  ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
+  ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX,
+  ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN,
   FIND_TIMEOUT_SECONDS_DEFAULT,
   FIND_TIMEOUT_SECONDS_MAX,
   FIND_TIMEOUT_SECONDS_MIN,
@@ -447,6 +450,7 @@ export const DEFAULT_PREFS: Prefs = {
   fontSize: 'medium',
   hudSeconds: HUD_SECONDS_DEFAULT,
   findTimeoutSeconds: FIND_TIMEOUT_SECONDS_DEFAULT,
+  accountTooltipDelaySeconds: ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
 };
 
 function isFontSize(value: unknown): value is FontSize {
@@ -498,6 +502,7 @@ export async function getPrefs(): Promise<Prefs> {
     fontSize: isFontSize(v.fontSize) ? v.fontSize : DEFAULT_PREFS.fontSize,
     hudSeconds: HUD_SECONDS_DEFAULT,
     findTimeoutSeconds: FIND_TIMEOUT_SECONDS_DEFAULT,
+    accountTooltipDelaySeconds: ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
   };
   if (typeof v.fontScale === 'number' && Number.isFinite(v.fontScale)) {
     prefs.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, v.fontScale));
@@ -512,6 +517,15 @@ export async function getPrefs(): Promise<Prefs> {
     prefs.findTimeoutSeconds = Math.min(
       FIND_TIMEOUT_SECONDS_MAX,
       Math.max(FIND_TIMEOUT_SECONDS_MIN, Math.round(v.findTimeoutSeconds))
+    );
+  }
+  if (
+    typeof v.accountTooltipDelaySeconds === 'number' &&
+    Number.isFinite(v.accountTooltipDelaySeconds)
+  ) {
+    prefs.accountTooltipDelaySeconds = Math.min(
+      ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX,
+      Math.max(ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN, Math.round(v.accountTooltipDelaySeconds))
     );
   }
   const tagColors = readTagColors(v.tagColors);
@@ -561,7 +575,8 @@ export function isAccount(value: unknown): value is Account {
     typeof v.createdAt === 'number' &&
     typeof v.updatedAt === 'number' &&
     (v.encryptedPassword === undefined || isEncryptedSecret(v.encryptedPassword)) &&
-    (v.group === undefined || typeof v.group === 'string')
+    (v.group === undefined || typeof v.group === 'string') &&
+    (v.description === undefined || typeof v.description === 'string')
   );
 }
 

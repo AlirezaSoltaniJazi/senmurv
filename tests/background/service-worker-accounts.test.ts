@@ -210,6 +210,30 @@ describe('GET_ACCOUNTS / SAVE_ACCOUNT / DELETE_ACCOUNT', () => {
     expect(accounts[0]?.encryptedPassword).toBeUndefined();
   });
 
+  it('saves an account with a group and a description', async () => {
+    await send({
+      type: MESSAGE_TYPES.SET_ACCOUNTS_PIN,
+      payload: { pin: '123456', sessionMinutes: 30 },
+    });
+    const draft = {
+      id: 'acct_1',
+      name: 'My Site',
+      address: 'sub.x.com',
+      username: 'sss@ss.com',
+      useDefaultPassword: true,
+      group: 'Group A',
+      description: 'Staging login',
+      usernameField: { kind: 'css', query: '#username' },
+      passwordField: { kind: 'css', query: '#password' },
+      loginButton: { kind: 'css', query: '#login' },
+    };
+    const res = await send({ type: MESSAGE_TYPES.SAVE_ACCOUNT, payload: { account: draft } });
+    expect(res).toMatchObject({ ok: true });
+    const accounts = (res as Response).value as Account[];
+    expect(accounts[0]?.group).toBe('Group A');
+    expect(accounts[0]?.description).toBe('Staging login');
+  });
+
   it('deletes an account by id', async () => {
     await send({
       type: MESSAGE_TYPES.SET_ACCOUNTS_PIN,

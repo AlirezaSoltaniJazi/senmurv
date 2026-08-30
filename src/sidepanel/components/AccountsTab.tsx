@@ -29,6 +29,8 @@ interface Props {
    *  AccountEditor (which only reads its `initial` prop once, on mount)
    *  remounts and picks up the change even when it was already open. */
   seedGeneration: number;
+  /** Seconds a saved account must be hovered before its description tooltip appears. */
+  tooltipDelaySeconds: number;
 }
 
 const DEFAULT_SESSION_MINUTES = 30;
@@ -39,6 +41,7 @@ export function AccountsTab({
   editing,
   setEditing,
   seedGeneration,
+  tooltipDelaySeconds,
 }: Props): ReactElement {
   const [lockState, setLockState] = useState<AccountsLockState | null>(null);
   const [pin, setPin] = useState('');
@@ -262,6 +265,7 @@ export function AccountsTab({
           accounts={accounts}
           pendingId={pendingId}
           loginErrors={loginErrors}
+          tooltipDelaySeconds={tooltipDelaySeconds}
           onLogin={(account) => void login(account)}
           onEdit={(account) => setEditing({ account, isNew: false })}
           onDuplicate={(account) => void duplicateAccount(account)}

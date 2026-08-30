@@ -1654,6 +1654,7 @@ async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
   };
   if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
   if (draft.group) candidate.group = draft.group;
+  if (draft.description) candidate.description = draft.description;
 
   const validated = validateAccount(candidate);
   if (!validated.ok) return validated;

@@ -2,6 +2,7 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { browser } from '@/shared/browser-api';
 import {
+  ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
   FIND_TIMEOUT_SECONDS_DEFAULT,
   FONT_PRESET_ZOOM,
   FONT_SCALE_MAX,
@@ -123,6 +124,10 @@ export function App(): ReactElement {
   const [findTimeoutSeconds, setFindTimeoutSeconds] = useState<number>(
     FIND_TIMEOUT_SECONDS_DEFAULT
   );
+  // Seconds a saved account must be hovered before its description tooltip appears.
+  const [accountTooltipDelaySeconds, setAccountTooltipDelaySeconds] = useState<number>(
+    ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT
+  );
   // Track-tag colour overrides (tag → palette index), persisted in prefs.
   const [tagColors, setTagColors] = useState<Record<string, number>>({});
   // Tools pinned to the top of the launcher, in pin order; persisted in prefs.
@@ -176,6 +181,9 @@ export function App(): ReactElement {
         setFontScale(res.value.fontScale);
         setHudSeconds(res.value.hudSeconds ?? HUD_SECONDS_DEFAULT);
         setFindTimeoutSeconds(res.value.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT);
+        setAccountTooltipDelaySeconds(
+          res.value.accountTooltipDelaySeconds ?? ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT
+        );
         setTagColors(res.value.tagColors ?? {});
         setAutoReloadOnChange(res.value.autoReloadOnChange ?? false);
         setPinnedTools(validPinnedTools(res.value.pinnedTools ?? []));
@@ -190,7 +198,12 @@ export function App(): ReactElement {
   // set. Build it from current state, then apply the one field being changed —
   // otherwise changing one preference would wipe the others.
   function currentPrefs(): Prefs {
-    const prefs: Prefs = { fontSize, hudSeconds, findTimeoutSeconds };
+    const prefs: Prefs = {
+      fontSize,
+      hudSeconds,
+      findTimeoutSeconds,
+      accountTooltipDelaySeconds,
+    };
     if (fontScale !== undefined) prefs.fontScale = fontScale;
     if (Object.keys(tagColors).length > 0) prefs.tagColors = tagColors;
     if (autoReloadOnChange) prefs.autoReloadOnChange = true;
@@ -226,6 +239,11 @@ export function App(): ReactElement {
   function changeFindTimeout(seconds: number): void {
     setFindTimeoutSeconds(seconds);
     persistPrefs({ ...currentPrefs(), findTimeoutSeconds: seconds });
+  }
+
+  function changeAccountTooltipDelay(seconds: number): void {
+    setAccountTooltipDelaySeconds(seconds);
+    persistPrefs({ ...currentPrefs(), accountTooltipDelaySeconds: seconds });
   }
 
   function changeAutoReload(next: boolean): void {
@@ -386,6 +404,7 @@ export function App(): ReactElement {
               editing={accountEditing}
               setEditing={setAccountEditing}
               seedGeneration={accountSeedGeneration}
+              tooltipDelaySeconds={accountTooltipDelaySeconds}
             />
           )}
           {tab === 'tools' && (
@@ -419,6 +438,8 @@ export function App(): ReactElement {
               onHudSecondsChange={changeHudSeconds}
               findTimeoutSeconds={findTimeoutSeconds}
               onFindTimeoutChange={changeFindTimeout}
+              accountTooltipDelaySeconds={accountTooltipDelaySeconds}
+              onAccountTooltipDelayChange={changeAccountTooltipDelay}
               tagColors={tagColors}
               onTagColorsChange={changeTagColors}
             />

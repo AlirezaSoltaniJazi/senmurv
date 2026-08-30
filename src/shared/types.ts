@@ -816,6 +816,11 @@ export interface Prefs {
    * pinned. Capped at MAX_PINNED_TOOLS; omitted when none are pinned.
    */
   pinnedTools?: ToolKey[];
+  /**
+   * Seconds the mouse must hover a saved account before its description
+   * tooltip appears (Accounts tab). Omitted → the default applies.
+   */
+  accountTooltipDelaySeconds?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -945,6 +950,9 @@ export interface Account {
   /** Free-text group label (e.g. "Group A"); absent/blank falls into the
    *  "Default" bucket shown on the Accounts tab's main list. */
   group?: string;
+  /** Optional free-text note shown as a tooltip after hovering the account
+   *  in the list (delay configurable in Settings). */
+  description?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -967,6 +975,7 @@ export interface AccountDraft {
   passwordField: AccountLocator;
   loginButton: AccountLocator;
   group?: string;
+  description?: string;
 }
 
 /** The one shared "default password" accounts can opt into. Encrypted the

@@ -135,6 +135,18 @@ describe('validateAccount', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.group).toBeUndefined();
   });
+
+  it('trims a description and keeps it', () => {
+    const result = validateAccount(mk({ description: '  Staging login  ' }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.description).toBe('Staging login');
+  });
+
+  it('drops a blank/whitespace-only description entirely', () => {
+    const result = validateAccount(mk({ description: '   ' }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.description).toBeUndefined();
+  });
 });
 
 describe('upsertAccount', () => {
@@ -261,6 +273,13 @@ describe('duplicateAccount', () => {
     const result = duplicateAccount([source], source.id, 500);
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.group).toBe('Group A');
+  });
+
+  it('copies the source description unchanged', () => {
+    const source = mk({ description: 'Staging login' });
+    const result = duplicateAccount([source], source.id, 600);
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.description).toBe('Staging login');
   });
 });
 

@@ -228,6 +228,11 @@ export const FIND_TIMEOUT_SECONDS_DEFAULT = 10;
 export const ACCOUNTS_PIN_MIN_LENGTH = 6;
 export const ACCOUNTS_PIN_MAX_LENGTH = 15;
 
+/** Account description tooltip hover-delay bounds + default, in seconds. */
+export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN = 1;
+export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX = 10;
+export const ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT = 2;
+
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;
 

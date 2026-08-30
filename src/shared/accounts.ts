@@ -96,6 +96,9 @@ export function validateAccount(draft: Account): Result<Account> {
   const group = draft.group?.trim();
   if (group) clean.group = group;
   else delete clean.group;
+  const description = draft.description?.trim();
+  if (description) clean.description = description;
+  else delete clean.description;
   return { ok: true, value: clean };
 }
 
