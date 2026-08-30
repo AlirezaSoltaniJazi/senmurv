@@ -942,6 +942,9 @@ export interface Account {
   usernameField: AccountLocator;
   passwordField: AccountLocator;
   loginButton: AccountLocator;
+  /** Free-text group label (e.g. "Group A"); absent/blank falls into the
+   *  "Default" bucket shown on the Accounts tab's main list. */
+  group?: string;
   createdAt: number;
   updatedAt: number;
 }
@@ -963,6 +966,7 @@ export interface AccountDraft {
   usernameField: AccountLocator;
   passwordField: AccountLocator;
   loginButton: AccountLocator;
+  group?: string;
 }
 
 /** The one shared "default password" accounts can opt into. Encrypted the

@@ -1,5 +1,6 @@
 import { ACCOUNTS_PIN_MAX_LENGTH, ACCOUNTS_PIN_MIN_LENGTH } from '@/shared/constants';
-import type { Account, Result } from '@/shared/types';
+import { uniqueName } from '@/shared/script-io';
+import type { Account, AccountLocatorSeed, Result } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 /**
@@ -19,6 +20,9 @@ export function isValidPin(pin: string): boolean {
     /^\d+$/.test(pin)
   );
 }
+
+/** The bucket an account without its own group falls into. */
+export const DEFAULT_GROUP_NAME = 'Default';
 
 /** A blank account, ready for the editor. */
 export function newAccount(now: number): Account {
@@ -89,7 +93,59 @@ export function validateAccount(draft: Account): Result<Account> {
     loginButton: { ...draft.loginButton, query: loginButtonQuery },
   };
   if (draft.useDefaultPassword) delete clean.encryptedPassword;
+  const group = draft.group?.trim();
+  if (group) clean.group = group;
+  else delete clean.group;
   return { ok: true, value: clean };
+}
+
+/** `account` with the seeded locator merged into whichever field it targets
+ *  (the Locator tab's "Add to account" buttons). */
+export function applyLocatorSeed(account: Account, seed: AccountLocatorSeed): Account {
+  const locator = { kind: seed.kind, query: seed.query };
+  if (seed.field === 'username') return { ...account, usernameField: locator };
+  if (seed.field === 'password') return { ...account, passwordField: locator };
+  return { ...account, loginButton: locator };
+}
+
+/** One group's worth of accounts, in their existing relative order. */
+export interface AccountGroup {
+  name: string;
+  accounts: Account[];
+}
+
+/**
+ * Bucket accounts by their `group` (blank/absent falls into
+ * {@link DEFAULT_GROUP_NAME}), each bucket keeping the accounts' existing
+ * relative order. Buckets are sorted with Default first, then alphabetically
+ * (case-insensitive); a bucket only appears if it has at least one account.
+ */
+export function groupAccounts(accounts: Account[]): AccountGroup[] {
+  const byName = new Map<string, Account[]>();
+  for (const account of accounts) {
+    const name = account.group?.trim() || DEFAULT_GROUP_NAME;
+    const bucket = byName.get(name);
+    if (bucket) bucket.push(account);
+    else byName.set(name, [account]);
+  }
+  return [...byName.entries()]
+    .sort(([a], [b]) => {
+      if (a === DEFAULT_GROUP_NAME) return b === DEFAULT_GROUP_NAME ? 0 : -1;
+      if (b === DEFAULT_GROUP_NAME) return 1;
+      return a.localeCompare(b);
+    })
+    .map(([name, groupAccountsList]) => ({ name, accounts: groupAccountsList }));
+}
+
+/** Distinct, real (non-Default) group names already in use — offered as
+ *  autocomplete suggestions in the editor's Group field. */
+export function existingGroupNames(accounts: Account[]): string[] {
+  const names = new Set<string>();
+  for (const account of accounts) {
+    const trimmed = account.group?.trim();
+    if (trimmed) names.add(trimmed);
+  }
+  return [...names].sort((a, b) => a.localeCompare(b));
 }
 
 /** Insert or replace `account` by id, stamping `updatedAt`; returns the new list. */
@@ -98,4 +154,21 @@ export function upsertAccount(accounts: Account[], account: Account, now: number
   const at = accounts.findIndex((a) => a.id === account.id);
   if (at === -1) return [...accounts, next];
   return accounts.map((a) => (a.id === account.id ? next : a));
+}
+
+/**
+ * Clone the account with `id`: a fresh id and a de-duplicated name (via the
+ * same `uniqueName` helper the Scripts/Notes import-conflict resolution
+ * uses), everything else — including `encryptedPassword` — copied as-is.
+ * Crypto-free: the ciphertext is valid under any id, so this never needs to
+ * decrypt/re-encrypt, and works even while Accounts is locked.
+ */
+export function duplicateAccount(accounts: Account[], id: string, now: number): Result<Account> {
+  const source = accounts.find((a) => a.id === id);
+  if (!source) return { ok: false, error: 'Account not found — it may have been deleted.' };
+  const name = uniqueName(source.name, new Set(accounts.map((a) => a.name)));
+  return {
+    ok: true,
+    value: { ...source, id: newId('acct_'), name, createdAt: now, updatedAt: now },
+  };
 }

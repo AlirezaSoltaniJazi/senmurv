@@ -560,7 +560,8 @@ export function isAccount(value: unknown): value is Account {
     isAccountLocator(v.loginButton) &&
     typeof v.createdAt === 'number' &&
     typeof v.updatedAt === 'number' &&
-    (v.encryptedPassword === undefined || isEncryptedSecret(v.encryptedPassword))
+    (v.encryptedPassword === undefined || isEncryptedSecret(v.encryptedPassword)) &&
+    (v.group === undefined || typeof v.group === 'string')
   );
 }
 

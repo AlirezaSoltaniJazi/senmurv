@@ -18,7 +18,7 @@ import {
   setUpPin,
   unlockWithPin,
 } from '@/shared/crypto';
-import { isValidPin, validateAccount } from '@/shared/accounts';
+import { duplicateAccount, isValidPin, validateAccount } from '@/shared/accounts';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 import {
@@ -1653,10 +1653,21 @@ async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
     updatedAt: now,
   };
   if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
+  if (draft.group) candidate.group = draft.group;
 
   const validated = validateAccount(candidate);
   if (!validated.ok) return validated;
   return { ok: true, value: await upsertAccountStored(validated.value) };
+}
+
+/** Clone a saved account (fresh id, de-duplicated name). Crypto-free — the
+ *  copied ciphertext is valid under any id — so this works even while
+ *  Accounts is locked. */
+async function duplicateAccountInStore(id: string): Promise<Result<Account[]>> {
+  const accounts = await getAccounts();
+  const cloned = duplicateAccount(accounts, id, Date.now());
+  if (!cloned.ok) return cloned;
+  return { ok: true, value: await upsertAccountStored(cloned.value) };
 }
 
 /**
@@ -2085,6 +2096,12 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
       case MESSAGE_TYPES.DELETE_ACCOUNT:
         deleteAccount(message.payload.id)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DUPLICATE_ACCOUNT:
+        duplicateAccountInStore(message.payload.id)
+          .then(sendResponse)
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 

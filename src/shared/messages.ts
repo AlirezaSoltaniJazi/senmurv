@@ -164,6 +164,7 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.GET_ACCOUNTS }
   | { type: typeof MESSAGE_TYPES.SAVE_ACCOUNT; payload: { account: AccountDraft } }
   | { type: typeof MESSAGE_TYPES.DELETE_ACCOUNT; payload: { id: string } }
+  | { type: typeof MESSAGE_TYPES.DUPLICATE_ACCOUNT; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE }
   | { type: typeof MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD; payload: { password: string } }
   | { type: typeof MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD }
