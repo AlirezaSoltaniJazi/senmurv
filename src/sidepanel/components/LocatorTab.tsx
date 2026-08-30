@@ -1,20 +1,14 @@
-import { useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import { useCallback, useEffect } from 'react';
+import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
-import type {
-  AccountLocatorSeed,
-  LocatorKind,
-  LocatorSet,
-  MatchResult,
-  Result,
-} from '@/shared/types';
+import type { AccountLocatorSeed, MatchResult, Result } from '@/shared/types';
 import { IconActionButton } from './IconActionButton';
 import { LocatorKindToggle } from './LocatorKindToggle';
 import { FrameworkChips, LocatorSuggestions } from './LocatorSuggestions';
-import type { FrameworkFilter } from './LocatorSuggestions';
+import type { LocatorTabState } from '../locator-tab-state';
 
 const ACCOUNT_TARGETS: { field: AccountLocatorSeed['field']; label: string }[] = [
   { field: 'username', label: 'Username field' },
@@ -23,38 +17,45 @@ const ACCOUNT_TARGETS: { field: AccountLocatorSeed['field']; label: string }[] =
 ];
 
 interface Props {
-  /** Send a query+kind to the Accounts tab's open (or new) editor, and switch to it. */
+  state: LocatorTabState;
+  setState: Dispatch<SetStateAction<LocatorTabState>>;
+  /** Merge a query+kind into the Accounts tab's in-progress draft, without
+   *  navigating there — the user may want to keep picking/testing here. */
   onAddToAccount: (seed: AccountLocatorSeed) => void;
 }
 
-export function LocatorTab({ onAddToAccount }: Props): ReactElement {
-  const [picking, setPicking] = useState(false);
-  const [result, setResult] = useState<LocatorSet | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<FrameworkFilter>('all');
+export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactElement {
+  const {
+    picking,
+    result,
+    error,
+    filter,
+    query,
+    testCount,
+    testKind,
+    testedQuery,
+    testError,
+    highlighting,
+    matchInfo,
+  } = state;
 
-  // "Test a locator" state.
-  const [query, setQuery] = useState('');
-  const [testCount, setTestCount] = useState<number | null>(null);
-  const [testKind, setTestKind] = useState<LocatorKind>('css');
-  const [testedQuery, setTestedQuery] = useState('');
-  const [testError, setTestError] = useState<string | null>(null);
-  const [highlighting, setHighlighting] = useState(false);
-  const [matchInfo, setMatchInfo] = useState<MatchResult | null>(null);
+  const update = useCallback(
+    (patch: Partial<LocatorTabState>) => setState((prev) => ({ ...prev, ...patch })),
+    [setState]
+  );
 
   useEffect(() => {
     function onMessage(message: unknown): void {
       if (!isRuntimeMessage(message)) return;
       if (message.type === MESSAGE_TYPES.ELEMENT_PICKED) {
-        setResult(message.payload);
-        setPicking(false);
+        update({ result: message.payload, picking: false });
       } else if (message.type === MESSAGE_TYPES.PICK_CANCELLED) {
-        setPicking(false);
+        update({ picking: false });
       }
     }
     browser.runtime.onMessage.addListener(onMessage);
     return () => browser.runtime.onMessage.removeListener(onMessage);
-  }, []);
+  }, [update]);
 
   // Tear the highlight mode down when the tab unmounts (a no-op if not active).
   useEffect(() => {
@@ -67,13 +68,12 @@ export function LocatorTab({ onAddToAccount }: Props): ReactElement {
   }, []);
 
   // Auto-detect CSS vs. XPath as the query changes (framework snippets, an
-  // "xpath=" prefix, or a leading "//"), computed alongside setQuery in the
-  // input's onChange rather than a separate effect (avoids a cascading
-  // render). The chip still lets the user override this for the current
-  // query — e.g. when a plain selector is ambiguous.
+  // "xpath=" prefix, or a leading "//"), computed alongside the query update
+  // rather than a separate effect (avoids a cascading render). The chip
+  // still lets the user override this for the current query — e.g. when a
+  // plain selector is ambiguous.
   function changeQuery(next: string): void {
-    setQuery(next);
-    setTestKind(parseLocatorInput(next).kind);
+    update({ query: next, testKind: parseLocatorInput(next).kind });
   }
 
   // Live re-highlight as the query changes while highlighting is on (debounced).
@@ -82,79 +82,73 @@ export function LocatorTab({ onAddToAccount }: Props): ReactElement {
     const id = setTimeout(() => {
       const parsed = parseLocatorInput(query);
       if (!parsed.query) return;
-      setTestedQuery(parsed.query);
+      update({ testedQuery: parsed.query });
       void (async () => {
         const res = await sendRuntimeMessage<Result<MatchResult>>({
           type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
           payload: { query: parsed.query, kind: testKind },
         });
         if (res.ok) {
-          setMatchInfo(res.value);
-          setTestError(null);
+          update({ matchInfo: res.value, testError: null });
         } else {
-          setTestError(res.error);
+          update({ testError: res.error });
         }
       })();
     }, 300);
     return () => clearTimeout(id);
-  }, [query, testKind, highlighting]);
+  }, [query, testKind, highlighting, update]);
 
   async function startPick(): Promise<void> {
-    setError(null);
     // Starting a pick switches the in-page mode, which the arbiter tears the
     // highlight down for — reflect that in the panel so the nav strip clears.
-    setHighlighting(false);
-    setMatchInfo(null);
+    update({ error: null, highlighting: false, matchInfo: null });
     const res = await sendRuntimeMessage<Result<void>>({ type: MESSAGE_TYPES.START_PICK });
     if (!res.ok) {
-      setError(res.error);
+      update({ error: res.error });
       return;
     }
-    setPicking(true);
+    update({ picking: true });
   }
 
   async function cancelPick(): Promise<void> {
     await sendRuntimeMessage<Result<void>>({ type: MESSAGE_TYPES.CANCEL_PICK });
-    setPicking(false);
+    update({ picking: false });
   }
 
   async function runTest(): Promise<void> {
-    setTestError(null);
-    setTestCount(null);
+    update({ testError: null, testCount: null });
     const parsed = parseLocatorInput(query);
     if (!parsed.query) return;
-    setTestedQuery(parsed.query);
+    update({ testedQuery: parsed.query });
     const res = await sendRuntimeMessage<Result<{ count: number }>>({
       type: MESSAGE_TYPES.TEST_LOCATOR,
       payload: { query: parsed.query, kind: testKind },
     });
-    if (res.ok) setTestCount(res.value.count);
-    else setTestError(res.error);
+    if (res.ok) update({ testCount: res.value.count });
+    else update({ testError: res.error });
   }
 
   async function toggleHighlight(): Promise<void> {
     if (highlighting) {
-      setHighlighting(false);
-      setMatchInfo(null);
+      update({ highlighting: false, matchInfo: null });
       await sendRuntimeMessage<Result<void>>({
         type: MESSAGE_TYPES.STOP_TOOL_MODE,
         payload: { mode: 'match' },
       });
       return;
     }
-    setTestError(null);
+    update({ testError: null });
     const parsed = parseLocatorInput(query);
     if (!parsed.query) return;
-    setTestedQuery(parsed.query);
+    update({ testedQuery: parsed.query });
     const res = await sendRuntimeMessage<Result<MatchResult>>({
       type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
       payload: { query: parsed.query, kind: testKind },
     });
     if (res.ok) {
-      setHighlighting(true);
-      setMatchInfo(res.value);
+      update({ highlighting: true, matchInfo: res.value });
     } else {
-      setTestError(res.error);
+      update({ testError: res.error });
     }
   }
 
@@ -176,7 +170,7 @@ export function LocatorTab({ onAddToAccount }: Props): ReactElement {
         type: MESSAGE_TYPES.SCROLL_TO_MATCH,
         payload: { index: next },
       });
-      if (res.ok) setMatchInfo(res.value);
+      if (res.ok) update({ matchInfo: res.value });
     })();
   }
 
@@ -208,7 +202,7 @@ export function LocatorTab({ onAddToAccount }: Props): ReactElement {
           Test a locator
         </label>
         <div className="row">
-          <LocatorKindToggle value={testKind} onChange={setTestKind} />
+          <LocatorKindToggle value={testKind} onChange={(kind) => update({ testKind: kind })} />
           <input
             id="loc-test"
             className="name-input"
@@ -293,7 +287,7 @@ export function LocatorTab({ onAddToAccount }: Props): ReactElement {
             )}
           </div>
 
-          <FrameworkChips filter={filter} onChange={setFilter} />
+          <FrameworkChips filter={filter} onChange={(f) => update({ filter: f })} />
           <LocatorSuggestions suggestions={result.suggestions} filter={filter} />
         </>
       )}

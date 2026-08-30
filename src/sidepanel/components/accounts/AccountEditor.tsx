@@ -3,6 +3,7 @@ import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type { Account, AccountDraft, AccountLocator, Result } from '@/shared/types';
+import { AutocompleteInput } from '../AutocompleteInput';
 import { LocatorKindToggle } from '../LocatorKindToggle';
 
 interface Props {
@@ -10,6 +11,11 @@ interface Props {
   /** True when creating a brand-new account, so the password placeholder
    *  doesn't claim there's an existing one to "keep". */
   isNew: boolean;
+  /** Whether a shared default password currently exists — the "use default
+   *  password" checkbox can't be turned on until one does. */
+  isDefaultPasswordSet: boolean;
+  /** Existing group names, offered as autocomplete suggestions. */
+  existingGroups: string[];
   onSave: (draft: AccountDraft) => void;
   onCancel: () => void;
 }
@@ -77,10 +83,18 @@ function LocatorField({ label, ariaLabel, value, onChange }: LocatorFieldProps):
 /** Create/edit one saved account. Mirrors ScriptsTab's list-replaced-by-editor
  *  pattern rather than a modal. The password field renders only when "use
  *  default password" is unchecked, per the spec: not even shown otherwise. */
-export function AccountEditor({ initial, isNew, onSave, onCancel }: Props): ReactElement {
+export function AccountEditor({
+  initial,
+  isNew,
+  isDefaultPasswordSet,
+  existingGroups,
+  onSave,
+  onCancel,
+}: Props): ReactElement {
   const [name, setName] = useState(initial.name);
   const [address, setAddress] = useState(initial.address);
   const [username, setUsername] = useState(initial.username);
+  const [group, setGroup] = useState(initial.group ?? '');
   const [useDefaultPassword, setUseDefaultPassword] = useState(initial.useDefaultPassword);
   // Blank means "leave the existing password unchanged" on edit — the editor
   // never receives the old plaintext to prefill.
@@ -101,6 +115,7 @@ export function AccountEditor({ initial, isNew, onSave, onCancel }: Props): Reac
       loginButton,
     };
     if (!useDefaultPassword && password.trim() !== '') draft.newPassword = password;
+    if (group.trim() !== '') draft.group = group.trim();
     onSave(draft);
   }
 
@@ -112,6 +127,14 @@ export function AccountEditor({ initial, isNew, onSave, onCancel }: Props): Reac
         aria-label="Account name"
         value={name}
         onChange={(e) => setName(e.target.value)}
+      />
+      <AutocompleteInput
+        className="name-input"
+        placeholder="Group (optional), e.g. Group A"
+        ariaLabel="Group"
+        value={group}
+        onChange={setGroup}
+        options={existingGroups}
       />
       <input
         className="name-input"
@@ -132,10 +155,14 @@ export function AccountEditor({ initial, isNew, onSave, onCancel }: Props): Reac
         <input
           type="checkbox"
           checked={useDefaultPassword}
+          disabled={!isDefaultPasswordSet && !useDefaultPassword}
           onChange={(e) => setUseDefaultPassword(e.target.checked)}
         />
         Use default password
       </label>
+      {!isDefaultPasswordSet && !useDefaultPassword && (
+        <p className="hint">Set a default password below to enable this.</p>
+      )}
       {!useDefaultPassword && (
         <input
           className="name-input"

@@ -646,6 +646,28 @@ summary.section-title.collapsible {
   gap: 4px;
 }
 
+/* Account list rows: name + address/username stacked in the flex row's name column. */
+.account-info {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-meta {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .test-locator .name-input {
   flex: 1;
 }

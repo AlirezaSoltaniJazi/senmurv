@@ -11,11 +11,15 @@ import {
   MAX_PINNED_TOOLS,
   MESSAGE_TYPES,
 } from '@/shared/constants';
+import { applyLocatorSeed, newAccount } from '@/shared/accounts';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { togglePinned, validPinnedTools } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import type { AccountLocatorSeed, FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
+import type { AccountEditingState } from './components/AccountsTab';
+import { INITIAL_LOCATOR_TAB_STATE } from './locator-tab-state';
+import type { LocatorTabState } from './locator-tab-state';
 
 // Lazy-load each tab so the panel shell renders instantly; heavy deps (faker
 // locales in Data/Fill, js-beautify in Scripts) load only when that tab opens.
@@ -102,7 +106,14 @@ export function App(): ReactElement {
   // Same reason: lazy tabs unmount on switch, so the open tool lives up here.
   const [tool, setTool] = useState<ToolKey | null>(null);
   const [scriptSeed, setScriptSeed] = useState<ScriptSeed | null>(null);
-  const [accountLocatorSeed, setAccountLocatorSeed] = useState<AccountLocatorSeed | null>(null);
+  // Lifted so the Locator tab survives switching away and back (picked
+  // element, test query/results, highlight state) without losing progress.
+  const [locatorState, setLocatorState] = useState<LocatorTabState>(INITIAL_LOCATOR_TAB_STATE);
+  // Same reason: the Accounts tab's in-progress draft (and the generation
+  // counter that forces its editor to remount when a new locator is seeded
+  // into an already-open draft) survive switching away and back too.
+  const [accountEditing, setAccountEditing] = useState<AccountEditingState | null>(null);
+  const [accountSeedGeneration, setAccountSeedGeneration] = useState(0);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
   const [fontScale, setFontScale] = useState<number | undefined>(undefined);
@@ -137,13 +148,17 @@ export function App(): ReactElement {
   }, []);
   const clearScriptSeed = useCallback(() => setScriptSeed(null), []);
 
-  // Locator → Accounts handoff: "Add to account" hands a tested query+kind to
-  // the Accounts editor and switches to it, mirroring the Scripts/Recorder flow.
+  // Locator → Accounts handoff: "Add to account" merges a tested query+kind
+  // into whichever account draft is already open (starting a new one if
+  // none is) WITHOUT switching tabs — the user may still be picking/testing
+  // more elements on this same page before they're done with this account.
   const addLocatorToAccount = useCallback((seed: AccountLocatorSeed) => {
-    setAccountLocatorSeed(seed);
-    setTab('accounts');
+    setAccountEditing((prev) => ({
+      account: applyLocatorSeed(prev?.account ?? newAccount(Date.now()), seed),
+      isNew: prev?.isNew ?? true,
+    }));
+    setAccountSeedGeneration((n) => n + 1);
   }, []);
-  const clearAccountLocatorSeed = useCallback(() => setAccountLocatorSeed(null), []);
 
   // Switching tabs should start at the top — the panel otherwise keeps the
   // previous tab's scroll position.
@@ -340,7 +355,13 @@ export function App(): ReactElement {
       <main className="app-body">
         <Suspense fallback={<p className="hint">Loading…</p>}>
           {tab === 'data' && <GenerateDataTab />}
-          {tab === 'locator' && <LocatorTab onAddToAccount={addLocatorToAccount} />}
+          {tab === 'locator' && (
+            <LocatorTab
+              state={locatorState}
+              setState={setLocatorState}
+              onAddToAccount={addLocatorToAccount}
+            />
+          )}
           {tab === 'recorder' && (
             <RecorderTab
               seed={recorderSeed}
@@ -362,8 +383,9 @@ export function App(): ReactElement {
           {tab === 'accounts' && (
             <AccountsTab
               reloadNonce={reloadNonce}
-              seed={accountLocatorSeed}
-              onSeedConsumed={clearAccountLocatorSeed}
+              editing={accountEditing}
+              setEditing={setAccountEditing}
+              seedGeneration={accountSeedGeneration}
             />
           )}
           {tab === 'tools' && (

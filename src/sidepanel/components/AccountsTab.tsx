@@ -1,72 +1,57 @@
 import { useEffect, useState } from 'react';
-import type { ReactElement } from 'react';
+import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import {
   ACCOUNTS_PIN_MAX_LENGTH,
   ACCOUNTS_PIN_MIN_LENGTH,
   MESSAGE_TYPES,
 } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
-import { isValidPin, newAccount } from '@/shared/accounts';
-import type {
-  Account,
-  AccountDraft,
-  AccountLocatorSeed,
-  AccountsLockState,
-  Result,
-} from '@/shared/types';
+import { existingGroupNames, isValidPin, newAccount } from '@/shared/accounts';
+import type { Account, AccountDraft, AccountsLockState, Result } from '@/shared/types';
 import { AccountEditor } from './accounts/AccountEditor';
 import { AccountList } from './accounts/AccountList';
 import { AccountsSecurity } from './accounts/AccountsSecurity';
 import { DefaultPasswordSettings } from './accounts/DefaultPasswordSettings';
 
+/** The in-progress account draft, if any — lifted to App.tsx so it (and the
+ *  Locator tab's "Add to account" seeding into it) survives switching away
+ *  and back, the same reason recorderSteps/tool live there. */
+export interface AccountEditingState {
+  account: Account;
+  isNew: boolean;
+}
+
 interface Props {
   reloadNonce: number;
-  /** A locator handed from the Locator tab's "Add to account" button, loaded once. */
-  seed: AccountLocatorSeed | null;
-  onSeedConsumed: () => void;
+  editing: AccountEditingState | null;
+  setEditing: Dispatch<SetStateAction<AccountEditingState | null>>;
+  /** Bumped whenever the Locator tab seeds a field into `editing`, so
+   *  AccountEditor (which only reads its `initial` prop once, on mount)
+   *  remounts and picks up the change even when it was already open. */
+  seedGeneration: number;
 }
 
 const DEFAULT_SESSION_MINUTES = 30;
 const LOCKED_ERROR_PREFIX = 'Accounts are locked';
 
-const SEED_FIELD_KEY = {
-  username: 'usernameField',
-  password: 'passwordField',
-  loginButton: 'loginButton',
-} as const;
-
-export function AccountsTab({ reloadNonce, seed, onSeedConsumed }: Props): ReactElement {
+export function AccountsTab({
+  reloadNonce,
+  editing,
+  setEditing,
+  seedGeneration,
+}: Props): ReactElement {
   const [lockState, setLockState] = useState<AccountsLockState | null>(null);
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [accounts, setAccounts] = useState<Account[]>([]);
-  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
-  const [isNewAccount, setIsNewAccount] = useState(false);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
   const [unlockNonce, setUnlockNonce] = useState(0);
-  // Bumped whenever a seed is applied, so AccountEditor (which only reads its
-  // `initial` prop once, on mount) remounts and picks up the seeded field even
-  // when it was already open for the same account.
-  const [seedGeneration, setSeedGeneration] = useState(0);
-
-  // One-shot seed from the Locator tab: apply it to whichever account is
-  // already being edited, or open a new blank one if none is.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    if (!seed) return;
-    const base = editingAccount ?? newAccount(Date.now());
-    setEditingAccount({
-      ...base,
-      [SEED_FIELD_KEY[seed.field]]: { kind: seed.kind, query: seed.query },
-    });
-    if (!editingAccount) setIsNewAccount(true);
-    setSeedGeneration((n) => n + 1);
-    onSeedConsumed();
-  }, [seed, editingAccount, onSeedConsumed]);
-  /* eslint-enable react-hooks/set-state-in-effect */
+  // Told by DefaultPasswordSettings whenever it changes; lets the editor's
+  // "use default password" checkbox disable itself until one is set.
+  const [isDefaultPasswordSet, setIsDefaultPasswordSet] = useState(false);
 
   async function refreshLockState(): Promise<AccountsLockState | null> {
     const res = await sendRuntimeMessage<Result<AccountsLockState>>({
@@ -134,8 +119,16 @@ export function AccountsTab({ reloadNonce, seed, onSeedConsumed }: Props): React
     });
     if (res.ok) {
       setAccounts(res.value);
-      setEditingAccount(null);
+      setEditing(null);
     }
+  }
+
+  async function duplicateAccount(account: Account): Promise<void> {
+    const res = await sendRuntimeMessage<Result<Account[]>>({
+      type: MESSAGE_TYPES.DUPLICATE_ACCOUNT,
+      payload: { id: account.id },
+    });
+    if (res.ok) setAccounts(res.value);
   }
 
   async function deleteAccount(account: Account): Promise<void> {
@@ -240,22 +233,21 @@ export function AccountsTab({ reloadNonce, seed, onSeedConsumed }: Props): React
         <button
           type="button"
           className="primary"
-          onClick={() => {
-            setIsNewAccount(true);
-            setEditingAccount(newAccount(Date.now()));
-          }}
+          onClick={() => setEditing({ account: newAccount(Date.now()), isNew: true })}
         >
           + New account
         </button>
       </div>
 
-      {editingAccount ? (
+      {editing ? (
         <AccountEditor
-          key={`${editingAccount.id}:${seedGeneration}`}
-          initial={editingAccount}
-          isNew={isNewAccount}
+          key={`${editing.account.id}:${seedGeneration}`}
+          initial={editing.account}
+          isNew={editing.isNew}
+          isDefaultPasswordSet={isDefaultPasswordSet}
+          existingGroups={existingGroupNames(accounts)}
           onSave={(draft) => void saveAccount(draft)}
-          onCancel={() => setEditingAccount(null)}
+          onCancel={() => setEditing(null)}
         />
       ) : (
         <AccountList
@@ -263,15 +255,17 @@ export function AccountsTab({ reloadNonce, seed, onSeedConsumed }: Props): React
           pendingId={pendingId}
           loginErrors={loginErrors}
           onLogin={(account) => void login(account)}
-          onEdit={(account) => {
-            setIsNewAccount(false);
-            setEditingAccount(account);
-          }}
+          onEdit={(account) => setEditing({ account, isNew: false })}
+          onDuplicate={(account) => void duplicateAccount(account)}
           onDelete={(account) => void deleteAccount(account)}
         />
       )}
 
-      <DefaultPasswordSettings reloadNonce={unlockNonce} />
+      <DefaultPasswordSettings
+        reloadNonce={unlockNonce}
+        onStateChange={setIsDefaultPasswordSet}
+        accountsUsingDefaultCount={accounts.filter((a) => a.useDefaultPassword).length}
+      />
       <AccountsSecurity
         sessionMinutes={lockState.sessionMinutes}
         onSessionMinutesChange={(minutes) =>
