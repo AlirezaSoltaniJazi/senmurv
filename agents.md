@@ -8,10 +8,12 @@ Manifest V3 browser extension — Chrome (primary) and Firefox (local dev/QA bui
 2. **Find Element Locator** — an in-page element picker (hover-highlight, click-capture) that produces ranked locator suggestions (data-testid › id › role+name › CSS › XPath), each with its live **match count / uniqueness**, plus copy-ready snippets for **Playwright, WebdriverIO, Cypress, Selenium, and Robot Framework**. Also includes a "Test a locator" box (with match-highlighting) to count matches for any CSS/XPath.
 3. **Recorder** — record clicks/inputs/selects into an editable step list (or build by hand), then run/run-from-step/stop, save as a script, or export as a spec for the frameworks above.
 4. **Execute JS Script** — save / edit / import (`javascript:` bookmarklets) JS scripts in `browser.storage.local` and run a chosen script in the page's **MAIN world** via `browser.scripting`.
-5. **Tools** — a launcher of page-inspection/utility tools (Bypass, Site data, Measure, Colour, Tab order, Accessibility, Fonts, Assertions, Stacking, Validation, Region, Harden selector, JWT decoder, JSON Formatter, Query params, Logical names, Auto refresh) — registry in `src/shared/tools.ts`.
-6. **Cookies** / **Storage** — view and edit the current site's cookies (incl. HttpOnly) and localStorage/sessionStorage, with saved **value profiles** for values you switch between often.
-7. **Track**, **My Tasks**, **Notes** — a tagged time-tracking stopwatch, checklist tasks with deadlines, and free-form notes.
-8. **Settings** — panel font size, Flow/HUD timings, and Track-tag management.
+5. **Accounts** — save a site's login (address, account/email, password, and CSS/XPath locators for the username field, password field, and login button) and log in with one click (navigate → fill → click, in the content script's ISOLATED world). Passwords are never stored in plaintext: encrypted with a key derived from a 6-15 digit PIN (never itself persisted) via PBKDF2 + AES-GCM in `shared/crypto.ts` (service-worker only), with a configurable "stay unlocked" session (default 30 min, up to 6h) and a Change PIN flow. A shared **Default password** can be reused by any account's "use default password" checkbox; accounts can be **duplicated** and organized into **Groups** (with rename), plus an optional **Description** shown as a hover tooltip.
+6. **Tools** — a launcher of page-inspection/utility tools (Bypass, Site data, Measure, Colour, Tab order, Accessibility, Fonts, Assertions, Stacking, Validation, Region, Harden selector, JWT decoder, JSON Formatter, Query params, Logical names, Auto refresh) — registry in `src/shared/tools.ts`.
+7. **Cookies** / **Storage** — view and edit the current site's cookies (incl. HttpOnly) and localStorage/sessionStorage, with saved **value profiles** for values you switch between often.
+8. **Track**, **My Tasks**, **Notes** — a tagged time-tracking stopwatch, checklist tasks with deadlines, and free-form notes.
+9. **Settings** — panel font size, Flow/HUD timings, Accounts description-tooltip delay, and Track-tag management.
+10. **Export/Import** — export or import Scripts (with folders), Cookie/Storage value profiles, Query-param sets, Notes, My Tasks, and Accounts as JSON, with per-item selection and Overwrite/Keep-both conflict handling (Accounts always keeps both — fresh id, de-duplicated name — and is crypto-gated: export re-enters the PIN, import requires one to already be set).
 
 Built with TypeScript (strict, no `any`), React 19, Vite. Two separate build pipelines: `@crxjs/vite-plugin` for Chrome, a hand-rolled `vite.config.firefox.ts` for Firefox (see Known Gotchas — `vite-plugin-web-extension` is NOT viable on this stack).
 
@@ -39,20 +41,29 @@ src/
 │   └── service-worker.ts   # sidePanel behavior, message hub, script execution, locator-match counting
 ├── content/
 │   ├── picker.ts           # message router + mode arbiter; picks elements; lazily imports ./tools
+│   ├── picker-loader.js    # Firefox-only classic-script bridge into picker.ts's real ESM bundle
 │   ├── context.ts          # contextAlive + notify (terminal) / notifyQuiet (streams)
 │   ├── overlay.ts          # the one Shadow-DOM overlay: rect pool, tones, isOurHost
 │   ├── recorder.ts         # passive interaction recorder
 │   ├── match-highlight.ts  # Locator tab's "highlight every match" in-page mode
 │   ├── raf-throttle.ts     # rAF-throttled hover/scroll handlers shared by Tools modes
+│   ├── account-login.ts    # ISOLATED-world fill-and-click for one-click Accounts login
 │   ├── tools.ts            # DYNAMIC-import entry for the Tools-tab in-page modes
 │   └── tools/               # per-tool in-page bridges (bypass, measure, a11y, stacking, …)
 ├── sidepanel/
 │   ├── index.html
 │   ├── main.tsx            # React root
-│   ├── App.tsx             # tab routing: Data | Locator | Recorder | Scripts | Tools | Cookies | Storage | Track | My Tasks | Notes | Settings
-│   └── components/         # GenerateDataTab, LocatorTab, RecorderTab, ScriptsTab, ToolsTab, CookiesTab, StorageTab, TrackTab, MyTasksTab, NotesTab, SettingsTab, tools/*
+│   ├── App.tsx             # tab routing: Data | Locator | Recorder | Scripts | Accounts | Tools |
+│   │                       #   Cookies | Storage | Track | My Tasks | Notes | Settings | Export/Import
+│   ├── locator-tab-state.ts # LocatorTabState + its initial value — split out of LocatorTab.tsx so
+│   │                       #   App.tsx can hold it without eagerly bundling the lazy-loaded tab
+│   └── components/         # GenerateDataTab, LocatorTab, RecorderTab, ScriptsTab, AccountsTab,
+│                           # ToolsTab, CookiesTab, StorageTab, TrackTab, MyTasksTab, NotesTab,
+│                           # SettingsTab, DataIOTab, accounts/* (AccountEditor, AccountList,
+│                           # AccountsSecurity, DefaultPasswordSettings), tools/*
 ├── shared/                 # types, messages, constants, locators, faker-data, storage, bookmarklet,
-│                           # profiles, tasks, checklists, cookie-url, csv, workflow, tools/*
+│                           # profiles, tasks, checklists, cookie-url, csv, workflow, data-io,
+│                           # accounts, crypto, tools/*
 │   └── browser-api.ts      # `export const browser` — the webextension-polyfill instance every
 │                           # module imports instead of the raw `chrome` global
 └── utils/                  # id generation
@@ -141,29 +152,34 @@ Never use deep relative paths (`../../`) — always use `@/` aliases.
 - **Keep the Tools chunk lazy** — `picker.ts` parses on every http/https page load, so the Tools modes sit behind `import('./tools')`. Nothing reachable from `src/shared/tools/*` may also be reachable from `picker.ts`'s _static_ graph. `tests/build/bundle-placement.test.ts` enforces this against `dist/`.
 - **Shadow DOM for injected UI** — the picker's highlight overlay must not pollute host-page styles.
 - **Side panel over popup** — the panel persists while the user interacts with the page (required for element picking).
+- **Accounts encryption is PIN-derived, never a stored key** — `shared/crypto.ts` (service-worker only) derives an AES-256-GCM key from a 6-15 digit PIN via PBKDF2 (600,000 iterations) + a random salt; the PIN itself is never persisted anywhere. Only ciphertext (`EncryptedSecret {ciphertext, iv}`) ever touches `browser.storage.local`. The derived raw key is cached in `browser.storage.session` (MV3's memory-only storage area — cleared on browser close, survives service-worker restarts within a session) for a configurable sliding-window session (default 30 min, up to 6h), so the user isn't re-prompted on every login; every real encrypt/decrypt use pushes the expiry back out. `shared/accounts.ts` stays crypto-free and only ever sees an already-encrypted-or-absent `encryptedPassword`; `shared/storage.ts` persists whatever it's handed without ever importing `crypto.ts`. Exporting an account's password re-verifies the PIN independently of the cached session (`decryptSecretsWithPin`) and never changes the current lock state either way. Never widen `crypto.ts`'s reach beyond the service worker — the side panel and content scripts must never see a raw PIN or derived key.
 
 ## Files To Know
 
-| File                               | Purpose                                                                                               |
-| ---------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting                        |
-| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader                                   |
-| `src/content/picker-loader.js`     | Firefox-only classic-script bridge into `picker.ts`'s real ESM bundle (see Architecture Rules)        |
-| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                                            |
-| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                                           |
-| `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting                                     |
-| `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                                                   |
-| `src/shared/messages.ts`           | `RuntimeMessage` union, `sendRuntimeMessage`/`sendTabMessage` helpers, type guards                    |
-| `src/shared/constants.ts`          | `STORAGE_KEYS`, `MESSAGE_TYPES`, locales, `LOCATOR_PRIORITY`                                          |
-| `src/shared/storage.ts`            | Typed `browser.storage.local` wrapper for scripts, tasks, checklists, notes, prefs and value profiles |
-| `src/shared/browser-api.ts`        | The one `webextension-polyfill` import point — `export const browser`                                 |
-| `src/sidepanel/App.tsx`            | Side panel React app with tab routing                                                                 |
-| `manifest.json`                    | Chrome MV3 manifest — permissions, entry points, `side_panel`                                         |
-| `manifest.firefox.json`            | Firefox MV3 manifest — `sidebar_action`, `browser_specific_settings.gecko`, no `sidePanel`            |
-| `vite.config.ts`                   | Chrome build config — CRXJS plugin, path aliases                                                      |
-| `vite.config.firefox.ts`           | Firefox build config — plain `rollupOptions`, no extension-specific plugin                            |
-| `scripts/build-firefox.mjs`        | Runs the Firefox Vite build, rewrites `dist-firefox/manifest.json`, copies `picker-loader.js`         |
-| `tests/setup.ts`                   | `chrome`/`browser` (via a `webextension-polyfill` mock) API mocks for all test files                  |
+| File                               | Purpose                                                                                                        |
+| ---------------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `src/background/service-worker.ts` | Side panel behavior, message hub, runs scripts in MAIN, locator-match counting                                 |
+| `src/content/picker.ts`            | Message router, mode arbiter, element picker, lazy `./tools` loader                                            |
+| `src/content/picker-loader.js`     | Firefox-only classic-script bridge into `picker.ts`'s real ESM bundle (see Architecture Rules)                 |
+| `src/content/overlay.ts`           | The one Shadow-DOM overlay (rect pool, tones, `isOurHost`)                                                     |
+| `src/shared/tools.ts`              | `TOOLS` registry backing the Tools launcher                                                                    |
+| `src/shared/locators.ts`           | Locator generation, ranking, and per-framework snippet formatting                                              |
+| `src/shared/faker-data.ts`         | `generateTestData(locale)` — faker-backed test data                                                            |
+| `src/shared/messages.ts`           | `RuntimeMessage` union, `sendRuntimeMessage`/`sendTabMessage` helpers, type guards                             |
+| `src/shared/constants.ts`          | `STORAGE_KEYS`, `MESSAGE_TYPES`, locales, `LOCATOR_PRIORITY`                                                   |
+| `src/shared/storage.ts`            | Typed `browser.storage.local` wrapper for scripts, tasks, checklists, notes, prefs and value profiles          |
+| `src/shared/browser-api.ts`        | The one `webextension-polyfill` import point — `export const browser`                                          |
+| `src/shared/crypto.ts`             | PIN-derived AES-GCM encryption for Accounts — service-worker only, session cached in `browser.storage.session` |
+| `src/shared/accounts.ts`           | Pure Accounts logic — validation, grouping, duplicate, rename-group; crypto-free                               |
+| `src/shared/data-io.ts`            | Export/Import parse/serialize for every data kind, incl. Accounts (shape-only — crypto stays in `crypto.ts`)   |
+| `src/content/account-login.ts`     | ISOLATED-world fill-and-click for one-click Accounts login                                                     |
+| `src/sidepanel/App.tsx`            | Side panel React app with tab routing                                                                          |
+| `manifest.json`                    | Chrome MV3 manifest — permissions, entry points, `side_panel`                                                  |
+| `manifest.firefox.json`            | Firefox MV3 manifest — `sidebar_action`, `browser_specific_settings.gecko`, no `sidePanel`                     |
+| `vite.config.ts`                   | Chrome build config — CRXJS plugin, path aliases                                                               |
+| `vite.config.firefox.ts`           | Firefox build config — plain `rollupOptions`, no extension-specific plugin                                     |
+| `scripts/build-firefox.mjs`        | Runs the Firefox Vite build, rewrites `dist-firefox/manifest.json`, copies `picker-loader.js`                  |
+| `tests/setup.ts`                   | `chrome`/`browser` (via a `webextension-polyfill` mock) API mocks for all test files                           |
 
 ## Files To Never Touch
 
