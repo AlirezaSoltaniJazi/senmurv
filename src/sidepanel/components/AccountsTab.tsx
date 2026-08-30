@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import {
   ACCOUNTS_PIN_MAX_LENGTH,
@@ -35,6 +35,7 @@ interface Props {
 
 const DEFAULT_SESSION_MINUTES = 30;
 const LOCKED_ERROR_PREFIX = 'Accounts are locked';
+const LOGIN_ERROR_DISPLAY_MS = 5000;
 
 export function AccountsTab({
   reloadNonce,
@@ -51,6 +52,9 @@ export function AccountsTab({
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
+  // Pending "clear this account's login error" timers, keyed by account id —
+  // so a login error auto-dismisses after LOGIN_ERROR_DISPLAY_MS.
+  const loginErrorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [unlockNonce, setUnlockNonce] = useState(0);
   // Told by DefaultPasswordSettings whenever it changes; lets the editor's
   // "use default password" checkbox disable itself until one is set.
@@ -77,6 +81,13 @@ export function AccountsTab({
       cancelled = true;
     };
   }, [reloadNonce, unlockNonce]);
+
+  useEffect(() => {
+    const timers = loginErrorTimers.current;
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+    };
+  }, []);
 
   async function setUpPin(): Promise<void> {
     setAuthError(null);
@@ -153,13 +164,23 @@ export function AccountsTab({
     if (res.ok) setAccounts(res.value);
   }
 
-  async function login(account: Account): Promise<void> {
-    setPendingId(account.id);
+  function clearLoginError(id: string): void {
+    const timer = loginErrorTimers.current[id];
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      delete loginErrorTimers.current[id];
+    }
     setLoginErrors((prev) => {
+      if (!(id in prev)) return prev;
       const next = { ...prev };
-      delete next[account.id];
+      delete next[id];
       return next;
     });
+  }
+
+  async function login(account: Account): Promise<void> {
+    setPendingId(account.id);
+    clearLoginError(account.id);
     const res = await sendRuntimeMessage<Result<void>>({
       type: MESSAGE_TYPES.RUN_ACCOUNT_LOGIN,
       payload: { id: account.id },
@@ -168,6 +189,10 @@ export function AccountsTab({
     if (!res.ok) {
       setLoginErrors((prev) => ({ ...prev, [account.id]: res.error }));
       if (res.error.startsWith(LOCKED_ERROR_PREFIX)) void refreshLockState();
+      loginErrorTimers.current[account.id] = setTimeout(
+        () => clearLoginError(account.id),
+        LOGIN_ERROR_DISPLAY_MS
+      );
     }
   }
 
