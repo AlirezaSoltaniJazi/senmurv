@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import type { ReactElement } from 'react';
-import type { Account, AccountDraft, AccountLocator } from '@/shared/types';
+import { MESSAGE_TYPES } from '@/shared/constants';
+import { sendRuntimeMessage } from '@/shared/messages';
+import type { Account, AccountDraft, AccountLocator, Result } from '@/shared/types';
 import { LocatorKindToggle } from '../LocatorKindToggle';
 
 interface Props {
@@ -10,6 +12,66 @@ interface Props {
   isNew: boolean;
   onSave: (draft: AccountDraft) => void;
   onCancel: () => void;
+}
+
+interface LocatorFieldProps {
+  label: string;
+  ariaLabel: string;
+  value: AccountLocator;
+  onChange: (locator: AccountLocator) => void;
+}
+
+/** One locator row: kind toggle + query input, plus a "Validate" button that
+ *  reuses the Locator tab's match-count check (TEST_LOCATOR) against the
+ *  active page, so a bad locator surfaces before Login ever tries it. */
+function LocatorField({ label, ariaLabel, value, onChange }: LocatorFieldProps): ReactElement {
+  const [result, setResult] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  async function validate(): Promise<void> {
+    if (value.query.trim() === '') return;
+    setChecking(true);
+    const res = await sendRuntimeMessage<Result<{ count: number }>>({
+      type: MESSAGE_TYPES.TEST_LOCATOR,
+      payload: { query: value.query, kind: value.kind },
+    });
+    setChecking(false);
+    if (!res.ok) {
+      setResult(res.error);
+      return;
+    }
+    setResult(
+      res.value.count === 0
+        ? 'No elements match.'
+        : res.value.count === 1
+          ? '1 element — unique ✓'
+          : `${res.value.count} elements match — not unique`
+    );
+  }
+
+  return (
+    <div className="locator-field">
+      <p className="hint">{label}</p>
+      <div className="step-target">
+        <LocatorKindToggle value={value.kind} onChange={(kind) => onChange({ ...value, kind })} />
+        <input
+          className="name-input"
+          placeholder="CSS selector or XPath"
+          aria-label={ariaLabel}
+          value={value.query}
+          onChange={(e) => onChange({ ...value, query: e.target.value })}
+        />
+        <button
+          type="button"
+          disabled={checking || value.query.trim() === ''}
+          onClick={() => void validate()}
+        >
+          {checking ? 'Validating…' : 'Validate'}
+        </button>
+      </div>
+      {result && <p className="hint locator-field-result">{result}</p>}
+    </div>
+  );
 }
 
 /** Create/edit one saved account. Mirrors ScriptsTab's list-replaced-by-editor
@@ -53,7 +115,7 @@ export function AccountEditor({ initial, isNew, onSave, onCancel }: Props): Reac
       />
       <input
         className="name-input"
-        placeholder="Address, e.g. sub.x.com"
+        placeholder="Address, e.g. app.example.com/login"
         aria-label="Address"
         value={address}
         onChange={(e) => setAddress(e.target.value)}
@@ -85,50 +147,24 @@ export function AccountEditor({ initial, isNew, onSave, onCancel }: Props): Reac
         />
       )}
 
-      <p className="hint">Username field locator</p>
-      <div className="step-target">
-        <LocatorKindToggle
-          value={usernameField.kind}
-          onChange={(kind) => setUsernameField({ ...usernameField, kind })}
-        />
-        <input
-          className="name-input"
-          placeholder="CSS selector or XPath"
-          aria-label="Username field locator"
-          value={usernameField.query}
-          onChange={(e) => setUsernameField({ ...usernameField, query: e.target.value })}
-        />
-      </div>
-
-      <p className="hint">Password field locator</p>
-      <div className="step-target">
-        <LocatorKindToggle
-          value={passwordField.kind}
-          onChange={(kind) => setPasswordField({ ...passwordField, kind })}
-        />
-        <input
-          className="name-input"
-          placeholder="CSS selector or XPath"
-          aria-label="Password field locator"
-          value={passwordField.query}
-          onChange={(e) => setPasswordField({ ...passwordField, query: e.target.value })}
-        />
-      </div>
-
-      <p className="hint">Login button locator</p>
-      <div className="step-target">
-        <LocatorKindToggle
-          value={loginButton.kind}
-          onChange={(kind) => setLoginButton({ ...loginButton, kind })}
-        />
-        <input
-          className="name-input"
-          placeholder="CSS selector or XPath"
-          aria-label="Login button locator"
-          value={loginButton.query}
-          onChange={(e) => setLoginButton({ ...loginButton, query: e.target.value })}
-        />
-      </div>
+      <LocatorField
+        label="Username field locator"
+        ariaLabel="Username field locator"
+        value={usernameField}
+        onChange={setUsernameField}
+      />
+      <LocatorField
+        label="Password field locator"
+        ariaLabel="Password field locator"
+        value={passwordField}
+        onChange={setPasswordField}
+      />
+      <LocatorField
+        label="Login button locator"
+        ariaLabel="Login button locator"
+        value={loginButton}
+        onChange={setLoginButton}
+      />
 
       <div className="row">
         <button type="button" className="primary" onClick={save}>

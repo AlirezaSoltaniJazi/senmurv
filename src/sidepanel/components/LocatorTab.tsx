@@ -4,12 +4,30 @@ import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
-import type { LocatorKind, LocatorSet, MatchResult, Result } from '@/shared/types';
+import type {
+  AccountLocatorSeed,
+  LocatorKind,
+  LocatorSet,
+  MatchResult,
+  Result,
+} from '@/shared/types';
 import { IconActionButton } from './IconActionButton';
+import { LocatorKindToggle } from './LocatorKindToggle';
 import { FrameworkChips, LocatorSuggestions } from './LocatorSuggestions';
 import type { FrameworkFilter } from './LocatorSuggestions';
 
-export function LocatorTab(): ReactElement {
+const ACCOUNT_TARGETS: { field: AccountLocatorSeed['field']; label: string }[] = [
+  { field: 'username', label: 'Username field' },
+  { field: 'password', label: 'Password field' },
+  { field: 'loginButton', label: 'Login button' },
+];
+
+interface Props {
+  /** Send a query+kind to the Accounts tab's open (or new) editor, and switch to it. */
+  onAddToAccount: (seed: AccountLocatorSeed) => void;
+}
+
+export function LocatorTab({ onAddToAccount }: Props): ReactElement {
   const [picking, setPicking] = useState(false);
   const [result, setResult] = useState<LocatorSet | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -48,18 +66,27 @@ export function LocatorTab(): ReactElement {
     };
   }, []);
 
+  // Auto-detect CSS vs. XPath as the query changes (framework snippets, an
+  // "xpath=" prefix, or a leading "//"), computed alongside setQuery in the
+  // input's onChange rather than a separate effect (avoids a cascading
+  // render). The chip still lets the user override this for the current
+  // query — e.g. when a plain selector is ambiguous.
+  function changeQuery(next: string): void {
+    setQuery(next);
+    setTestKind(parseLocatorInput(next).kind);
+  }
+
   // Live re-highlight as the query changes while highlighting is on (debounced).
   useEffect(() => {
     if (!highlighting) return undefined;
     const id = setTimeout(() => {
       const parsed = parseLocatorInput(query);
       if (!parsed.query) return;
-      setTestKind(parsed.kind);
       setTestedQuery(parsed.query);
       void (async () => {
         const res = await sendRuntimeMessage<Result<MatchResult>>({
           type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
-          payload: { query: parsed.query, kind: parsed.kind },
+          payload: { query: parsed.query, kind: testKind },
         });
         if (res.ok) {
           setMatchInfo(res.value);
@@ -70,7 +97,7 @@ export function LocatorTab(): ReactElement {
       })();
     }, 300);
     return () => clearTimeout(id);
-  }, [query, highlighting]);
+  }, [query, testKind, highlighting]);
 
   async function startPick(): Promise<void> {
     setError(null);
@@ -96,11 +123,10 @@ export function LocatorTab(): ReactElement {
     setTestCount(null);
     const parsed = parseLocatorInput(query);
     if (!parsed.query) return;
-    setTestKind(parsed.kind);
     setTestedQuery(parsed.query);
     const res = await sendRuntimeMessage<Result<{ count: number }>>({
       type: MESSAGE_TYPES.TEST_LOCATOR,
-      payload: { query: parsed.query, kind: parsed.kind },
+      payload: { query: parsed.query, kind: testKind },
     });
     if (res.ok) setTestCount(res.value.count);
     else setTestError(res.error);
@@ -119,11 +145,10 @@ export function LocatorTab(): ReactElement {
     setTestError(null);
     const parsed = parseLocatorInput(query);
     if (!parsed.query) return;
-    setTestKind(parsed.kind);
     setTestedQuery(parsed.query);
     const res = await sendRuntimeMessage<Result<MatchResult>>({
       type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
-      payload: { query: parsed.query, kind: parsed.kind },
+      payload: { query: parsed.query, kind: testKind },
     });
     if (res.ok) {
       setHighlighting(true);
@@ -131,6 +156,12 @@ export function LocatorTab(): ReactElement {
     } else {
       setTestError(res.error);
     }
+  }
+
+  function addToAccount(field: AccountLocatorSeed['field']): void {
+    const parsed = parseLocatorInput(query);
+    if (!parsed.query) return;
+    onAddToAccount({ query: parsed.query, kind: testKind, field });
   }
 
   /** Scroll to the previous/next match (delta ±1), wrapping around. */
@@ -177,12 +208,13 @@ export function LocatorTab(): ReactElement {
           Test a locator
         </label>
         <div className="row">
+          <LocatorKindToggle value={testKind} onChange={setTestKind} />
           <input
             id="loc-test"
             className="name-input"
             placeholder="mat-label, //button[@type='submit'], or paste a snippet"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => changeQuery(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === 'Enter') void runTest();
             }}
@@ -198,6 +230,16 @@ export function LocatorTab(): ReactElement {
             {highlighting ? 'Clear' : 'Highlight'}
           </button>
         </div>
+        {query.trim() !== '' && (
+          <div className="row">
+            <span className="hint">Add to account:</span>
+            {ACCOUNT_TARGETS.map((target) => (
+              <button key={target.field} type="button" onClick={() => addToAccount(target.field)}>
+                {target.label}
+              </button>
+            ))}
+          </div>
+        )}
         {testCount !== null && (
           <p className={testCount === 1 ? 'status' : 'hint'}>
             {testCount === 0

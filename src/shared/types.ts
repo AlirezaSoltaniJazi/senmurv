@@ -918,6 +918,14 @@ export interface AccountLocator {
   query: string;
 }
 
+/** A locator handed from the Locator tab's "Add to account" button to the
+ *  Accounts tab's currently-open (or newly-opened) editor, loaded once. */
+export interface AccountLocatorSeed {
+  query: string;
+  kind: LocatorKind;
+  field: 'username' | 'password' | 'loginButton';
+}
+
 /**
  * A saved login account (Accounts tab). `encryptedPassword` is present only
  * when `useDefaultPassword` is false; when true it is not stored at all (the

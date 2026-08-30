@@ -7,7 +7,13 @@ import {
 } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { isValidPin, newAccount } from '@/shared/accounts';
-import type { Account, AccountDraft, AccountsLockState, Result } from '@/shared/types';
+import type {
+  Account,
+  AccountDraft,
+  AccountLocatorSeed,
+  AccountsLockState,
+  Result,
+} from '@/shared/types';
 import { AccountEditor } from './accounts/AccountEditor';
 import { AccountList } from './accounts/AccountList';
 import { AccountsSecurity } from './accounts/AccountsSecurity';
@@ -15,12 +21,21 @@ import { DefaultPasswordSettings } from './accounts/DefaultPasswordSettings';
 
 interface Props {
   reloadNonce: number;
+  /** A locator handed from the Locator tab's "Add to account" button, loaded once. */
+  seed: AccountLocatorSeed | null;
+  onSeedConsumed: () => void;
 }
 
 const DEFAULT_SESSION_MINUTES = 30;
 const LOCKED_ERROR_PREFIX = 'Accounts are locked';
 
-export function AccountsTab({ reloadNonce }: Props): ReactElement {
+const SEED_FIELD_KEY = {
+  username: 'usernameField',
+  password: 'passwordField',
+  loginButton: 'loginButton',
+} as const;
+
+export function AccountsTab({ reloadNonce, seed, onSeedConsumed }: Props): ReactElement {
   const [lockState, setLockState] = useState<AccountsLockState | null>(null);
   const [pin, setPin] = useState('');
   const [confirmPin, setConfirmPin] = useState('');
@@ -32,6 +47,26 @@ export function AccountsTab({ reloadNonce }: Props): ReactElement {
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
   const [unlockNonce, setUnlockNonce] = useState(0);
+  // Bumped whenever a seed is applied, so AccountEditor (which only reads its
+  // `initial` prop once, on mount) remounts and picks up the seeded field even
+  // when it was already open for the same account.
+  const [seedGeneration, setSeedGeneration] = useState(0);
+
+  // One-shot seed from the Locator tab: apply it to whichever account is
+  // already being edited, or open a new blank one if none is.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!seed) return;
+    const base = editingAccount ?? newAccount(Date.now());
+    setEditingAccount({
+      ...base,
+      [SEED_FIELD_KEY[seed.field]]: { kind: seed.kind, query: seed.query },
+    });
+    if (!editingAccount) setIsNewAccount(true);
+    setSeedGeneration((n) => n + 1);
+    onSeedConsumed();
+  }, [seed, editingAccount, onSeedConsumed]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function refreshLockState(): Promise<AccountsLockState | null> {
     const res = await sendRuntimeMessage<Result<AccountsLockState>>({
@@ -216,6 +251,7 @@ export function AccountsTab({ reloadNonce }: Props): ReactElement {
 
       {editingAccount ? (
         <AccountEditor
+          key={`${editingAccount.id}:${seedGeneration}`}
           initial={editingAccount}
           isNew={isNewAccount}
           onSave={(draft) => void saveAccount(draft)}

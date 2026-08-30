@@ -629,6 +629,23 @@ summary.section-title.collapsible {
   padding: 8px;
 }
 
+/* Accounts */
+.account-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px;
+}
+
+.locator-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
 .test-locator .name-input {
   flex: 1;
 }

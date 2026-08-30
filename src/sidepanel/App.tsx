@@ -14,7 +14,7 @@ import {
 import { sendRuntimeMessage } from '@/shared/messages';
 import { togglePinned, validPinnedTools } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
-import type { FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
+import type { AccountLocatorSeed, FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
 
 // Lazy-load each tab so the panel shell renders instantly; heavy deps (faker
@@ -102,6 +102,7 @@ export function App(): ReactElement {
   // Same reason: lazy tabs unmount on switch, so the open tool lives up here.
   const [tool, setTool] = useState<ToolKey | null>(null);
   const [scriptSeed, setScriptSeed] = useState<ScriptSeed | null>(null);
+  const [accountLocatorSeed, setAccountLocatorSeed] = useState<AccountLocatorSeed | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [fontSize, setFontSize] = useState<FontSize>('medium');
   const [fontScale, setFontScale] = useState<number | undefined>(undefined);
@@ -135,6 +136,14 @@ export function App(): ReactElement {
     setTab('scripts');
   }, []);
   const clearScriptSeed = useCallback(() => setScriptSeed(null), []);
+
+  // Locator → Accounts handoff: "Add to account" hands a tested query+kind to
+  // the Accounts editor and switches to it, mirroring the Scripts/Recorder flow.
+  const addLocatorToAccount = useCallback((seed: AccountLocatorSeed) => {
+    setAccountLocatorSeed(seed);
+    setTab('accounts');
+  }, []);
+  const clearAccountLocatorSeed = useCallback(() => setAccountLocatorSeed(null), []);
 
   // Switching tabs should start at the top — the panel otherwise keeps the
   // previous tab's scroll position.
@@ -331,7 +340,7 @@ export function App(): ReactElement {
       <main className="app-body">
         <Suspense fallback={<p className="hint">Loading…</p>}>
           {tab === 'data' && <GenerateDataTab />}
-          {tab === 'locator' && <LocatorTab />}
+          {tab === 'locator' && <LocatorTab onAddToAccount={addLocatorToAccount} />}
           {tab === 'recorder' && (
             <RecorderTab
               seed={recorderSeed}
@@ -350,7 +359,13 @@ export function App(): ReactElement {
               onSeedConsumed={clearScriptSeed}
             />
           )}
-          {tab === 'accounts' && <AccountsTab reloadNonce={reloadNonce} />}
+          {tab === 'accounts' && (
+            <AccountsTab
+              reloadNonce={reloadNonce}
+              seed={accountLocatorSeed}
+              onSeedConsumed={clearAccountLocatorSeed}
+            />
+          )}
           {tab === 'tools' && (
             <ToolsTab
               tool={tool}
