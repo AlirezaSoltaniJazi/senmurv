@@ -111,25 +111,30 @@ export function applyLocatorSeed(account: Account, seed: AccountLocatorSeed): Ac
   return { ...account, loginButton: locator };
 }
 
-/** One group's worth of accounts, in their existing relative order. */
-export interface AccountGroup {
+/** One group's worth of accounts (or account-shaped items), in their
+ *  existing relative order. */
+export interface AccountGroup<T> {
   name: string;
-  accounts: Account[];
+  accounts: T[];
 }
 
 /**
- * Bucket accounts by their `group` (blank/absent falls into
- * {@link DEFAULT_GROUP_NAME}), each bucket keeping the accounts' existing
+ * Bucket account-shaped items by their `group` (blank/absent falls into
+ * {@link DEFAULT_GROUP_NAME}), each bucket keeping the items' existing
  * relative order. Buckets are sorted with Default first, then alphabetically
- * (case-insensitive); a bucket only appears if it has at least one account.
+ * (case-insensitive); a bucket only appears if it has at least one item.
+ * Generic so it also groups the Accounts import's staged `ImportedAccount[]`
+ * (which has a `group` field but no `id`) — not just stored `Account[]`.
  */
-export function groupAccounts(accounts: Account[]): AccountGroup[] {
-  const byName = new Map<string, Account[]>();
-  for (const account of accounts) {
-    const name = account.group?.trim() || DEFAULT_GROUP_NAME;
+export function groupAccounts<T extends { group?: string | undefined }>(
+  items: T[]
+): AccountGroup<T>[] {
+  const byName = new Map<string, T[]>();
+  for (const item of items) {
+    const name = item.group?.trim() || DEFAULT_GROUP_NAME;
     const bucket = byName.get(name);
-    if (bucket) bucket.push(account);
-    else byName.set(name, [account]);
+    if (bucket) bucket.push(item);
+    else byName.set(name, [item]);
   }
   return [...byName.entries()]
     .sort(([a], [b]) => {
@@ -137,7 +142,7 @@ export function groupAccounts(accounts: Account[]): AccountGroup[] {
       if (b === DEFAULT_GROUP_NAME) return 1;
       return a.localeCompare(b);
     })
-    .map(([name, groupAccountsList]) => ({ name, accounts: groupAccountsList }));
+    .map(([name, groupItems]) => ({ name, accounts: groupItems }));
 }
 
 /** Distinct, real (non-Default) group names already in use — offered as

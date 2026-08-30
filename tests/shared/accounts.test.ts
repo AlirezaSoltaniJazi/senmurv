@@ -314,6 +314,24 @@ describe('groupAccounts', () => {
   it('omits groups with no members and returns [] for an empty list', () => {
     expect(groupAccounts([])).toEqual([]);
   });
+
+  it('is generic over any group-shaped item, not just Account — e.g. the Accounts import staging panel groups plain {group, index} entries', () => {
+    const groups = groupAccounts([
+      { group: 'Group A', index: 0 },
+      { index: 1 }, // no group -> Default
+      { group: 'Group A', index: 2 },
+    ]);
+    expect(groups).toEqual([
+      { name: 'Default', accounts: [{ index: 1 }] },
+      {
+        name: 'Group A',
+        accounts: [
+          { group: 'Group A', index: 0 },
+          { group: 'Group A', index: 2 },
+        ],
+      },
+    ]);
+  });
 });
 
 describe('existingGroupNames', () => {
