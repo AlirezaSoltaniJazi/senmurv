@@ -18,7 +18,7 @@ import {
   setUpPin,
   unlockWithPin,
 } from '@/shared/crypto';
-import { duplicateAccount, isValidPin, validateAccount } from '@/shared/accounts';
+import { duplicateAccount, isValidPin, renameGroup, validateAccount } from '@/shared/accounts';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 import {
@@ -1670,6 +1670,14 @@ async function duplicateAccountInStore(id: string): Promise<Result<Account[]>> {
   return { ok: true, value: await upsertAccountStored(cloned.value) };
 }
 
+/** Rename a group across every account that carries it. Pure/crypto-free —
+ *  works even while Accounts is locked, same as duplicateAccountInStore. */
+async function renameGroupInStore(from: string, to: string): Promise<Account[]> {
+  const renamed = renameGroup(await getAccounts(), from, to);
+  await saveAccounts(renamed);
+  return renamed;
+}
+
 /**
  * Navigate to the saved account's address, wait for the page to load, decrypt
  * the right password (the account's own, or the shared default), and ask the
@@ -2102,6 +2110,12 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
       case MESSAGE_TYPES.DUPLICATE_ACCOUNT:
         duplicateAccountInStore(message.payload.id)
           .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.RENAME_GROUP:
+        renameGroupInStore(message.payload.from, message.payload.to)
+          .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 

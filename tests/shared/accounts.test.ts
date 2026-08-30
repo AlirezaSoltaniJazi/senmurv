@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyLocatorSeed,
+  DEFAULT_GROUP_NAME,
   duplicateAccount,
   existingGroupNames,
   groupAccounts,
   isValidPin,
   newAccount,
+  renameGroup,
   upsertAccount,
   validateAccount,
 } from '@/shared/accounts';
@@ -309,5 +311,49 @@ describe('existingGroupNames', () => {
 
   it('returns [] when nothing is grouped', () => {
     expect(existingGroupNames([mk()])).toEqual([]);
+  });
+});
+
+describe('renameGroup', () => {
+  it('renames every account currently bucketed under the group', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A' }),
+      mk({ id: 'b', group: 'Group A' }),
+      mk({ id: 'c', group: 'Group B' }),
+    ];
+    const next = renameGroup(accounts, 'Group A', 'Renamed');
+    expect(next.find((a) => a.id === 'a')?.group).toBe('Renamed');
+    expect(next.find((a) => a.id === 'b')?.group).toBe('Renamed');
+    expect(next.find((a) => a.id === 'c')?.group).toBe('Group B');
+  });
+
+  it('trims the new name', () => {
+    const next = renameGroup([mk({ id: 'a', group: 'Group A' })], 'Group A', '  Renamed  ');
+    expect(next[0]?.group).toBe('Renamed');
+  });
+
+  it('is a no-op when the new name is blank, unchanged, or already the group', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' })];
+    expect(renameGroup(accounts, 'Group A', '   ')).toEqual(accounts);
+    expect(renameGroup(accounts, 'Group A', 'Group A')).toEqual(accounts);
+    expect(renameGroup(accounts, 'Group A', '  Group A  ')).toEqual(accounts);
+  });
+
+  it('refuses to rename the Default bucket, since it is not a real group', () => {
+    const accounts = [mk({ id: 'a' })]; // no group -> Default
+    expect(renameGroup(accounts, DEFAULT_GROUP_NAME, 'Renamed')).toEqual(accounts);
+    expect(renameGroup(accounts, '  ', 'Renamed')).toEqual(accounts);
+  });
+
+  it('refuses to rename into the reserved Default name', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' })];
+    expect(renameGroup(accounts, 'Group A', 'Default')).toEqual(accounts);
+    expect(renameGroup(accounts, 'Group A', 'default')).toEqual(accounts);
+  });
+
+  it('leaves accounts in other groups untouched', () => {
+    const other = mk({ id: 'b', group: 'Group B' });
+    const next = renameGroup([mk({ id: 'a', group: 'Group A' }), other], 'Group A', 'Renamed');
+    expect(next.find((a) => a.id === 'b')).toEqual(other);
   });
 });

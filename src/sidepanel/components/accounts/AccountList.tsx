@@ -1,6 +1,6 @@
 import { Fragment, useState } from 'react';
 import type { ReactElement } from 'react';
-import { groupAccounts } from '@/shared/accounts';
+import { DEFAULT_GROUP_NAME, groupAccounts } from '@/shared/accounts';
 import type { Account } from '@/shared/types';
 
 interface Props {
@@ -13,6 +13,7 @@ interface Props {
   onEdit: (account: Account) => void;
   onDuplicate: (account: Account) => void;
   onDelete: (account: Account) => void;
+  onRenameGroup: (from: string, to: string) => void;
 }
 
 export function AccountList({
@@ -23,10 +24,14 @@ export function AccountList({
   onEdit,
   onDuplicate,
   onDelete,
+  onRenameGroup,
 }: Props): ReactElement {
   // Which group names are expanded — collapsed by default, so the main page
   // shows just the group names until you click into one.
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  // Inline group rename — same shape as ScriptsTab's folder rename.
+  const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
 
   if (accounts.length === 0) {
     return <p className="hint">No saved accounts yet.</p>;
@@ -39,6 +44,18 @@ export function AccountList({
       else next.add(name);
       return next;
     });
+  }
+
+  function startRenameGroup(name: string): void {
+    setRenamingGroup(name);
+    setRenameValue(name);
+  }
+
+  function saveRenameGroup(from: string): void {
+    const to = renameValue.trim();
+    setRenamingGroup(null);
+    if (!to || to === from) return;
+    onRenameGroup(from, to);
   }
 
   return (
@@ -54,8 +71,37 @@ export function AccountList({
             >
               {expanded.has(group.name) ? '▾' : '▸'}
             </button>
-            <span className="folder-name script-name">{group.name}</span>
+            {renamingGroup === group.name ? (
+              <input
+                className="name-input folder-rename"
+                autoFocus
+                value={renameValue}
+                onChange={(e) => setRenameValue(e.target.value)}
+                onBlur={() => saveRenameGroup(group.name)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') saveRenameGroup(group.name);
+                  else if (e.key === 'Escape') setRenamingGroup(null);
+                }}
+              />
+            ) : (
+              <span className="folder-name script-name">{group.name}</span>
+            )}
             <span className="dim">{group.accounts.length}</span>
+            {group.name !== DEFAULT_GROUP_NAME && renamingGroup !== group.name && (
+              <span className="script-actions">
+                <button
+                  type="button"
+                  title="Rename group"
+                  aria-label={`Rename ${group.name}`}
+                  onClick={() => startRenameGroup(group.name)}
+                >
+                  <span className="ico" aria-hidden="true">
+                    ✎
+                  </span>
+                  <span className="lbl">Rename</span>
+                </button>
+              </span>
+            )}
           </li>
           {expanded.has(group.name) &&
             group.accounts.map((account) => (

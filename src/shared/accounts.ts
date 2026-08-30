@@ -148,6 +148,30 @@ export function existingGroupNames(accounts: Account[]): string[] {
   return [...names].sort((a, b) => a.localeCompare(b));
 }
 
+/**
+ * Rename group `from` → `to` on every account currently bucketed under it
+ * (trimmed, exact match — including via {@link DEFAULT_GROUP_NAME}'s
+ * blank/absent fallback). A no-op if `from` is blank/Default (Default isn't a
+ * real group — nothing to rename), or if `to` is blank, unchanged, or itself
+ * resolves to Default (reserved for the fallback bucket, never a real
+ * account's `group` value). Pure — leaves `updatedAt` untouched.
+ */
+export function renameGroup(accounts: Account[], from: string, to: string): Account[] {
+  const source = from.trim();
+  const target = to.trim();
+  if (source === '' || source.toLowerCase() === DEFAULT_GROUP_NAME.toLowerCase()) return accounts;
+  if (
+    target === '' ||
+    target === source ||
+    target.toLowerCase() === DEFAULT_GROUP_NAME.toLowerCase()
+  ) {
+    return accounts;
+  }
+  return accounts.map((a) =>
+    (a.group?.trim() || DEFAULT_GROUP_NAME) === source ? { ...a, group: target } : a
+  );
+}
+
 /** Insert or replace `account` by id, stamping `updatedAt`; returns the new list. */
 export function upsertAccount(accounts: Account[], account: Account, now: number): Account[] {
   const next = { ...account, updatedAt: now };

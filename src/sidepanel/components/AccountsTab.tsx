@@ -131,6 +131,14 @@ export function AccountsTab({
     if (res.ok) setAccounts(res.value);
   }
 
+  async function renameGroup(from: string, to: string): Promise<void> {
+    const res = await sendRuntimeMessage<Result<Account[]>>({
+      type: MESSAGE_TYPES.RENAME_GROUP,
+      payload: { from, to },
+    });
+    if (res.ok) setAccounts(res.value);
+  }
+
   async function deleteAccount(account: Account): Promise<void> {
     if (!window.confirm(`Delete "${account.name || account.address}"? This cannot be undone.`)) {
       return;
@@ -258,6 +266,7 @@ export function AccountsTab({
           onEdit={(account) => setEditing({ account, isNew: false })}
           onDuplicate={(account) => void duplicateAccount(account)}
           onDelete={(account) => void deleteAccount(account)}
+          onRenameGroup={(from, to) => void renameGroup(from, to)}
         />
       )}
 

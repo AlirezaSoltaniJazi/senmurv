@@ -77,6 +77,15 @@ describe('isRuntimeMessage', () => {
     expect(
       isRuntimeMessage({ type: MESSAGE_TYPES.DELETE_ACCOUNT, payload: { id: 'acct_1' } })
     ).toBe(true);
+    expect(
+      isRuntimeMessage({ type: MESSAGE_TYPES.DUPLICATE_ACCOUNT, payload: { id: 'acct_1' } })
+    ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.RENAME_GROUP,
+        payload: { from: 'Group A', to: 'Group B' },
+      })
+    ).toBe(true);
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE })).toBe(true);
     expect(
       isRuntimeMessage({ type: MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD, payload: { password: 'x' } })
