@@ -1,15 +1,37 @@
 import type { Cookies, Runtime, Tabs } from 'webextension-polyfill';
 import { browser } from '@/shared/browser-api';
-import { BLOCKED_URL_PREFIXES, BYPASS_CSS, MESSAGE_TYPES } from '@/shared/constants';
+import {
+  ACCOUNTS_PIN_MAX_LENGTH,
+  ACCOUNTS_PIN_MIN_LENGTH,
+  BLOCKED_URL_PREFIXES,
+  BYPASS_CSS,
+  FIND_TIMEOUT_SECONDS_DEFAULT,
+  MESSAGE_TYPES,
+} from '@/shared/constants';
+import {
+  changePin,
+  decryptSecret,
+  encryptSecret,
+  getLockState,
+  lockAccounts,
+  setSessionMinutes,
+  setUpPin,
+  unlockWithPin,
+} from '@/shared/crypto';
+import { isValidPin, validateAccount } from '@/shared/accounts';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 import {
+  clearDefaultPasswordRecord,
+  deleteAccount,
   deleteChecklist,
   deleteNote,
   deleteQueryParamSet,
   deleteScript,
   deleteTask,
+  getAccounts,
   getChecklists,
+  getDefaultPasswordRecord,
   getNotes,
   getPrefs,
   deleteProfile,
@@ -17,6 +39,7 @@ import {
   getQueryParamSets,
   getScripts,
   getTasks,
+  saveAccounts,
   saveChecklists,
   saveNotes,
   saveProfiles,
@@ -24,7 +47,9 @@ import {
   saveScripts,
   saveTasks,
   savePrefs,
+  setDefaultPasswordRecord,
   transformTasks,
+  upsertAccountStored,
   upsertProfileStored,
   upsertChecklist,
   upsertNote,
@@ -36,12 +61,15 @@ import { cookieWriteWarning, parseCookieUrl, urlForPath } from '@/shared/cookie-
 import { clearTagInEntries, renameTagInEntries } from '@/shared/tasks';
 import { buildClearPlan } from '@/shared/tools/site-data';
 import type {
+  Account,
+  AccountDraft,
   ClearOutcome,
   ClearTypeId,
   CookieEdit,
   CookieRow,
   BypassReport,
   BypassState,
+  EncryptedSecret,
   LocatorKind,
   LogicalNameRecord,
   LogicalNamesReport,
@@ -147,6 +175,59 @@ async function withActiveRunnableTab<T>(
   fn: (tabId: number) => Promise<Result<T>>
 ): Promise<Result<T>> {
   return withActiveTab((tab) => fn(tab.id));
+}
+
+/**
+ * Resolve the active tab WITHOUT the current-URL runnable check — Accounts'
+ * login flow is about to navigate this tab away from whatever it currently
+ * shows (which could legitimately be `chrome://newtab`), so gating on the
+ * tab's URL before that navigation happens would be wrong. `isRunnableUrl` is
+ * still applied to the account's saved address itself, in `runAccountLogin`.
+ */
+async function withAnyActiveTab<T>(fn: (tabId: number) => Promise<Result<T>>): Promise<Result<T>> {
+  try {
+    const tab = await getActiveTab();
+    if (!tab?.id) return { ok: false, error: 'No active tab found.' };
+    drivenTabId = tab.id;
+    return await fn(tab.id);
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+}
+
+const NAVIGATE_TIMEOUT_MS = 20_000;
+
+/**
+ * Navigate `tabId` to `url` and wait for it to finish loading. No precedent
+ * for this existed anywhere in the codebase before Accounts — the one other
+ * `tabs.update` call site (QueryParamsTool) is fire-and-forget.
+ */
+function navigateAndWaitForLoad(tabId: number, url: string): Promise<Result<void>> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: Result<void>): void => {
+      if (settled) return;
+      settled = true;
+      browser.tabs.onUpdated.removeListener(onUpdated);
+      clearTimeout(timer);
+      resolve(result);
+    };
+    // Filtered by hand inside the callback, NOT via the `{tabId}` filter-object
+    // overload some engines accept — that overload is Chrome-only and silently
+    // unsupported on Firefox, which this codebase also targets.
+    function onUpdated(updatedTabId: number, changeInfo: Tabs.OnUpdatedChangeInfoType): void {
+      if (updatedTabId !== tabId) return;
+      if (changeInfo.status === 'complete') finish({ ok: true, value: undefined });
+    }
+    const timer = setTimeout(
+      () => finish({ ok: false, error: 'Timed out waiting for the page to finish loading.' }),
+      NAVIGATE_TIMEOUT_MS
+    );
+    browser.tabs.onUpdated.addListener(onUpdated);
+    void browser.tabs
+      .update(tabId, { url })
+      .catch((err) => finish({ ok: false, error: errorMessage(err) }));
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -1531,6 +1612,144 @@ async function clearCookies(url: string | undefined): Promise<Result<number>> {
 }
 
 // ---------------------------------------------------------------------------
+// Accounts tab — saved logins, PIN-locked encryption
+// ---------------------------------------------------------------------------
+
+const PIN_LENGTH_ERROR = `PIN must be ${ACCOUNTS_PIN_MIN_LENGTH}-${ACCOUNTS_PIN_MAX_LENGTH} digits.`;
+
+/**
+ * Resolve a draft's password state: keep the existing encrypted password,
+ * encrypt a newly-entered one, or drop it entirely for `useDefaultPassword`.
+ * Then validate and persist. `shared/crypto.ts` throws when Accounts are
+ * locked (caught by this handler's `.catch` in the switch below), so a save
+ * that needs to encrypt a password while locked fails with a clear error.
+ */
+async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
+  const now = Date.now();
+  const existing = (await getAccounts()).find((a) => a.id === draft.id);
+
+  let encryptedPassword = existing?.encryptedPassword;
+  if (draft.useDefaultPassword) {
+    encryptedPassword = undefined;
+  } else if (draft.newPassword !== undefined) {
+    if (draft.newPassword.trim() === '') {
+      return { ok: false, error: 'Enter a password, or check "use default password".' };
+    }
+    encryptedPassword = await encryptSecret(draft.newPassword);
+  } else if (!encryptedPassword) {
+    return { ok: false, error: 'Enter a password, or check "use default password".' };
+  }
+
+  const candidate: Account = {
+    id: draft.id,
+    name: draft.name,
+    address: draft.address,
+    username: draft.username,
+    useDefaultPassword: draft.useDefaultPassword,
+    usernameField: draft.usernameField,
+    passwordField: draft.passwordField,
+    loginButton: draft.loginButton,
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
+
+  const validated = validateAccount(candidate);
+  if (!validated.ok) return validated;
+  return { ok: true, value: await upsertAccountStored(validated.value) };
+}
+
+/**
+ * Navigate to the saved account's address, wait for the page to load, decrypt
+ * the right password (the account's own, or the shared default), and ask the
+ * content script to fill + click via the saved locators.
+ */
+async function runAccountLogin(tabId: number, id: string): Promise<Result<void>> {
+  const account = (await getAccounts()).find((a) => a.id === id);
+  if (!account) return { ok: false, error: 'Account not found — it may have been deleted.' };
+
+  if (!isRunnableUrl(account.address)) {
+    return { ok: false, error: 'This address is not allowed (chrome://, Web Store, or similar).' };
+  }
+
+  let password: string;
+  try {
+    if (account.useDefaultPassword) {
+      const record = await getDefaultPasswordRecord();
+      if (!record) {
+        return {
+          ok: false,
+          error:
+            'No default password is set — set one in Accounts, or give this account its own password.',
+        };
+      }
+      password = await decryptSecret(record.encryptedPassword);
+    } else {
+      if (!account.encryptedPassword)
+        return { ok: false, error: 'This account has no password saved.' };
+      password = await decryptSecret(account.encryptedPassword);
+    }
+  } catch (err) {
+    return { ok: false, error: errorMessage(err) };
+  }
+
+  const navResult = await navigateAndWaitForLoad(tabId, account.address);
+  if (!navResult.ok) return navResult;
+
+  const prefs = await getPrefs();
+  const timeoutMs = (prefs.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000;
+
+  return askTab<void>(tabId, {
+    type: MESSAGE_TYPES.ACCOUNT_LOGIN_FILL,
+    payload: {
+      username: account.username,
+      password,
+      usernameField: account.usernameField,
+      passwordField: account.passwordField,
+      loginButton: account.loginButton,
+      timeoutMs,
+    },
+  });
+}
+
+/**
+ * Change the PIN and re-encrypt every existing secret (every account's own
+ * password, plus the shared default password if one is set) under the new
+ * key. shared/crypto.ts's changePin computes everything before returning —
+ * nothing is written until this function persists it, so a failure never
+ * leaves mixed old-key/new-key ciphertext on disk.
+ */
+async function changeAccountsPin(currentPin: string, newPin: string): Promise<Result<void>> {
+  const accounts = await getAccounts();
+  const defaultRecord = await getDefaultPasswordRecord();
+
+  const secretsToReencrypt: EncryptedSecret[] = [];
+  for (const account of accounts) {
+    if (account.encryptedPassword) secretsToReencrypt.push(account.encryptedPassword);
+  }
+  if (defaultRecord) secretsToReencrypt.push(defaultRecord.encryptedPassword);
+
+  const result = await changePin(currentPin, newPin, secretsToReencrypt);
+  if (!result.ok) return result;
+
+  let cursor = 0;
+  const updatedAccounts = accounts.map((account) => {
+    if (!account.encryptedPassword) return account;
+    const encryptedPassword = result.value.reencrypted[cursor];
+    cursor += 1;
+    return { ...account, encryptedPassword: encryptedPassword! };
+  });
+  await saveAccounts(updatedAccounts);
+
+  if (defaultRecord) {
+    const encryptedPassword = result.value.reencrypted[cursor]!;
+    await setDefaultPasswordRecord({ encryptedPassword, updatedAt: Date.now() });
+  }
+
+  return { ok: true, value: undefined };
+}
+
+// ---------------------------------------------------------------------------
 // Message hub
 // ---------------------------------------------------------------------------
 
@@ -1849,6 +2068,104 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
         deleteProfile(message.payload.id)
           .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_ACCOUNTS:
+        getAccounts()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_ACCOUNT:
+        saveAccount(message.payload.account)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_ACCOUNT:
+        deleteAccount(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE:
+        getDefaultPasswordRecord()
+          .then((record) =>
+            sendResponse({
+              ok: true,
+              value: { isSet: record !== undefined, updatedAt: record?.updatedAt ?? null },
+            })
+          )
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD: {
+        const password = message.payload.password.trim();
+        if (password === '') {
+          sendResponse({ ok: false, error: 'Enter a password.' });
+          return true;
+        }
+        encryptSecret(password)
+          .then((encryptedPassword) =>
+            setDefaultPasswordRecord({ encryptedPassword, updatedAt: Date.now() })
+          )
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+      }
+
+      case MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD:
+        clearDefaultPasswordRecord()
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE:
+        getLockState()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_ACCOUNTS_PIN:
+        if (!isValidPin(message.payload.pin)) {
+          sendResponse({ ok: false, error: PIN_LENGTH_ERROR });
+          return true;
+        }
+        setUpPin(message.payload.pin, message.payload.sessionMinutes)
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.UNLOCK_ACCOUNTS:
+        unlockWithPin(message.payload.pin)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.CHANGE_ACCOUNTS_PIN:
+        if (!isValidPin(message.payload.newPin)) {
+          sendResponse({ ok: false, error: PIN_LENGTH_ERROR });
+          return true;
+        }
+        changeAccountsPin(message.payload.currentPin, message.payload.newPin)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SET_ACCOUNTS_SESSION_MINUTES:
+        setSessionMinutes(message.payload.minutes)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.LOCK_ACCOUNTS:
+        lockAccounts()
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.RUN_ACCOUNT_LOGIN:
+        withAnyActiveTab((tabId) => runAccountLogin(tabId, message.payload.id)).then(sendResponse);
         return true;
 
       default:

@@ -31,6 +31,9 @@ const RecorderTab = lazy(() =>
 const ScriptsTab = lazy(() =>
   import('./components/ScriptsTab').then((m) => ({ default: m.ScriptsTab }))
 );
+const AccountsTab = lazy(() =>
+  import('./components/AccountsTab').then((m) => ({ default: m.AccountsTab }))
+);
 const ToolsTab = lazy(() => import('./components/ToolsTab').then((m) => ({ default: m.ToolsTab })));
 const CookiesTab = lazy(() =>
   import('./components/CookiesTab').then((m) => ({ default: m.CookiesTab }))
@@ -55,6 +58,7 @@ type TabKey =
   | 'locator'
   | 'recorder'
   | 'scripts'
+  | 'accounts'
   | 'tools'
   | 'cookies'
   | 'storage'
@@ -69,6 +73,7 @@ const TABS: { key: TabKey; label: string }[] = [
   { key: 'locator', label: 'Locator' },
   { key: 'recorder', label: 'Recorder' },
   { key: 'scripts', label: 'Scripts' },
+  { key: 'accounts', label: 'Accounts' },
   { key: 'tools', label: 'Tools' },
   { key: 'cookies', label: 'Cookies' },
   { key: 'storage', label: 'Storage' },
@@ -345,6 +350,7 @@ export function App(): ReactElement {
               onSeedConsumed={clearScriptSeed}
             />
           )}
+          {tab === 'accounts' && <AccountsTab reloadNonce={reloadNonce} />}
           {tab === 'tools' && (
             <ToolsTab
               tool={tool}

@@ -1,4 +1,5 @@
 import { browser } from '@/shared/browser-api';
+import { upsertAccount } from '@/shared/accounts';
 import {
   FIND_TIMEOUT_SECONDS_DEFAULT,
   FIND_TIMEOUT_SECONDS_MAX,
@@ -14,7 +15,12 @@ import {
 import { TAG_COLOR_COUNT } from '@/shared/tasks';
 import type { ToolKey } from '@/shared/tools';
 import type {
+  Account,
+  AccountLocator,
+  AccountsSecurityConfig,
   Checklist,
+  DefaultPasswordRecord,
+  EncryptedSecret,
   FontSize,
   Note,
   Prefs,
@@ -520,5 +526,129 @@ export async function getPrefs(): Promise<Prefs> {
 export async function savePrefs(prefs: Prefs): Promise<void> {
   await withKeyLock(STORAGE_KEYS.PREFS, () =>
     browser.storage.local.set({ [STORAGE_KEYS.PREFS]: prefs })
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Accounts (saved logins, PIN-locked encryption)
+// ---------------------------------------------------------------------------
+
+function isEncryptedSecret(value: unknown): value is EncryptedSecret {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return typeof v.ciphertext === 'string' && typeof v.iv === 'string';
+}
+
+function isAccountLocator(value: unknown): value is AccountLocator {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (v.kind === 'css' || v.kind === 'xpath') && typeof v.query === 'string';
+}
+
+/** Type guard for a stored account (rejects corrupt / legacy data). */
+export function isAccount(value: unknown): value is Account {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    typeof v.address === 'string' &&
+    typeof v.username === 'string' &&
+    typeof v.useDefaultPassword === 'boolean' &&
+    isAccountLocator(v.usernameField) &&
+    isAccountLocator(v.passwordField) &&
+    isAccountLocator(v.loginButton) &&
+    typeof v.createdAt === 'number' &&
+    typeof v.updatedAt === 'number' &&
+    (v.encryptedPassword === undefined || isEncryptedSecret(v.encryptedPassword))
+  );
+}
+
+/** Read all saved accounts (silently drops anything that fails validation). */
+export async function getAccounts(): Promise<Account[]> {
+  const result = await browser.storage.local.get(STORAGE_KEYS.ACCOUNTS);
+  const raw = result[STORAGE_KEYS.ACCOUNTS];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isAccount);
+}
+
+/** Overwrite the full account list. */
+export async function saveAccounts(accounts: Account[]): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.ACCOUNTS, () =>
+    browser.storage.local.set({ [STORAGE_KEYS.ACCOUNTS]: accounts })
+  );
+}
+
+/** Insert or update an account by id; returns the new list. */
+export async function upsertAccountStored(account: Account): Promise<Account[]> {
+  return withKeyLock(STORAGE_KEYS.ACCOUNTS, async () => {
+    const accounts = await getAccounts();
+    const next = upsertAccount(accounts, account, Date.now());
+    await browser.storage.local.set({ [STORAGE_KEYS.ACCOUNTS]: next });
+    return next;
+  });
+}
+
+/** Remove an account by id; returns the new list. */
+export async function deleteAccount(id: string): Promise<Account[]> {
+  return withKeyLock(STORAGE_KEYS.ACCOUNTS, async () => {
+    const accounts = await getAccounts();
+    const next = accounts.filter((a) => a.id !== id);
+    await browser.storage.local.set({ [STORAGE_KEYS.ACCOUNTS]: next });
+    return next;
+  });
+}
+
+/** Type guard for the stored default-password record. */
+export function isDefaultPasswordRecord(value: unknown): value is DefaultPasswordRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return isEncryptedSecret(v.encryptedPassword) && typeof v.updatedAt === 'number';
+}
+
+/** Read the shared default password record, or undefined if none is set. */
+export async function getDefaultPasswordRecord(): Promise<DefaultPasswordRecord | undefined> {
+  const result = await browser.storage.local.get(STORAGE_KEYS.DEFAULT_PASSWORD);
+  const raw = result[STORAGE_KEYS.DEFAULT_PASSWORD];
+  return isDefaultPasswordRecord(raw) ? raw : undefined;
+}
+
+/** Set (or replace) the shared default password record. */
+export async function setDefaultPasswordRecord(record: DefaultPasswordRecord): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.DEFAULT_PASSWORD, () =>
+    browser.storage.local.set({ [STORAGE_KEYS.DEFAULT_PASSWORD]: record })
+  );
+}
+
+/** Clear the shared default password. */
+export async function clearDefaultPasswordRecord(): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.DEFAULT_PASSWORD, () =>
+    browser.storage.local.remove(STORAGE_KEYS.DEFAULT_PASSWORD)
+  );
+}
+
+/** Type guard for the stored PIN/security config. */
+export function isAccountsSecurityConfig(value: unknown): value is AccountsSecurityConfig {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.salt === 'string' &&
+    isEncryptedSecret(v.pinCheck) &&
+    typeof v.sessionMinutes === 'number' &&
+    typeof v.updatedAt === 'number'
+  );
+}
+
+/** Read the PIN/security config, or undefined if no PIN has been set up yet. */
+export async function getAccountsSecurityConfig(): Promise<AccountsSecurityConfig | undefined> {
+  const result = await browser.storage.local.get(STORAGE_KEYS.ACCOUNTS_SECURITY);
+  const raw = result[STORAGE_KEYS.ACCOUNTS_SECURITY];
+  return isAccountsSecurityConfig(raw) ? raw : undefined;
+}
+
+/** Set (or replace) the PIN/security config. */
+export async function setAccountsSecurityConfig(config: AccountsSecurityConfig): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.ACCOUNTS_SECURITY, () =>
+    browser.storage.local.set({ [STORAGE_KEYS.ACCOUNTS_SECURITY]: config })
   );
 }

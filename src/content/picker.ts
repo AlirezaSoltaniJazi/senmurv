@@ -13,6 +13,7 @@ import type {
   Result,
   ToolMode,
 } from '@/shared/types';
+import { runAccountLoginFill } from './account-login';
 import { contextAlive, notify } from './context';
 import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
 import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
@@ -428,6 +429,10 @@ function register(): void {
         sendResponse(resolveSelector(query, kind));
         return true;
       }
+
+      case MESSAGE_TYPES.ACCOUNT_LOGIN_FILL:
+        void runAccountLoginFill(message.payload).then(sendResponse);
+        return true;
 
       case MESSAGE_TYPES.BYPASS_PAGE: {
         const { options, shouldWatch } = message.payload;

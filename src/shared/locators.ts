@@ -63,6 +63,26 @@ function isUnique(doc: Document, selector: string): boolean {
   return countCssMatches(doc, selector) === 1;
 }
 
+/** Resolve a CSS selector or XPath expression to its first live match, or null. */
+export function resolveFirstMatch(
+  query: string,
+  kind: LocatorKind,
+  doc: Document = document
+): Element | null {
+  try {
+    if (kind === 'xpath') {
+      if (typeof doc.evaluate !== 'function') return null;
+      // 7 = XPathResult.ORDERED_NODE_SNAPSHOT_TYPE
+      const result = doc.evaluate(query, doc, null, 7, null);
+      const node = result.snapshotLength > 0 ? result.snapshotItem(0) : null;
+      return node instanceof Element ? node : null;
+    }
+    return doc.querySelector(query);
+  } catch {
+    return null;
+  }
+}
+
 /**
  * True if an `id` is author-defined and stable, false for framework-generated
  * ids that change every page load, so we never recommend them:
