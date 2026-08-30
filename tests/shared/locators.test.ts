@@ -9,6 +9,7 @@ import {
   getTestIdAttr,
   isStableId,
   parseLocatorInput,
+  resolveFirstMatch,
 } from '@/shared/locators';
 
 function setBody(html: string): void {
@@ -216,6 +217,32 @@ describe('countCssMatches', () => {
 
   it('returns undefined for an invalid selector', () => {
     expect(countCssMatches(document, '###')).toBeUndefined();
+  });
+});
+
+describe('resolveFirstMatch', () => {
+  it('resolves a CSS selector to its first live element', () => {
+    const el = resolveFirstMatch('#fn', 'css', document);
+    expect(el?.getAttribute('data-testid')).toBe('first-name');
+  });
+
+  it('returns null when nothing matches', () => {
+    expect(resolveFirstMatch('.does-not-exist', 'css', document)).toBeNull();
+  });
+
+  it('returns null for an invalid CSS selector instead of throwing', () => {
+    expect(resolveFirstMatch('###', 'css', document)).toBeNull();
+  });
+
+  it('returns null for xpath rather than throwing when Document.evaluate is unavailable', () => {
+    // happy-dom does not implement Document.evaluate (matches countXPathMatches's
+    // own `typeof doc.evaluate !== 'function'` guard) -- real XPath resolution is
+    // exercised via the runInChrome skill against a real browser instead.
+    expect(resolveFirstMatch('//button', 'xpath', document)).toBeNull();
+  });
+
+  it('defaults to the global document when none is passed', () => {
+    expect(resolveFirstMatch('#fn', 'css')?.getAttribute('data-testid')).toBe('first-name');
   });
 });
 

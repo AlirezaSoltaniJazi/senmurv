@@ -1,29 +1,41 @@
 import { describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '@/shared/constants';
 import {
+  clearDefaultPasswordRecord,
   DEFAULT_PREFS,
+  deleteAccount,
   deleteChecklist,
   deleteNote,
   deleteProfile,
   deleteQueryParamSet,
   deleteScript,
   deleteTask,
+  getAccounts,
+  getAccountsSecurityConfig,
   getChecklists,
+  getDefaultPasswordRecord,
   getNotes,
   getPrefs,
   getProfiles,
   getQueryParamSets,
   getScripts,
   getTasks,
+  isAccount,
+  isAccountsSecurityConfig,
   isChecklist,
+  isDefaultPasswordRecord,
   isNote,
   isQueryParamSet,
   isSavedScript,
   isTimeEntry,
   isValueProfile,
   savePrefs,
+  saveAccounts,
   saveProfiles,
   saveQueryParamSets,
+  setAccountsSecurityConfig,
+  setDefaultPasswordRecord,
+  upsertAccountStored,
   upsertChecklist,
   upsertNote,
   upsertProfileStored,
@@ -31,7 +43,16 @@ import {
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
-import type { Checklist, Note, SavedScript, TimeEntry, ValueProfile } from '@/shared/types';
+import type {
+  Account,
+  AccountsSecurityConfig,
+  Checklist,
+  DefaultPasswordRecord,
+  Note,
+  SavedScript,
+  TimeEntry,
+  ValueProfile,
+} from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
 import { store } from '../setup';
 
@@ -389,6 +410,112 @@ describe('value profiles storage', () => {
     await upsertProfileStored(mk({ id: 'a' }));
     await saveProfiles([]);
     expect(await getProfiles()).toEqual([]);
+  });
+});
+
+describe('account storage', () => {
+  function mk(over: Partial<Account> = {}): Account {
+    return {
+      id: 'acct_1',
+      name: 'My Site',
+      address: 'https://sub.x.com',
+      username: 'sss@ss.com',
+      useDefaultPassword: false,
+      encryptedPassword: { ciphertext: 'abc', iv: 'def' },
+      usernameField: { kind: 'css', query: '#username' },
+      passwordField: { kind: 'css', query: '#password' },
+      loginButton: { kind: 'css', query: '#login' },
+      createdAt: 1,
+      updatedAt: 1,
+      ...over,
+    };
+  }
+
+  it('isAccount rejects corrupt / foreign data', () => {
+    expect(isAccount(mk())).toBe(true);
+    expect(isAccount({ ...mk(), usernameField: { kind: 'html', query: 'x' } })).toBe(false);
+    expect(isAccount({ ...mk(), useDefaultPassword: 'yes' })).toBe(false);
+    expect(isAccount({ ...mk(), encryptedPassword: { ciphertext: 'x' } })).toBe(false);
+    expect(isAccount(null)).toBe(false);
+    // useDefaultPassword accounts legitimately have no encryptedPassword at all.
+    expect(isAccount({ ...mk(), encryptedPassword: undefined })).toBe(true);
+  });
+
+  it('returns [] when nothing is stored, and drops invalid entries', async () => {
+    expect(await getAccounts()).toEqual([]);
+    store[STORAGE_KEYS.ACCOUNTS] = [mk({ id: 'good' }), { junk: true }];
+    expect((await getAccounts()).map((a) => a.id)).toEqual(['good']);
+  });
+
+  it('upserts by id and deletes', async () => {
+    await upsertAccountStored(mk({ id: 'a' }));
+    await upsertAccountStored(mk({ id: 'b', name: 'Other' }));
+    expect((await getAccounts()).map((a) => a.id)).toEqual(['a', 'b']);
+
+    await upsertAccountStored(mk({ id: 'a', name: 'Renamed' }));
+    const afterUpdate = await getAccounts();
+    expect(afterUpdate).toHaveLength(2);
+    expect(afterUpdate.find((a) => a.id === 'a')?.name).toBe('Renamed');
+
+    const afterDelete = await deleteAccount('a');
+    expect(afterDelete.map((a) => a.id)).toEqual(['b']);
+    expect((await getAccounts()).map((a) => a.id)).toEqual(['b']);
+  });
+
+  it('saveAccounts fully overwrites the stored list', async () => {
+    await upsertAccountStored(mk({ id: 'a' }));
+    await saveAccounts([mk({ id: 'new', name: 'New' })]);
+    expect((await getAccounts()).map((a) => a.id)).toEqual(['new']);
+  });
+});
+
+describe('default password storage', () => {
+  function mk(over: Partial<DefaultPasswordRecord> = {}): DefaultPasswordRecord {
+    return { encryptedPassword: { ciphertext: 'abc', iv: 'def' }, updatedAt: 1, ...over };
+  }
+
+  it('isDefaultPasswordRecord rejects corrupt / foreign data', () => {
+    expect(isDefaultPasswordRecord(mk())).toBe(true);
+    expect(isDefaultPasswordRecord({ ...mk(), encryptedPassword: 'nope' })).toBe(false);
+    expect(isDefaultPasswordRecord(null)).toBe(false);
+  });
+
+  it('returns undefined when nothing is stored', async () => {
+    expect(await getDefaultPasswordRecord()).toBeUndefined();
+  });
+
+  it('sets, reads, and clears the record', async () => {
+    await setDefaultPasswordRecord(mk());
+    expect(await getDefaultPasswordRecord()).toEqual(mk());
+    await clearDefaultPasswordRecord();
+    expect(await getDefaultPasswordRecord()).toBeUndefined();
+  });
+});
+
+describe('accounts security config storage', () => {
+  function mk(over: Partial<AccountsSecurityConfig> = {}): AccountsSecurityConfig {
+    return {
+      salt: 'c2FsdA==',
+      pinCheck: { ciphertext: 'abc', iv: 'def' },
+      sessionMinutes: 30,
+      updatedAt: 1,
+      ...over,
+    };
+  }
+
+  it('isAccountsSecurityConfig rejects corrupt / foreign data', () => {
+    expect(isAccountsSecurityConfig(mk())).toBe(true);
+    expect(isAccountsSecurityConfig({ ...mk(), sessionMinutes: '30' })).toBe(false);
+    expect(isAccountsSecurityConfig(null)).toBe(false);
+  });
+
+  it('returns undefined when no PIN has been set up', async () => {
+    expect(await getAccountsSecurityConfig()).toBeUndefined();
+  });
+
+  it('sets and reads the config', async () => {
+    await setAccountsSecurityConfig(mk());
+    expect(await getAccountsSecurityConfig()).toEqual(mk());
   });
 });
 
