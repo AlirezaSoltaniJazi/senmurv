@@ -441,6 +441,12 @@ describe('account storage', () => {
     expect(isAccount({ ...mk(), encryptedPassword: undefined })).toBe(true);
   });
 
+  it('isAccount accepts a valid group and rejects a non-string one', () => {
+    expect(isAccount({ ...mk(), group: 'Group A' })).toBe(true);
+    expect(isAccount({ ...mk(), group: undefined })).toBe(true);
+    expect(isAccount({ ...mk(), group: 42 })).toBe(false);
+  });
+
   it('returns [] when nothing is stored, and drops invalid entries', async () => {
     expect(await getAccounts()).toEqual([]);
     store[STORAGE_KEYS.ACCOUNTS] = [mk({ id: 'good' }), { junk: true }];

@@ -235,6 +235,26 @@ describe('GET_ACCOUNTS / SAVE_ACCOUNT / DELETE_ACCOUNT', () => {
   });
 });
 
+describe('DUPLICATE_ACCOUNT', () => {
+  it('clones a saved account, including its encrypted password, without needing to unlock', async () => {
+    const encryptedPassword = { ciphertext: 'abc', iv: 'def' };
+    store['senmurv:accounts'] = [makeAccount({ id: 'acct_1', name: 'My Site', encryptedPassword })];
+
+    const res = await send({ type: MESSAGE_TYPES.DUPLICATE_ACCOUNT, payload: { id: 'acct_1' } });
+    expect(res).toMatchObject({ ok: true });
+    const accounts = (res as Response).value as Account[];
+    expect(accounts).toHaveLength(2);
+    const clone = accounts.find((a) => a.id !== 'acct_1');
+    expect(clone?.name).toBe('My Site (2)');
+    expect(clone?.encryptedPassword).toEqual(encryptedPassword);
+  });
+
+  it('errors for an id that does not exist', async () => {
+    const res = await send({ type: MESSAGE_TYPES.DUPLICATE_ACCOUNT, payload: { id: 'nope' } });
+    expect(res).toEqual({ ok: false, error: 'Account not found — it may have been deleted.' });
+  });
+});
+
 describe('GET_DEFAULT_PASSWORD_STATE / SAVE_DEFAULT_PASSWORD / CLEAR_DEFAULT_PASSWORD', () => {
   it('reports not set initially', async () => {
     const res = await send({ type: MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE });
