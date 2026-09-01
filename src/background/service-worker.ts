@@ -19,7 +19,13 @@ import {
   setUpPin,
   unlockWithPin,
 } from '@/shared/crypto';
-import { duplicateAccount, isValidPin, renameGroup, validateAccount } from '@/shared/accounts';
+import {
+  applyLocatorToGroups,
+  duplicateAccount,
+  isValidPin,
+  renameGroup,
+  validateAccount,
+} from '@/shared/accounts';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
@@ -67,6 +73,7 @@ import { newId } from '@/utils/id';
 import type {
   Account,
   AccountDraft,
+  AccountLocatorSeed,
   ClearOutcome,
   ClearTypeId,
   CookieEdit,
@@ -1684,6 +1691,17 @@ async function renameGroupInStore(from: string, to: string): Promise<Account[]> 
   return renamed;
 }
 
+/** Apply one locator field to every account in any of `groups`. Pure/crypto-
+ *  free — works even while Accounts is locked, same as renameGroupInStore. */
+async function applyLocatorToGroupsInStore(
+  groups: string[],
+  seed: AccountLocatorSeed
+): Promise<Account[]> {
+  const applied = applyLocatorToGroups(await getAccounts(), groups, seed, Date.now());
+  await saveAccounts(applied);
+  return applied;
+}
+
 /**
  * Decrypt `ids` (or every saved account, if omitted) plus the shared default
  * password, for the Accounts export. Re-verifies `pin` directly via
@@ -2233,6 +2251,12 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
 
       case MESSAGE_TYPES.RENAME_GROUP:
         renameGroupInStore(message.payload.from, message.payload.to)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS:
+        applyLocatorToGroupsInStore(message.payload.groups, message.payload.seed)
           .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;

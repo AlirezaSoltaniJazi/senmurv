@@ -282,6 +282,7 @@ export function AccountsTab({
           isNew={editing.isNew}
           isDefaultPasswordSet={isDefaultPasswordSet}
           existingGroups={existingGroupNames(accounts)}
+          onGroupAccountsChanged={setAccounts}
           onSave={(draft) => void saveAccount(draft)}
           onCancel={() => setEditing(null)}
         />

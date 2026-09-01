@@ -180,6 +180,38 @@ export function renameGroup(accounts: Account[], from: string, to: string): Acco
   );
 }
 
+/**
+ * Apply one locator field (`seed`) to every account bucketed under any of
+ * `groups` (each trimmed, via {@link DEFAULT_GROUP_NAME}'s blank/absent
+ * fallback like every other group operation) — the editor's "Apply to
+ * group(s)" buttons, for setting up several near-identical accounts (e.g.
+ * the same login form across environments/groups) without re-locating the
+ * same field on each one by hand. Blank and Default entries in `groups` are
+ * dropped before matching: bulk-editing every ungrouped account is a much
+ * bigger, less intentional blast radius than a deliberately named group. A
+ * no-op if that leaves no real target groups. Reuses {@link applyLocatorSeed}
+ * per account, so it's applied uniformly including to the account the seed
+ * came from (a no-op there — it already has this value).
+ */
+export function applyLocatorToGroups(
+  accounts: Account[],
+  groups: string[],
+  seed: AccountLocatorSeed,
+  now: number
+): Account[] {
+  const targets = new Set(
+    groups
+      .map((g) => g.trim())
+      .filter((g) => g !== '' && g.toLowerCase() !== DEFAULT_GROUP_NAME.toLowerCase())
+  );
+  if (targets.size === 0) return accounts;
+  return accounts.map((a) =>
+    targets.has(a.group?.trim() || DEFAULT_GROUP_NAME)
+      ? { ...applyLocatorSeed(a, seed), updatedAt: now }
+      : a
+  );
+}
+
 /** Insert or replace `account` by id, stamping `updatedAt`; returns the new list. */
 export function upsertAccount(accounts: Account[], account: Account, now: number): Account[] {
   const next = { ...account, updatedAt: now };

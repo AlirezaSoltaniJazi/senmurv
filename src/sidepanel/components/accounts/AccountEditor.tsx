@@ -1,10 +1,19 @@
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
+import { groupAccounts } from '@/shared/accounts';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
-import type { Account, AccountDraft, AccountLocator, Result } from '@/shared/types';
+import type {
+  Account,
+  AccountDraft,
+  AccountLocator,
+  AccountLocatorSeed,
+  Result,
+} from '@/shared/types';
 import { AutocompleteInput } from '../AutocompleteInput';
 import { LocatorKindToggle } from '../LocatorKindToggle';
+
+const APPLY_RESULT_DISPLAY_MS = 5000;
 
 interface Props {
   initial: Account;
@@ -16,6 +25,10 @@ interface Props {
   isDefaultPasswordSet: boolean;
   /** Existing group names, offered as autocomplete suggestions. */
   existingGroups: string[];
+  /** Told whenever "Apply to group" changes other accounts' stored data, so
+   *  the tab's own account list (used elsewhere — the main list, existing
+   *  group names) stays in sync without a full reload. */
+  onGroupAccountsChanged: (accounts: Account[]) => void;
   onSave: (draft: AccountDraft) => void;
   onCancel: () => void;
 }
@@ -25,17 +38,53 @@ interface LocatorFieldProps {
   ariaLabel: string;
   value: AccountLocator;
   onChange: (locator: AccountLocator) => void;
+  /** Which field this is, for the "Apply to group(s)" seed. */
+  field: AccountLocatorSeed['field'];
+  /** The groups currently checked in the editor's shared "Apply to" picker —
+   *  every one of the three locator fields sends to the same set. */
+  groups: string[];
+  onGroupAccountsChanged: (accounts: Account[]) => void;
 }
 
-/** One locator row: kind toggle + query input, plus a "Validate" button that
+/** One locator row: kind toggle + query input, a "Validate" button that
  *  reuses the Locator tab's match-count check (TEST_LOCATOR) against the
- *  active page, so a bad locator surfaces before Login ever tries it. */
-function LocatorField({ label, ariaLabel, value, onChange }: LocatorFieldProps): ReactElement {
+ *  active page (so a bad locator surfaces before Login ever tries it), and —
+ *  when at least one group is checked in the editor's shared picker — an
+ *  "Apply to N group(s)" button that pushes this exact field straight onto
+ *  every account in every checked group (e.g. the same login form's
+ *  locators, reused across several environment-specific groups). */
+function LocatorField({
+  label,
+  ariaLabel,
+  value,
+  onChange,
+  field,
+  groups,
+  onGroupAccountsChanged,
+}: LocatorFieldProps): ReactElement {
   const [result, setResult] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+  const [applying, setApplying] = useState(false);
+  // Clears the "Apply to group(s)" outcome after APPLY_RESULT_DISPLAY_MS, so
+  // it doesn't linger indefinitely once the user has moved on.
+  const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (resultTimerRef.current !== null) clearTimeout(resultTimerRef.current);
+    };
+  }, []);
+
+  function clearResultTimer(): void {
+    if (resultTimerRef.current !== null) {
+      clearTimeout(resultTimerRef.current);
+      resultTimerRef.current = null;
+    }
+  }
 
   async function validate(): Promise<void> {
     if (value.query.trim() === '') return;
+    clearResultTimer();
     setChecking(true);
     const res = await sendRuntimeMessage<Result<{ count: number }>>({
       type: MESSAGE_TYPES.TEST_LOCATOR,
@@ -53,6 +102,29 @@ function LocatorField({ label, ariaLabel, value, onChange }: LocatorFieldProps):
           ? '1 element — unique ✓'
           : `${res.value.count} elements match — not unique`
     );
+  }
+
+  async function applyToGroups(): Promise<void> {
+    if (groups.length === 0 || value.query.trim() === '') return;
+    clearResultTimer();
+    setApplying(true);
+    const res = await sendRuntimeMessage<Result<Account[]>>({
+      type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+      payload: { groups, seed: { field, kind: value.kind, query: value.query } },
+    });
+    setApplying(false);
+    if (!res.ok) {
+      setResult(res.error);
+      resultTimerRef.current = setTimeout(() => setResult(null), APPLY_RESULT_DISPLAY_MS);
+      return;
+    }
+    onGroupAccountsChanged(res.value);
+    const targets = new Set(groups);
+    const count = groupAccounts(res.value)
+      .filter((g) => targets.has(g.name))
+      .reduce((sum, g) => sum + g.accounts.length, 0);
+    setResult(`Applied to ${count} account(s) across ${groups.length} group(s).`);
+    resultTimerRef.current = setTimeout(() => setResult(null), APPLY_RESULT_DISPLAY_MS);
   }
 
   return (
@@ -74,6 +146,22 @@ function LocatorField({ label, ariaLabel, value, onChange }: LocatorFieldProps):
         >
           {checking ? 'Validating…' : 'Validate'}
         </button>
+        <button
+          type="button"
+          disabled={applying || groups.length === 0 || value.query.trim() === ''}
+          title={
+            groups.length > 0
+              ? `Apply this locator to every account in: ${groups.join(', ')}`
+              : 'Check at least one group above'
+          }
+          onClick={() => void applyToGroups()}
+        >
+          {applying
+            ? 'Applying…'
+            : groups.length > 0
+              ? `Apply to ${groups.length} group(s)`
+              : 'Apply to group(s)'}
+        </button>
       </div>
       {result && <p className="hint locator-field-result">{result}</p>}
     </div>
@@ -88,6 +176,7 @@ export function AccountEditor({
   isNew,
   isDefaultPasswordSet,
   existingGroups,
+  onGroupAccountsChanged,
   onSave,
   onCancel,
 }: Props): ReactElement {
@@ -103,6 +192,31 @@ export function AccountEditor({
   const [usernameField, setUsernameField] = useState<AccountLocator>(initial.usernameField);
   const [passwordField, setPasswordField] = useState<AccountLocator>(initial.passwordField);
   const [loginButton, setLoginButton] = useState<AccountLocator>(initial.loginButton);
+  // Which groups "Apply to group(s)" targets, shared by all three locator
+  // fields — defaults to just this account's own group, if it has one.
+  const [applyTargets, setApplyTargets] = useState<Set<string>>(() => {
+    const own = initial.group?.trim();
+    return own ? new Set([own]) : new Set();
+  });
+
+  // Every group "Apply to group(s)" could target: every other group already
+  // in use, plus whatever's currently typed in the Group field above (so a
+  // brand-new group being created right now is selectable too).
+  const groupChoices = useMemo(() => {
+    const choices = new Set(existingGroups);
+    const own = group.trim();
+    if (own) choices.add(own);
+    return [...choices].sort((a, b) => a.localeCompare(b));
+  }, [existingGroups, group]);
+
+  function toggleApplyTarget(name: string): void {
+    setApplyTargets((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) next.delete(name);
+      else next.add(name);
+      return next;
+    });
+  }
 
   function save(): void {
     const draft: AccountDraft = {
@@ -138,6 +252,23 @@ export function AccountEditor({
         onChange={setGroup}
         options={existingGroups}
       />
+      {groupChoices.length > 0 && (
+        <div className="locator-field">
+          <p className="hint">Apply locator changes below to:</p>
+          <div className="chips">
+            {groupChoices.map((name) => (
+              <label key={name} className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={applyTargets.has(name)}
+                  onChange={() => toggleApplyTarget(name)}
+                />
+                {name}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
       <input
         className="name-input"
         placeholder="Address, e.g. app.example.com/login"
@@ -188,18 +319,27 @@ export function AccountEditor({
         ariaLabel="Username field locator"
         value={usernameField}
         onChange={setUsernameField}
+        field="username"
+        groups={[...applyTargets]}
+        onGroupAccountsChanged={onGroupAccountsChanged}
       />
       <LocatorField
         label="Password field locator"
         ariaLabel="Password field locator"
         value={passwordField}
         onChange={setPasswordField}
+        field="password"
+        groups={[...applyTargets]}
+        onGroupAccountsChanged={onGroupAccountsChanged}
       />
       <LocatorField
         label="Login button locator"
         ariaLabel="Login button locator"
         value={loginButton}
         onChange={setLoginButton}
+        field="loginButton"
+        groups={[...applyTargets]}
+        onGroupAccountsChanged={onGroupAccountsChanged}
       />
 
       <div className="row">
