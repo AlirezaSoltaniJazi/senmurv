@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyLocatorSeed,
+  applyLocatorToGroups,
   DEFAULT_GROUP_NAME,
   duplicateAccount,
   existingGroupNames,
@@ -391,6 +392,91 @@ describe('renameGroup', () => {
   it('leaves accounts in other groups untouched', () => {
     const other = mk({ id: 'b', group: 'Group B' });
     const next = renameGroup([mk({ id: 'a', group: 'Group A' }), other], 'Group A', 'Renamed');
+    expect(next.find((a) => a.id === 'b')).toEqual(other);
+  });
+});
+
+describe('applyLocatorToGroups', () => {
+  const seed = { field: 'username' as const, kind: 'xpath' as const, query: '//input[@id="u"]' };
+
+  it('applies the locator to every account in the group, stamping updatedAt', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A', updatedAt: 1 }),
+      mk({ id: 'b', group: 'Group A', updatedAt: 1 }),
+      mk({ id: 'c', group: 'Group B', updatedAt: 1 }),
+    ];
+    const next = applyLocatorToGroups(accounts, ['Group A'], seed, 999);
+    expect(next.find((a) => a.id === 'a')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(next.find((a) => a.id === 'a')?.updatedAt).toBe(999);
+    expect(next.find((a) => a.id === 'b')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(next.find((a) => a.id === 'c')?.usernameField).toEqual(mk().usernameField);
+    expect(next.find((a) => a.id === 'c')?.updatedAt).toBe(1);
+  });
+
+  it('applies to every account across several groups at once', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A' }),
+      mk({ id: 'b', group: 'Group B' }),
+      mk({ id: 'c', group: 'Group C' }),
+    ];
+    const next = applyLocatorToGroups(accounts, ['Group A', 'Group B'], seed, 2);
+    const expected = { kind: seed.kind, query: seed.query };
+    expect(next.find((a) => a.id === 'a')?.usernameField).toEqual(expected);
+    expect(next.find((a) => a.id === 'b')?.usernameField).toEqual(expected);
+    expect(next.find((a) => a.id === 'c')?.usernameField).toEqual(mk().usernameField);
+  });
+
+  it('applies to the password field and the login button field too', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' })];
+    const password = applyLocatorToGroups(
+      accounts,
+      ['Group A'],
+      { field: 'password', kind: 'css', query: '#pw' },
+      2
+    );
+    expect(password[0]?.passwordField).toEqual({ kind: 'css', query: '#pw' });
+
+    const button = applyLocatorToGroups(
+      accounts,
+      ['Group A'],
+      { field: 'loginButton', kind: 'css', query: '#go' },
+      2
+    );
+    expect(button[0]?.loginButton).toEqual({ kind: 'css', query: '#go' });
+  });
+
+  it('leaves every other field on an updated account untouched', () => {
+    const account = mk({ id: 'a', group: 'Group A', name: 'My Site' });
+    const next = applyLocatorToGroups([account], ['Group A'], seed, 2);
+    expect(next[0]?.name).toBe('My Site');
+    expect(next[0]?.address).toBe(account.address);
+    expect(next[0]?.passwordField).toEqual(account.passwordField);
+  });
+
+  it('is a no-op for an empty list, or one with only blank/Default entries', () => {
+    const accounts = [mk({ id: 'a' })]; // no group -> Default
+    expect(applyLocatorToGroups(accounts, [], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, [''], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, ['   '], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, [DEFAULT_GROUP_NAME], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, ['default'], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, ['', DEFAULT_GROUP_NAME], seed, 2)).toEqual(accounts);
+  });
+
+  it('leaves accounts in other groups untouched', () => {
+    const other = mk({ id: 'b', group: 'Group B' });
+    const next = applyLocatorToGroups(
+      [mk({ id: 'a', group: 'Group A' }), other],
+      ['Group A'],
+      seed,
+      2
+    );
     expect(next.find((a) => a.id === 'b')).toEqual(other);
   });
 });
