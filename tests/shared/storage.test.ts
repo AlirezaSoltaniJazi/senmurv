@@ -567,25 +567,14 @@ describe('prefs storage', () => {
   });
 
   it('round-trips through savePrefs (preset and manual scale)', async () => {
-    // getPrefs always fills the default hudSeconds/findTimeoutSeconds/
-    // accountTooltipDelaySeconds, so a saved prefs object without them reads
-    // back with those defaults (3 / 10 / 2).
+    // getPrefs always fills every bounded-number field with its default when
+    // absent from storage, so a saved prefs object without them reads back
+    // with the rest of DEFAULT_PREFS alongside the one field actually saved.
     await savePrefs({ fontSize: 'small' });
-    expect(await getPrefs()).toEqual({
-      fontSize: 'small',
-      hudSeconds: 3,
-      findTimeoutSeconds: 10,
-      accountTooltipDelaySeconds: 2,
-    });
+    expect(await getPrefs()).toEqual({ ...DEFAULT_PREFS, fontSize: 'small' });
 
     await savePrefs({ fontSize: 'large', fontScale: 1.4 });
-    expect(await getPrefs()).toEqual({
-      fontSize: 'large',
-      fontScale: 1.4,
-      hudSeconds: 3,
-      findTimeoutSeconds: 10,
-      accountTooltipDelaySeconds: 2,
-    });
+    expect(await getPrefs()).toEqual({ ...DEFAULT_PREFS, fontSize: 'large', fontScale: 1.4 });
   });
 
   it('reads a stored findTimeoutSeconds, clamped and rounded to the bounds', async () => {
@@ -685,5 +674,79 @@ describe('prefs storage', () => {
 
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', accountTooltipDelaySeconds: 'soon' };
     expect((await getPrefs()).accountTooltipDelaySeconds).toBe(2); // non-numeric ignored
+  });
+
+  it('reads maxPinnedTools, clamped and rounded to the bounds, and caps pinnedTools accordingly', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', maxPinnedTools: 3 };
+    expect((await getPrefs()).maxPinnedTools).toBe(3);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', maxPinnedTools: 999 };
+    expect((await getPrefs()).maxPinnedTools).toBe(10); // MAX_PINNED_TOOLS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', maxPinnedTools: 0 };
+    expect((await getPrefs()).maxPinnedTools).toBe(1); // MAX_PINNED_TOOLS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).maxPinnedTools).toBe(5); // default
+
+    // A lowered cap trims pinnedTools to match, using the RESOLVED
+    // maxPinnedTools for this read — not the hardcoded default — as the cap.
+    store[STORAGE_KEYS.PREFS] = {
+      fontSize: 'medium',
+      maxPinnedTools: 2,
+      pinnedTools: ['bypass', 'measure', 'color', 'a11y'],
+    };
+    expect((await getPrefs()).pinnedTools).toEqual(['bypass', 'measure']);
+  });
+
+  it('reads a stored navigateTimeoutSeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', navigateTimeoutSeconds: 45 };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(45);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', navigateTimeoutSeconds: 9999 };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(120); // NAVIGATE_TIMEOUT_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', navigateTimeoutSeconds: 0 };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(5); // NAVIGATE_TIMEOUT_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(20); // default
+  });
+
+  it('reads the remaining bounded prefs, clamped and defaulted correctly', async () => {
+    const cases: {
+      field:
+        | 'tabOrderMaxStops'
+        | 'matchHighlightMax'
+        | 'logicalNamesMax'
+        | 'randomNumberLengthDefault'
+        | 'siteDataConfirmSeconds'
+        | 'accountLoginErrorDisplaySeconds'
+        | 'accountApplyResultDisplaySeconds'
+        | 'notesAutosaveMs';
+      min: number;
+      max: number;
+      def: number;
+    }[] = [
+      { field: 'tabOrderMaxStops', min: 50, max: 2000, def: 500 },
+      { field: 'matchHighlightMax', min: 10, max: 1000, def: 200 },
+      { field: 'logicalNamesMax', min: 50, max: 2000, def: 500 },
+      { field: 'randomNumberLengthDefault', min: 1, max: 32, def: 5 },
+      { field: 'siteDataConfirmSeconds', min: 1, max: 10, def: 3 },
+      { field: 'accountLoginErrorDisplaySeconds', min: 2, max: 30, def: 5 },
+      { field: 'accountApplyResultDisplaySeconds', min: 2, max: 30, def: 5 },
+      { field: 'notesAutosaveMs', min: 300, max: 5000, def: 1200 },
+    ];
+
+    for (const { field, min, max, def } of cases) {
+      store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', [field]: 999_999 };
+      expect((await getPrefs())[field], field).toBe(max);
+
+      store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', [field]: -1 };
+      expect((await getPrefs())[field], field).toBe(min);
+
+      store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+      expect((await getPrefs())[field], field).toBe(def);
+    }
   });
 });

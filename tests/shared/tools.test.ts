@@ -21,6 +21,8 @@ describe('TOOLS registry', () => {
       'harden',
       'jwt',
       'json',
+      'case',
+      'encode',
       'queryparams',
       'logicalnames',
       'webapi',
