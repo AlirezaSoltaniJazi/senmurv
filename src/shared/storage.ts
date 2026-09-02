@@ -1,6 +1,12 @@
 import { browser } from '@/shared/browser-api';
 import { upsertAccount } from '@/shared/accounts';
 import {
+  ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT,
+  ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MAX,
+  ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MIN,
+  ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT,
+  ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MAX,
+  ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MIN,
   ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
   ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX,
   ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN,
@@ -12,9 +18,34 @@ import {
   HUD_SECONDS_DEFAULT,
   HUD_SECONDS_MAX,
   HUD_SECONDS_MIN,
-  MAX_PINNED_TOOLS,
+  LOGICAL_NAMES_MAX_DEFAULT,
+  LOGICAL_NAMES_MAX_MAX,
+  LOGICAL_NAMES_MAX_MIN,
+  MATCH_HIGHLIGHT_MAX_DEFAULT,
+  MATCH_HIGHLIGHT_MAX_MAX,
+  MATCH_HIGHLIGHT_MAX_MIN,
+  MAX_PINNED_TOOLS_DEFAULT,
+  MAX_PINNED_TOOLS_MAX,
+  MAX_PINNED_TOOLS_MIN,
+  NAVIGATE_TIMEOUT_SECONDS_DEFAULT,
+  NAVIGATE_TIMEOUT_SECONDS_MAX,
+  NAVIGATE_TIMEOUT_SECONDS_MIN,
+  NOTES_AUTOSAVE_MS_DEFAULT,
+  NOTES_AUTOSAVE_MS_MAX,
+  NOTES_AUTOSAVE_MS_MIN,
+  SITE_DATA_CONFIRM_SECONDS_DEFAULT,
+  SITE_DATA_CONFIRM_SECONDS_MAX,
+  SITE_DATA_CONFIRM_SECONDS_MIN,
   STORAGE_KEYS,
+  TAB_ORDER_MAX_STOPS_DEFAULT,
+  TAB_ORDER_MAX_STOPS_MAX,
+  TAB_ORDER_MAX_STOPS_MIN,
 } from '@/shared/constants';
+import {
+  RANDOM_NUMBER_LENGTH_DEFAULT,
+  RANDOM_NUMBER_LENGTH_MAX,
+  RANDOM_NUMBER_LENGTH_MIN,
+} from '@/shared/faker-data';
 import { TAG_COLOR_COUNT } from '@/shared/tasks';
 import type { ToolKey } from '@/shared/tools';
 import type {
@@ -451,31 +482,47 @@ export const DEFAULT_PREFS: Prefs = {
   hudSeconds: HUD_SECONDS_DEFAULT,
   findTimeoutSeconds: FIND_TIMEOUT_SECONDS_DEFAULT,
   accountTooltipDelaySeconds: ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
+  maxPinnedTools: MAX_PINNED_TOOLS_DEFAULT,
+  tabOrderMaxStops: TAB_ORDER_MAX_STOPS_DEFAULT,
+  matchHighlightMax: MATCH_HIGHLIGHT_MAX_DEFAULT,
+  logicalNamesMax: LOGICAL_NAMES_MAX_DEFAULT,
+  navigateTimeoutSeconds: NAVIGATE_TIMEOUT_SECONDS_DEFAULT,
+  randomNumberLengthDefault: RANDOM_NUMBER_LENGTH_DEFAULT,
+  siteDataConfirmSeconds: SITE_DATA_CONFIRM_SECONDS_DEFAULT,
+  accountLoginErrorDisplaySeconds: ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT,
+  accountApplyResultDisplaySeconds: ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT,
+  notesAutosaveMs: NOTES_AUTOSAVE_MS_DEFAULT,
 };
 
 function isFontSize(value: unknown): value is FontSize {
   return value === 'small' || value === 'medium' || value === 'large' || value === 'xlarge';
 }
 
+/** A stored value, clamped+rounded to [min,max]; `fallback` when absent/non-numeric. */
+function clampedInt(value: unknown, min: number, max: number, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
 /**
  * Validate a stored pinned-tools list: keep deduplicated, non-empty string
- * entries, in their stored order, capped at MAX_PINNED_TOOLS. This layer only
- * checks shape — whether an entry is still a REAL ToolKey (vs. a stale key
- * from a renamed/removed tool) is filtered by the sidepanel's validPinnedTools
- * (shared/tools.ts), which already has the live TOOLS registry in its own
- * bundle. A value import of TOOLS here would pull shared/tools.ts into the
- * service worker's bundle too, forking it into a shared chunk that collides
- * in name with content/tools.ts's lazy Tools chunk (see
- * tests/build/bundle-placement.test.ts).
+ * entries, in their stored order, capped at `max` (the resolved
+ * `maxPinnedTools` pref). This layer only checks shape — whether an entry is
+ * still a REAL ToolKey (vs. a stale key from a renamed/removed tool) is
+ * filtered by the sidepanel's validPinnedTools (shared/tools.ts), which
+ * already has the live TOOLS registry in its own bundle. A value import of
+ * TOOLS here would pull shared/tools.ts into the service worker's bundle too,
+ * forking it into a shared chunk that collides in name with content/tools.ts's
+ * lazy Tools chunk (see tests/build/bundle-placement.test.ts).
  */
-function readPinnedTools(value: unknown): ToolKey[] | undefined {
+function readPinnedTools(value: unknown, max: number): ToolKey[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const out: ToolKey[] = [];
   for (const v of value) {
     if (typeof v === 'string' && v.length > 0 && !out.includes(v as ToolKey)) {
       out.push(v as ToolKey);
     }
-    if (out.length >= MAX_PINNED_TOOLS) break;
+    if (out.length >= max) break;
   }
   return out.length > 0 ? out : undefined;
 }
@@ -498,40 +545,90 @@ export async function getPrefs(): Promise<Prefs> {
   const raw = result[STORAGE_KEYS.PREFS];
   if (typeof raw !== 'object' || raw === null) return { ...DEFAULT_PREFS };
   const v = raw as Record<string, unknown>;
+  const maxPinnedTools = clampedInt(
+    v.maxPinnedTools,
+    MAX_PINNED_TOOLS_MIN,
+    MAX_PINNED_TOOLS_MAX,
+    MAX_PINNED_TOOLS_DEFAULT
+  );
   const prefs: Prefs = {
     fontSize: isFontSize(v.fontSize) ? v.fontSize : DEFAULT_PREFS.fontSize,
-    hudSeconds: HUD_SECONDS_DEFAULT,
-    findTimeoutSeconds: FIND_TIMEOUT_SECONDS_DEFAULT,
-    accountTooltipDelaySeconds: ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
+    hudSeconds: clampedInt(v.hudSeconds, HUD_SECONDS_MIN, HUD_SECONDS_MAX, HUD_SECONDS_DEFAULT),
+    findTimeoutSeconds: clampedInt(
+      v.findTimeoutSeconds,
+      FIND_TIMEOUT_SECONDS_MIN,
+      FIND_TIMEOUT_SECONDS_MAX,
+      FIND_TIMEOUT_SECONDS_DEFAULT
+    ),
+    accountTooltipDelaySeconds: clampedInt(
+      v.accountTooltipDelaySeconds,
+      ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN,
+      ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX,
+      ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT
+    ),
+    maxPinnedTools,
+    tabOrderMaxStops: clampedInt(
+      v.tabOrderMaxStops,
+      TAB_ORDER_MAX_STOPS_MIN,
+      TAB_ORDER_MAX_STOPS_MAX,
+      TAB_ORDER_MAX_STOPS_DEFAULT
+    ),
+    matchHighlightMax: clampedInt(
+      v.matchHighlightMax,
+      MATCH_HIGHLIGHT_MAX_MIN,
+      MATCH_HIGHLIGHT_MAX_MAX,
+      MATCH_HIGHLIGHT_MAX_DEFAULT
+    ),
+    logicalNamesMax: clampedInt(
+      v.logicalNamesMax,
+      LOGICAL_NAMES_MAX_MIN,
+      LOGICAL_NAMES_MAX_MAX,
+      LOGICAL_NAMES_MAX_DEFAULT
+    ),
+    navigateTimeoutSeconds: clampedInt(
+      v.navigateTimeoutSeconds,
+      NAVIGATE_TIMEOUT_SECONDS_MIN,
+      NAVIGATE_TIMEOUT_SECONDS_MAX,
+      NAVIGATE_TIMEOUT_SECONDS_DEFAULT
+    ),
+    randomNumberLengthDefault: clampedInt(
+      v.randomNumberLengthDefault,
+      RANDOM_NUMBER_LENGTH_MIN,
+      RANDOM_NUMBER_LENGTH_MAX,
+      RANDOM_NUMBER_LENGTH_DEFAULT
+    ),
+    siteDataConfirmSeconds: clampedInt(
+      v.siteDataConfirmSeconds,
+      SITE_DATA_CONFIRM_SECONDS_MIN,
+      SITE_DATA_CONFIRM_SECONDS_MAX,
+      SITE_DATA_CONFIRM_SECONDS_DEFAULT
+    ),
+    accountLoginErrorDisplaySeconds: clampedInt(
+      v.accountLoginErrorDisplaySeconds,
+      ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MIN,
+      ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MAX,
+      ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT
+    ),
+    accountApplyResultDisplaySeconds: clampedInt(
+      v.accountApplyResultDisplaySeconds,
+      ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MIN,
+      ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MAX,
+      ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT
+    ),
+    notesAutosaveMs: clampedInt(
+      v.notesAutosaveMs,
+      NOTES_AUTOSAVE_MS_MIN,
+      NOTES_AUTOSAVE_MS_MAX,
+      NOTES_AUTOSAVE_MS_DEFAULT
+    ),
   };
   if (typeof v.fontScale === 'number' && Number.isFinite(v.fontScale)) {
     prefs.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, v.fontScale));
   }
-  if (typeof v.hudSeconds === 'number' && Number.isFinite(v.hudSeconds)) {
-    prefs.hudSeconds = Math.min(
-      HUD_SECONDS_MAX,
-      Math.max(HUD_SECONDS_MIN, Math.round(v.hudSeconds))
-    );
-  }
-  if (typeof v.findTimeoutSeconds === 'number' && Number.isFinite(v.findTimeoutSeconds)) {
-    prefs.findTimeoutSeconds = Math.min(
-      FIND_TIMEOUT_SECONDS_MAX,
-      Math.max(FIND_TIMEOUT_SECONDS_MIN, Math.round(v.findTimeoutSeconds))
-    );
-  }
-  if (
-    typeof v.accountTooltipDelaySeconds === 'number' &&
-    Number.isFinite(v.accountTooltipDelaySeconds)
-  ) {
-    prefs.accountTooltipDelaySeconds = Math.min(
-      ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX,
-      Math.max(ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN, Math.round(v.accountTooltipDelaySeconds))
-    );
-  }
   const tagColors = readTagColors(v.tagColors);
   if (tagColors) prefs.tagColors = tagColors;
   if (typeof v.autoReloadOnChange === 'boolean') prefs.autoReloadOnChange = v.autoReloadOnChange;
-  const pinnedTools = readPinnedTools(v.pinnedTools);
+  const pinnedTools = readPinnedTools(v.pinnedTools, maxPinnedTools);
   if (pinnedTools) prefs.pinnedTools = pinnedTools;
   return prefs;
 }

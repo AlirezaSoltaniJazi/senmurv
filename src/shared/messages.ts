@@ -85,7 +85,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.TOOL_PICKED; payload: ToolPickData }
   // Tab order + Accessibility (all askTab). SCAN/RUN compute + retain elements;
   // the panel fetches a row's locators lazily (source picks which tool owns them).
-  | { type: typeof MESSAGE_TYPES.SCAN_TAB_ORDER }
+  // maxStops is the resolved tabOrderMaxStops pref, sent by the panel so the
+  // content script never needs its own storage read.
+  | { type: typeof MESSAGE_TYPES.SCAN_TAB_ORDER; payload: { maxStops: number } }
   | { type: typeof MESSAGE_TYPES.RUN_A11Y_SCAN; payload: { levels: WcagLevel[] } }
   | {
       type: typeof MESSAGE_TYPES.GET_STOP_LOCATORS;
@@ -96,8 +98,12 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } }
   // Locator tab: highlight every match of a CSS/XPath (returns the count), and
   // scroll the Nth match into view. HIGHLIGHT_MATCHES enters PageMode 'match';
-  // STOP_TOOL_MODE { mode: 'match' } tears it down.
-  | { type: typeof MESSAGE_TYPES.HIGHLIGHT_MATCHES; payload: { query: string; kind: LocatorKind } }
+  // STOP_TOOL_MODE { mode: 'match' } tears it down. maxHighlight is the resolved
+  // matchHighlightMax pref, sent by the panel.
+  | {
+      type: typeof MESSAGE_TYPES.HIGHLIGHT_MATCHES;
+      payload: { query: string; kind: LocatorKind; maxHighlight: number };
+    }
   | { type: typeof MESSAGE_TYPES.SCROLL_TO_MATCH; payload: { index: number } }
   // Selector Hardener: resolve a selector's first match → its ranked locators + count.
   | { type: typeof MESSAGE_TYPES.RESOLVE_SELECTOR; payload: { query: string; kind: LocatorKind } }
@@ -128,7 +134,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.SHOW_LOGICAL_NAMES }
   | {
       type: typeof MESSAGE_TYPES.DRAW_LOGICAL_NAMES;
-      payload: { records: LogicalNameRecord[] };
+      // maxNames is the resolved logicalNamesMax pref, filled in by the worker
+      // (which already reads prefs for the MAIN-world read's own cap).
+      payload: { records: LogicalNameRecord[]; maxNames: number };
     }
   // Region emulator. Worker-local like BYPASS_XRM: the shim is a MAIN-world
   // executeScript that passes a real func (not a code string), so it does not

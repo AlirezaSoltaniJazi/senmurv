@@ -6,7 +6,9 @@ import {
   BLOCKED_URL_PREFIXES,
   BYPASS_CSS,
   FIND_TIMEOUT_SECONDS_DEFAULT,
+  LOGICAL_NAMES_MAX_DEFAULT,
   MESSAGE_TYPES,
+  NAVIGATE_TIMEOUT_SECONDS_DEFAULT,
 } from '@/shared/constants';
 import {
   changePin,
@@ -207,14 +209,16 @@ async function withAnyActiveTab<T>(fn: (tabId: number) => Promise<Result<T>>): P
   }
 }
 
-const NAVIGATE_TIMEOUT_MS = 20_000;
-
 /**
  * Navigate `tabId` to `url` and wait for it to finish loading. No precedent
  * for this existed anywhere in the codebase before Accounts — the one other
  * `tabs.update` call site (QueryParamsTool) is fire-and-forget.
  */
-function navigateAndWaitForLoad(tabId: number, url: string): Promise<Result<void>> {
+function navigateAndWaitForLoad(
+  tabId: number,
+  url: string,
+  timeoutMs: number = NAVIGATE_TIMEOUT_SECONDS_DEFAULT * 1000
+): Promise<Result<void>> {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (result: Result<void>): void => {
@@ -233,7 +237,7 @@ function navigateAndWaitForLoad(tabId: number, url: string): Promise<Result<void
     }
     const timer = setTimeout(
       () => finish({ ok: false, error: 'Timed out waiting for the page to finish loading.' }),
-      NAVIGATE_TIMEOUT_MS
+      timeoutMs
     );
     browser.tabs.onUpdated.addListener(onUpdated);
     void browser.tabs
@@ -729,11 +733,13 @@ async function xrmWebApiUrl(tabId: number): Promise<Result<XrmWebApiRecord>> {
  * exception. See agents.md → Security.
  *
  * Serialized, therefore self-contained: no closures, no imports, no module
- * constants (the cap is inlined). It returns PLAIN DATA only — `executeScript`
- * results must be JSON-serialisable, so it can hand back names but never the
- * elements they belong to; the content script re-resolves those from `[data-id]`.
+ * constants — `limit` (the resolved `logicalNamesMax` pref) arrives via
+ * `executeScript`'s `args`, the one channel a serialized func can receive
+ * caller state through. It returns PLAIN DATA only — `executeScript` results
+ * must be JSON-serialisable, so it can hand back names but never the elements
+ * they belong to; the content script re-resolves those from `[data-id]`.
  */
-function readXrmLogicalNames(): {
+function readXrmLogicalNames(limit: number): {
   ok: boolean;
   value?: { name: string; kind: 'field' | 'tab' | 'section' }[];
   error?: string;
@@ -760,10 +766,9 @@ function readXrmLogicalNames(): {
       };
     }
 
-    const LIMIT = 500; // mirrors LOGICAL_NAMES_MAX; inlined because this is serialized
     const out: { name: string; kind: 'field' | 'tab' | 'section' }[] = [];
     const push = (named: XrmNamed, kind: 'field' | 'tab' | 'section'): void => {
-      if (out.length >= LIMIT) return;
+      if (out.length >= limit) return;
       // Feature-detected: not every control type implements the full interface.
       if (typeof named.getName !== 'function') return;
       let name: string;
@@ -794,12 +799,15 @@ function readXrmLogicalNames(): {
  * objects, which is exactly why this is a two-step.
  */
 async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesReport>> {
+  const prefs = await getPrefs();
+  const maxNames = prefs.logicalNamesMax ?? LOGICAL_NAMES_MAX_DEFAULT;
   let records: LogicalNameRecord[];
   try {
     const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: readXrmLogicalNames,
+      args: [maxNames],
     });
     const outcome = results[0]?.result as
       | { ok: boolean; value?: LogicalNameRecord[]; error?: string }
@@ -813,7 +821,7 @@ async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesRepor
   }
   return askTab<LogicalNamesReport>(tabId, {
     type: MESSAGE_TYPES.DRAW_LOGICAL_NAMES,
-    payload: { records },
+    payload: { records, maxNames },
   });
 }
 
@@ -1848,10 +1856,12 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
     return { ok: false, error: errorMessage(err) };
   }
 
-  const navResult = await navigateAndWaitForLoad(tabId, account.address);
+  const prefs = await getPrefs();
+  const navigateTimeoutMs =
+    (prefs.navigateTimeoutSeconds ?? NAVIGATE_TIMEOUT_SECONDS_DEFAULT) * 1000;
+  const navResult = await navigateAndWaitForLoad(tabId, account.address, navigateTimeoutMs);
   if (!navResult.ok) return navResult;
 
-  const prefs = await getPrefs();
   const timeoutMs = (prefs.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000;
 
   return askTab<void>(tabId, {

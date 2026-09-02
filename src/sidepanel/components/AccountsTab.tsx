@@ -31,11 +31,14 @@ interface Props {
   seedGeneration: number;
   /** Seconds a saved account must be hovered before its description tooltip appears. */
   tooltipDelaySeconds: number;
+  /** Seconds a login-error banner stays visible before auto-dismissing. */
+  loginErrorDisplaySeconds: number;
+  /** Seconds an "Apply to group(s)" result banner stays visible. */
+  applyResultDisplaySeconds: number;
 }
 
 const DEFAULT_SESSION_MINUTES = 30;
 const LOCKED_ERROR_PREFIX = 'Accounts are locked';
-const LOGIN_ERROR_DISPLAY_MS = 5000;
 
 export function AccountsTab({
   reloadNonce,
@@ -43,6 +46,8 @@ export function AccountsTab({
   setEditing,
   seedGeneration,
   tooltipDelaySeconds,
+  loginErrorDisplaySeconds,
+  applyResultDisplaySeconds,
 }: Props): ReactElement {
   const [lockState, setLockState] = useState<AccountsLockState | null>(null);
   const [pin, setPin] = useState('');
@@ -53,7 +58,7 @@ export function AccountsTab({
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
   // Pending "clear this account's login error" timers, keyed by account id —
-  // so a login error auto-dismisses after LOGIN_ERROR_DISPLAY_MS.
+  // so a login error auto-dismisses after loginErrorDisplaySeconds.
   const loginErrorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [unlockNonce, setUnlockNonce] = useState(0);
   // Told by DefaultPasswordSettings whenever it changes; lets the editor's
@@ -191,7 +196,7 @@ export function AccountsTab({
       if (res.error.startsWith(LOCKED_ERROR_PREFIX)) void refreshLockState();
       loginErrorTimers.current[account.id] = setTimeout(
         () => clearLoginError(account.id),
-        LOGIN_ERROR_DISPLAY_MS
+        loginErrorDisplaySeconds * 1000
       );
     }
   }
@@ -283,6 +288,7 @@ export function AccountsTab({
           isDefaultPasswordSet={isDefaultPasswordSet}
           existingGroups={existingGroupNames(accounts)}
           onGroupAccountsChanged={setAccounts}
+          applyResultDisplaySeconds={applyResultDisplaySeconds}
           onSave={(draft) => void saveAccount(draft)}
           onCancel={() => setEditing(null)}
         />

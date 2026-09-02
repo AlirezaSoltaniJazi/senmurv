@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
-import { MAX_PINNED_TOOLS } from '@/shared/constants';
 import { findTool, matchesToolQuery, TOOLS } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
 import { ToolShell } from './tools/ToolShell';
 import { A11yTool } from './tools/A11yTool';
 import { AssertTool } from './tools/AssertTool';
 import { AutoRefreshTool } from './tools/AutoRefreshTool';
+import { CaseConvertTool } from './tools/CaseConvertTool';
 import { ColorTool } from './tools/ColorTool';
+import { EncodeDecodeTool } from './tools/EncodeDecodeTool';
 import { FontTool } from './tools/FontTool';
 import { HardenTool } from './tools/HardenTool';
 import { JsonFormatterTool } from './tools/JsonFormatterTool';
@@ -36,6 +37,12 @@ interface Props {
   /** Pinned tool keys, in pin order — shown as quick-access chips above the list. */
   pinnedTools: ToolKey[];
   onTogglePin: (tool: ToolKey) => void;
+  /** How many tools can be pinned to the top of the launcher at once. */
+  maxPinnedTools: number;
+  /** Cap on tab-order stops the Tab Order tool scans before giving up. */
+  tabOrderMaxStops: number;
+  /** Seconds the Site data tool's "click again to confirm" window stays armed. */
+  siteDataConfirmSeconds: number;
 }
 
 /**
@@ -52,6 +59,9 @@ export function ToolsTab({
   onStopAutoRefresh,
   pinnedTools,
   onTogglePin,
+  maxPinnedTools,
+  tabOrderMaxStops,
+  siteDataConfirmSeconds,
 }: Props): ReactElement {
   const [query, setQuery] = useState('');
 
@@ -63,7 +73,7 @@ export function ToolsTab({
 
   if (tool === null) {
     const shown = TOOLS.filter((t) => matchesToolQuery(t, query));
-    const atPinCap = pinnedTools.length >= MAX_PINNED_TOOLS;
+    const atPinCap = pinnedTools.length >= maxPinnedTools;
     return (
       <div className="tab">
         <p className="hint">Inspect and unblock the page. Pick a tool to start.</p>
@@ -125,7 +135,7 @@ export function ToolsTab({
                       pinned
                         ? `Unpin ${t.label}`
                         : atPinCap
-                          ? `Up to ${MAX_PINNED_TOOLS} pinned tools — unpin one first`
+                          ? `Up to ${maxPinnedTools} pinned tools — unpin one first`
                           : `Pin ${t.label}`
                     }
                     aria-label={pinned ? `Unpin ${t.label}` : `Pin ${t.label}`}
@@ -150,10 +160,10 @@ export function ToolsTab({
           the outgoing tool's stop-on-unmount effect actually fires. */}
       <ToolShell key={tool} tool={findTool(tool)} onBack={() => setTool(null)}>
         {tool === 'bypass' && <BypassTool onSaveScript={onSaveScript} />}
-        {tool === 'sitedata' && <SiteDataTool />}
+        {tool === 'sitedata' && <SiteDataTool confirmSeconds={siteDataConfirmSeconds} />}
         {tool === 'measure' && <MeasureTool />}
         {tool === 'color' && <ColorTool />}
-        {tool === 'taborder' && <TabOrderTool />}
+        {tool === 'taborder' && <TabOrderTool maxStops={tabOrderMaxStops} />}
         {tool === 'a11y' && <A11yTool />}
         {tool === 'font' && <FontTool />}
         {tool === 'assert' && <AssertTool />}
@@ -163,6 +173,8 @@ export function ToolsTab({
         {tool === 'harden' && <HardenTool />}
         {tool === 'jwt' && <JwtTool />}
         {tool === 'json' && <JsonFormatterTool />}
+        {tool === 'case' && <CaseConvertTool />}
+        {tool === 'encode' && <EncodeDecodeTool />}
         {tool === 'queryparams' && <QueryParamsTool />}
         {tool === 'logicalnames' && <LogicalNamesTool />}
         {tool === 'webapi' && <WebApiTool />}

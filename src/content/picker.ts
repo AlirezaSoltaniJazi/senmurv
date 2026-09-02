@@ -189,12 +189,16 @@ async function enterToolMode(next: PageMode, measureMode?: MeasureMode): Promise
  * in it so the panel can update the drawing live as the query changes; an
  * invalid selector leaves the mode idle and reports why.
  */
-function enterMatchMode(query: string, kind: LocatorKind): Result<MatchResult> {
+function enterMatchMode(
+  query: string,
+  kind: LocatorKind,
+  maxHighlight: number
+): Result<MatchResult> {
   if (pageMode !== 'match') {
     stopCurrentMode();
     pageMode = 'match';
   }
-  const res = startMatch(query, kind);
+  const res = startMatch(query, kind, maxHighlight);
   if (!res.ok) pageMode = 'idle';
   return res;
 }
@@ -415,8 +419,8 @@ function register(): void {
         return true;
 
       case MESSAGE_TYPES.HIGHLIGHT_MATCHES: {
-        const { query, kind } = message.payload;
-        sendResponse(enterMatchMode(query, kind));
+        const { query, kind, maxHighlight } = message.payload;
+        sendResponse(enterMatchMode(query, kind, maxHighlight));
         return true;
       }
 
@@ -449,14 +453,14 @@ function register(): void {
         return true;
 
       case MESSAGE_TYPES.SCAN_TAB_ORDER:
-        void withTools((tools) => tools.scanTabOrder()).then(sendResponse);
+        void withTools((tools) => tools.scanTabOrder(message.payload.maxStops)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.DRAW_LOGICAL_NAMES: {
         // The names were read in the MAIN world by the worker; we only resolve
         // them to elements and label them.
-        const { records } = message.payload;
-        void withTools((tools) => tools.drawLogicalNames(records)).then(sendResponse);
+        const { records, maxNames } = message.payload;
+        void withTools((tools) => tools.drawLogicalNames(records, maxNames)).then(sendResponse);
         return true;
       }
 

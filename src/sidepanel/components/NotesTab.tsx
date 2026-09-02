@@ -6,12 +6,11 @@ import { matchesNoteQuery, sortNotes } from '@/shared/notes';
 import type { Note, Result } from '@/shared/types';
 import { newId } from '@/utils/id';
 
-/** How long a title/body field must sit idle before an in-progress draft autosaves. */
-const DRAFT_AUTOSAVE_MS = 1200;
-
 interface Props {
   /** Bumped by the header refresh button to re-pull data from storage. */
   reloadNonce: number;
+  /** How long a title/body field must sit idle before an in-progress draft autosaves. */
+  autosaveMs: number;
 }
 
 /** Current epoch ms — wrapped so clock reads stay outside render-purity analysis. */
@@ -26,7 +25,7 @@ function noteHeading(note: Note): string {
   return firstLine?.trim() || 'Untitled note';
 }
 
-export function NotesTab({ reloadNonce }: Props): ReactElement {
+export function NotesTab({ reloadNonce, autosaveMs }: Props): ReactElement {
   const [notes, setNotes] = useState<Note[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
@@ -82,11 +81,11 @@ export function NotesTab({ reloadNonce }: Props): ReactElement {
       void persistNote(activeDraftId()).then((res) => {
         if (res.ok) setNotes(res.value);
       });
-    }, DRAFT_AUTOSAVE_MS);
+    }, autosaveMs);
     draftTimerRef.current = timerId;
     return () => clearTimeout(timerId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [title, body]);
+  }, [title, body, autosaveMs]);
 
   // Best-effort extra: also flush a non-empty draft the moment the panel is
   // hidden (tab switch, closing). Defense in depth on top of the debounce

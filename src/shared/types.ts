@@ -813,7 +813,7 @@ export interface Prefs {
   autoReloadOnChange?: boolean;
   /**
    * Tools pinned to the top of the Tools launcher, in the order they were
-   * pinned. Capped at MAX_PINNED_TOOLS; omitted when none are pinned.
+   * pinned. Capped at the current `maxPinnedTools`; omitted when none are pinned.
    */
   pinnedTools?: ToolKey[];
   /**
@@ -821,6 +821,56 @@ export interface Prefs {
    * tooltip appears (Accounts tab). Omitted → the default applies.
    */
   accountTooltipDelaySeconds?: number;
+  /**
+   * How many tools can be pinned to the top of the Tools launcher at once.
+   * Omitted → MAX_PINNED_TOOLS_DEFAULT applies.
+   */
+  maxPinnedTools?: number;
+  /**
+   * Cap on tab-order stops the Tab Order tool scans before giving up.
+   * Omitted → TAB_ORDER_MAX_STOPS_DEFAULT applies.
+   */
+  tabOrderMaxStops?: number;
+  /**
+   * Cap on drawn locator-match badges (Locator tab's "highlight every match").
+   * Omitted → MATCH_HIGHLIGHT_MAX_DEFAULT applies.
+   */
+  matchHighlightMax?: number;
+  /**
+   * Cap on drawn Dynamics/Power Apps field labels (Logical Names tool).
+   * Omitted → LOGICAL_NAMES_MAX_DEFAULT applies.
+   */
+  logicalNamesMax?: number;
+  /**
+   * Seconds one-click Accounts login waits for the navigated page to finish
+   * loading before giving up. Omitted → NAVIGATE_TIMEOUT_SECONDS_DEFAULT applies.
+   */
+  navigateTimeoutSeconds?: number;
+  /**
+   * Digit count the Data tab's random number field starts at on a fresh visit
+   * to the tab. Omitted → RANDOM_NUMBER_LENGTH_DEFAULT applies.
+   */
+  randomNumberLengthDefault?: number;
+  /**
+   * Seconds the Site data tool's "click again to confirm" window stays armed.
+   * Omitted → SITE_DATA_CONFIRM_SECONDS_DEFAULT applies.
+   */
+  siteDataConfirmSeconds?: number;
+  /**
+   * Seconds an Accounts login-error banner stays visible before auto-dismissing.
+   * Omitted → ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT applies.
+   */
+  accountLoginErrorDisplaySeconds?: number;
+  /**
+   * Seconds an Accounts "Apply to group(s)" result banner stays visible.
+   * Omitted → ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT applies.
+   */
+  accountApplyResultDisplaySeconds?: number;
+  /**
+   * Milliseconds a Notes draft sits idle before autosaving.
+   * Omitted → NOTES_AUTOSAVE_MS_DEFAULT applies.
+   */
+  notesAutosaveMs?: number;
 }
 
 // ---------------------------------------------------------------------------

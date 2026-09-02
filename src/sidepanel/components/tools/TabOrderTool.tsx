@@ -66,7 +66,12 @@ function StopRow({
   );
 }
 
-export function TabOrderTool(): ReactElement {
+interface Props {
+  /** Cap on tab-order stops the scan retains before giving up. */
+  maxStops: number;
+}
+
+export function TabOrderTool({ maxStops }: Props): ReactElement {
   const [scan, setScan] = useState<TabOrderScan | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -85,6 +90,7 @@ export function TabOrderTool(): ReactElement {
     });
     const res = await sendRuntimeMessage<Result<TabOrderScan>>({
       type: MESSAGE_TYPES.SCAN_TAB_ORDER,
+      payload: { maxStops },
     });
     setBusy(false);
     if (res.ok) {
@@ -95,7 +101,7 @@ export function TabOrderTool(): ReactElement {
     } else {
       setError(res.error);
     }
-  }, []);
+  }, [maxStops]);
 
   const clear = useCallback(async (): Promise<void> => {
     await sendRuntimeMessage({

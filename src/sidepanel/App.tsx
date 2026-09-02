@@ -2,6 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import type { ReactElement } from 'react';
 import { browser } from '@/shared/browser-api';
 import {
+  ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT,
+  ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT,
   ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT,
   FIND_TIMEOUT_SECONDS_DEFAULT,
   FONT_PRESET_ZOOM,
@@ -9,9 +11,16 @@ import {
   FONT_SCALE_MIN,
   FONT_SCALE_STEP,
   HUD_SECONDS_DEFAULT,
-  MAX_PINNED_TOOLS,
+  LOGICAL_NAMES_MAX_DEFAULT,
+  MATCH_HIGHLIGHT_MAX_DEFAULT,
+  MAX_PINNED_TOOLS_DEFAULT,
   MESSAGE_TYPES,
+  NAVIGATE_TIMEOUT_SECONDS_DEFAULT,
+  NOTES_AUTOSAVE_MS_DEFAULT,
+  SITE_DATA_CONFIRM_SECONDS_DEFAULT,
+  TAB_ORDER_MAX_STOPS_DEFAULT,
 } from '@/shared/constants';
+import { RANDOM_NUMBER_LENGTH_DEFAULT } from '@/shared/faker-data';
 import { applyLocatorSeed, newAccount } from '@/shared/accounts';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { togglePinned, validPinnedTools } from '@/shared/tools';
@@ -134,6 +143,36 @@ export function App(): ReactElement {
   const [pinnedTools, setPinnedTools] = useState<ToolKey[]>([]);
   // Reload the page after a Cookies / Storage change so the site picks it up.
   const [autoReloadOnChange, setAutoReloadOnChange] = useState(false);
+  // How many tools can be pinned to the top of the Tools launcher at once.
+  const [maxPinnedTools, setMaxPinnedTools] = useState<number>(MAX_PINNED_TOOLS_DEFAULT);
+  // Cap on tab-order stops the Tab Order tool scans before giving up.
+  const [tabOrderMaxStops, setTabOrderMaxStops] = useState<number>(TAB_ORDER_MAX_STOPS_DEFAULT);
+  // Cap on drawn locator-match badges (Locator tab's "highlight every match").
+  const [matchHighlightMax, setMatchHighlightMax] = useState<number>(MATCH_HIGHLIGHT_MAX_DEFAULT);
+  // Cap on drawn Dynamics/Power Apps field labels (Logical Names tool).
+  const [logicalNamesMax, setLogicalNamesMax] = useState<number>(LOGICAL_NAMES_MAX_DEFAULT);
+  // Seconds one-click Accounts login waits for the navigated page to finish loading.
+  const [navigateTimeoutSeconds, setNavigateTimeoutSeconds] = useState<number>(
+    NAVIGATE_TIMEOUT_SECONDS_DEFAULT
+  );
+  // Default digit count the Data tab's random number field starts at.
+  const [randomNumberLengthDefault, setRandomNumberLengthDefault] = useState<number>(
+    RANDOM_NUMBER_LENGTH_DEFAULT
+  );
+  // Seconds the Site data tool's "click again to confirm" window stays armed.
+  const [siteDataConfirmSeconds, setSiteDataConfirmSeconds] = useState<number>(
+    SITE_DATA_CONFIRM_SECONDS_DEFAULT
+  );
+  // Seconds an Accounts login-error banner stays visible before auto-dismissing.
+  const [accountLoginErrorDisplaySeconds, setAccountLoginErrorDisplaySeconds] = useState<number>(
+    ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT
+  );
+  // Seconds an Accounts "Apply to group(s)" result banner stays visible.
+  const [accountApplyResultDisplaySeconds, setAccountApplyResultDisplaySeconds] = useState<number>(
+    ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT
+  );
+  // Milliseconds a Notes draft sits idle before autosaving.
+  const [notesAutosaveMs, setNotesAutosaveMs] = useState<number>(NOTES_AUTOSAVE_MS_DEFAULT);
   // Auto-refresh (Tools): the tab being reloaded + its interval, or null when off.
   // Lifted here so it survives switching Tools sub-tools / panel tabs; stops on
   // Stop or when the panel closes (this component unmounts).
@@ -186,7 +225,27 @@ export function App(): ReactElement {
         );
         setTagColors(res.value.tagColors ?? {});
         setAutoReloadOnChange(res.value.autoReloadOnChange ?? false);
+        setMaxPinnedTools(res.value.maxPinnedTools ?? MAX_PINNED_TOOLS_DEFAULT);
         setPinnedTools(validPinnedTools(res.value.pinnedTools ?? []));
+        setTabOrderMaxStops(res.value.tabOrderMaxStops ?? TAB_ORDER_MAX_STOPS_DEFAULT);
+        setMatchHighlightMax(res.value.matchHighlightMax ?? MATCH_HIGHLIGHT_MAX_DEFAULT);
+        setLogicalNamesMax(res.value.logicalNamesMax ?? LOGICAL_NAMES_MAX_DEFAULT);
+        setNavigateTimeoutSeconds(
+          res.value.navigateTimeoutSeconds ?? NAVIGATE_TIMEOUT_SECONDS_DEFAULT
+        );
+        setRandomNumberLengthDefault(
+          res.value.randomNumberLengthDefault ?? RANDOM_NUMBER_LENGTH_DEFAULT
+        );
+        setSiteDataConfirmSeconds(
+          res.value.siteDataConfirmSeconds ?? SITE_DATA_CONFIRM_SECONDS_DEFAULT
+        );
+        setAccountLoginErrorDisplaySeconds(
+          res.value.accountLoginErrorDisplaySeconds ?? ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT
+        );
+        setAccountApplyResultDisplaySeconds(
+          res.value.accountApplyResultDisplaySeconds ?? ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT
+        );
+        setNotesAutosaveMs(res.value.notesAutosaveMs ?? NOTES_AUTOSAVE_MS_DEFAULT);
       }
     })();
     return () => {
@@ -203,6 +262,16 @@ export function App(): ReactElement {
       hudSeconds,
       findTimeoutSeconds,
       accountTooltipDelaySeconds,
+      maxPinnedTools,
+      tabOrderMaxStops,
+      matchHighlightMax,
+      logicalNamesMax,
+      navigateTimeoutSeconds,
+      randomNumberLengthDefault,
+      siteDataConfirmSeconds,
+      accountLoginErrorDisplaySeconds,
+      accountApplyResultDisplaySeconds,
+      notesAutosaveMs,
     };
     if (fontScale !== undefined) prefs.fontScale = fontScale;
     if (Object.keys(tagColors).length > 0) prefs.tagColors = tagColors;
@@ -262,16 +331,73 @@ export function App(): ReactElement {
     persistPrefs(prefs);
   }
 
-  // Pin/unpin from the Tools launcher. Adding past MAX_PINNED_TOOLS is a no-op
+  // Pin/unpin from the Tools launcher. Adding past maxPinnedTools is a no-op
   // (the launcher already disables that button; togglePinned is the backstop).
   function togglePinnedTool(key: ToolKey): void {
-    const next = togglePinned(pinnedTools, key, MAX_PINNED_TOOLS);
+    const next = togglePinned(pinnedTools, key, maxPinnedTools);
     if (next === pinnedTools) return;
     setPinnedTools(next);
     const prefs = currentPrefs();
     if (next.length > 0) prefs.pinnedTools = next;
     else delete prefs.pinnedTools;
     persistPrefs(prefs);
+  }
+
+  function changeMaxPinnedTools(n: number): void {
+    setMaxPinnedTools(n);
+    // Shrinking the cap below the current pin count trims the overflow so
+    // the stored list never exceeds what the new cap allows.
+    const trimmed = pinnedTools.length > n ? pinnedTools.slice(0, n) : pinnedTools;
+    if (trimmed !== pinnedTools) setPinnedTools(trimmed);
+    const prefs = { ...currentPrefs(), maxPinnedTools: n };
+    if (trimmed.length > 0) prefs.pinnedTools = trimmed;
+    else delete prefs.pinnedTools;
+    persistPrefs(prefs);
+  }
+
+  function changeTabOrderMaxStops(n: number): void {
+    setTabOrderMaxStops(n);
+    persistPrefs({ ...currentPrefs(), tabOrderMaxStops: n });
+  }
+
+  function changeMatchHighlightMax(n: number): void {
+    setMatchHighlightMax(n);
+    persistPrefs({ ...currentPrefs(), matchHighlightMax: n });
+  }
+
+  function changeLogicalNamesMax(n: number): void {
+    setLogicalNamesMax(n);
+    persistPrefs({ ...currentPrefs(), logicalNamesMax: n });
+  }
+
+  function changeNavigateTimeoutSeconds(n: number): void {
+    setNavigateTimeoutSeconds(n);
+    persistPrefs({ ...currentPrefs(), navigateTimeoutSeconds: n });
+  }
+
+  function changeRandomNumberLengthDefault(n: number): void {
+    setRandomNumberLengthDefault(n);
+    persistPrefs({ ...currentPrefs(), randomNumberLengthDefault: n });
+  }
+
+  function changeSiteDataConfirmSeconds(n: number): void {
+    setSiteDataConfirmSeconds(n);
+    persistPrefs({ ...currentPrefs(), siteDataConfirmSeconds: n });
+  }
+
+  function changeAccountLoginErrorDisplaySeconds(n: number): void {
+    setAccountLoginErrorDisplaySeconds(n);
+    persistPrefs({ ...currentPrefs(), accountLoginErrorDisplaySeconds: n });
+  }
+
+  function changeAccountApplyResultDisplaySeconds(n: number): void {
+    setAccountApplyResultDisplaySeconds(n);
+    persistPrefs({ ...currentPrefs(), accountApplyResultDisplaySeconds: n });
+  }
+
+  function changeNotesAutosaveMs(n: number): void {
+    setNotesAutosaveMs(n);
+    persistPrefs({ ...currentPrefs(), notesAutosaveMs: n });
   }
 
   // Cmd/Ctrl + Plus/Minus/0 zooms the panel — the same shortcut the browser
@@ -372,12 +498,15 @@ export function App(): ReactElement {
       </header>
       <main className="app-body">
         <Suspense fallback={<p className="hint">Loading…</p>}>
-          {tab === 'data' && <GenerateDataTab />}
+          {tab === 'data' && (
+            <GenerateDataTab randomNumberLengthDefault={randomNumberLengthDefault} />
+          )}
           {tab === 'locator' && (
             <LocatorTab
               state={locatorState}
               setState={setLocatorState}
               onAddToAccount={addLocatorToAccount}
+              matchHighlightMax={matchHighlightMax}
             />
           )}
           {tab === 'recorder' && (
@@ -405,6 +534,8 @@ export function App(): ReactElement {
               setEditing={setAccountEditing}
               seedGeneration={accountSeedGeneration}
               tooltipDelaySeconds={accountTooltipDelaySeconds}
+              loginErrorDisplaySeconds={accountLoginErrorDisplaySeconds}
+              applyResultDisplaySeconds={accountApplyResultDisplaySeconds}
             />
           )}
           {tab === 'tools' && (
@@ -417,6 +548,9 @@ export function App(): ReactElement {
               onStopAutoRefresh={stopAutoRefresh}
               pinnedTools={pinnedTools}
               onTogglePin={togglePinnedTool}
+              maxPinnedTools={maxPinnedTools}
+              tabOrderMaxStops={tabOrderMaxStops}
+              siteDataConfirmSeconds={siteDataConfirmSeconds}
             />
           )}
           {tab === 'cookies' && (
@@ -427,7 +561,7 @@ export function App(): ReactElement {
           )}
           {tab === 'track' && <TrackTab reloadNonce={reloadNonce} tagColors={tagColors} />}
           {tab === 'mytasks' && <MyTasksTab reloadNonce={reloadNonce} />}
-          {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} />}
+          {tab === 'notes' && <NotesTab reloadNonce={reloadNonce} autosaveMs={notesAutosaveMs} />}
           {tab === 'settings' && (
             <SettingsTab
               fontSize={fontSize}
@@ -442,6 +576,26 @@ export function App(): ReactElement {
               onAccountTooltipDelayChange={changeAccountTooltipDelay}
               tagColors={tagColors}
               onTagColorsChange={changeTagColors}
+              maxPinnedTools={maxPinnedTools}
+              onMaxPinnedToolsChange={changeMaxPinnedTools}
+              tabOrderMaxStops={tabOrderMaxStops}
+              onTabOrderMaxStopsChange={changeTabOrderMaxStops}
+              matchHighlightMax={matchHighlightMax}
+              onMatchHighlightMaxChange={changeMatchHighlightMax}
+              logicalNamesMax={logicalNamesMax}
+              onLogicalNamesMaxChange={changeLogicalNamesMax}
+              navigateTimeoutSeconds={navigateTimeoutSeconds}
+              onNavigateTimeoutSecondsChange={changeNavigateTimeoutSeconds}
+              randomNumberLengthDefault={randomNumberLengthDefault}
+              onRandomNumberLengthDefaultChange={changeRandomNumberLengthDefault}
+              siteDataConfirmSeconds={siteDataConfirmSeconds}
+              onSiteDataConfirmSecondsChange={changeSiteDataConfirmSeconds}
+              accountLoginErrorDisplaySeconds={accountLoginErrorDisplaySeconds}
+              onAccountLoginErrorDisplaySecondsChange={changeAccountLoginErrorDisplaySeconds}
+              accountApplyResultDisplaySeconds={accountApplyResultDisplaySeconds}
+              onAccountApplyResultDisplaySecondsChange={changeAccountApplyResultDisplaySeconds}
+              notesAutosaveMs={notesAutosaveMs}
+              onNotesAutosaveMsChange={changeNotesAutosaveMs}
             />
           )}
           {tab === 'dataio' && <DataIOTab reloadNonce={reloadNonce} />}

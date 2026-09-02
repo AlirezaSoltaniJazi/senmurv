@@ -13,8 +13,6 @@ import type {
 import { AutocompleteInput } from '../AutocompleteInput';
 import { LocatorKindToggle } from '../LocatorKindToggle';
 
-const APPLY_RESULT_DISPLAY_MS = 5000;
-
 interface Props {
   initial: Account;
   /** True when creating a brand-new account, so the password placeholder
@@ -29,6 +27,8 @@ interface Props {
    *  the tab's own account list (used elsewhere — the main list, existing
    *  group names) stays in sync without a full reload. */
   onGroupAccountsChanged: (accounts: Account[]) => void;
+  /** Seconds an "Apply to group(s)" result banner stays visible. */
+  applyResultDisplaySeconds: number;
   onSave: (draft: AccountDraft) => void;
   onCancel: () => void;
 }
@@ -44,6 +44,8 @@ interface LocatorFieldProps {
    *  every one of the three locator fields sends to the same set. */
   groups: string[];
   onGroupAccountsChanged: (accounts: Account[]) => void;
+  /** Seconds the "Apply to group(s)" result banner stays visible. */
+  applyResultDisplaySeconds: number;
 }
 
 /** One locator row: kind toggle + query input, a "Validate" button that
@@ -61,11 +63,12 @@ function LocatorField({
   field,
   groups,
   onGroupAccountsChanged,
+  applyResultDisplaySeconds,
 }: LocatorFieldProps): ReactElement {
   const [result, setResult] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
   const [applying, setApplying] = useState(false);
-  // Clears the "Apply to group(s)" outcome after APPLY_RESULT_DISPLAY_MS, so
+  // Clears the "Apply to group(s)" outcome after applyResultDisplaySeconds, so
   // it doesn't linger indefinitely once the user has moved on.
   const resultTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -113,9 +116,10 @@ function LocatorField({
       payload: { groups, seed: { field, kind: value.kind, query: value.query } },
     });
     setApplying(false);
+    const displayMs = applyResultDisplaySeconds * 1000;
     if (!res.ok) {
       setResult(res.error);
-      resultTimerRef.current = setTimeout(() => setResult(null), APPLY_RESULT_DISPLAY_MS);
+      resultTimerRef.current = setTimeout(() => setResult(null), displayMs);
       return;
     }
     onGroupAccountsChanged(res.value);
@@ -124,7 +128,7 @@ function LocatorField({
       .filter((g) => targets.has(g.name))
       .reduce((sum, g) => sum + g.accounts.length, 0);
     setResult(`Applied to ${count} account(s) across ${groups.length} group(s).`);
-    resultTimerRef.current = setTimeout(() => setResult(null), APPLY_RESULT_DISPLAY_MS);
+    resultTimerRef.current = setTimeout(() => setResult(null), displayMs);
   }
 
   return (
@@ -177,6 +181,7 @@ export function AccountEditor({
   isDefaultPasswordSet,
   existingGroups,
   onGroupAccountsChanged,
+  applyResultDisplaySeconds,
   onSave,
   onCancel,
 }: Props): ReactElement {
@@ -322,6 +327,7 @@ export function AccountEditor({
         field="username"
         groups={[...applyTargets]}
         onGroupAccountsChanged={onGroupAccountsChanged}
+        applyResultDisplaySeconds={applyResultDisplaySeconds}
       />
       <LocatorField
         label="Password field locator"
@@ -331,6 +337,7 @@ export function AccountEditor({
         field="password"
         groups={[...applyTargets]}
         onGroupAccountsChanged={onGroupAccountsChanged}
+        applyResultDisplaySeconds={applyResultDisplaySeconds}
       />
       <LocatorField
         label="Login button locator"
@@ -340,6 +347,7 @@ export function AccountEditor({
         field="loginButton"
         groups={[...applyTargets]}
         onGroupAccountsChanged={onGroupAccountsChanged}
+        applyResultDisplaySeconds={applyResultDisplaySeconds}
       />
 
       <div className="row">

@@ -14,9 +14,6 @@ import {
 } from '@/shared/tools/site-data';
 import type { ClearOutcome, ClearTypeId, Result, StorageProbe } from '@/shared/types';
 
-/** How long the confirm stays armed before disarming itself. */
-const CONFIRM_MS = 3000;
-
 function Row({ label, value }: { label: string; value: string }): ReactElement {
   return (
     <div className="data-row">
@@ -93,7 +90,13 @@ function ProbeView({ probe }: { probe: StorageProbe }): ReactElement {
   );
 }
 
-export function SiteDataTool(): ReactElement {
+interface Props {
+  /** Seconds the "click again to confirm" window stays armed. */
+  confirmSeconds: number;
+}
+
+export function SiteDataTool({ confirmSeconds }: Props): ReactElement {
+  const confirmMs = confirmSeconds * 1000;
   const [probe, setProbe] = useState<StorageProbe | null>(null);
   const [types, setTypes] = useState<ClearTypeId[]>([...PRESET_BUST_CACHE]);
   const [shouldReload, setShouldReload] = useState(true);
@@ -124,9 +127,9 @@ export function SiteDataTool(): ReactElement {
   // waiting to be clicked later by accident.
   useEffect(() => {
     if (armedUntil === 0) return undefined;
-    const t = setTimeout(() => setArmedUntil(0), CONFIRM_MS);
+    const t = setTimeout(() => setArmedUntil(0), confirmMs);
     return () => clearTimeout(t);
-  }, [armedUntil]);
+  }, [armedUntil, confirmMs]);
 
   const plan = probe === null ? null : buildClearPlan(probe.origin, types);
   const needsConfirm = isSessionDestroying(types);
@@ -144,7 +147,7 @@ export function SiteDataTool(): ReactElement {
 
   async function clear(): Promise<void> {
     if (needsConfirm && !isArmed) {
-      setArmedUntil(Date.now() + CONFIRM_MS);
+      setArmedUntil(Date.now() + confirmMs);
       return;
     }
     setArmedUntil(0);

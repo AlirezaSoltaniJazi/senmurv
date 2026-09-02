@@ -16,6 +16,8 @@ export type ToolKey =
   | 'harden'
   | 'jwt'
   | 'json'
+  | 'case'
+  | 'encode'
   | 'autorefresh'
   | 'queryparams'
   | 'logicalnames'
@@ -183,6 +185,26 @@ export const TOOLS: readonly ToolDescriptor[] = [
     icon: '🧾',
     blurb:
       'Pretty-prints or minifies JSON and shows it as a collapsible tree. Parsing is strict JSON (no comments or trailing commas); everything stays on your machine.',
+    mode: null,
+    requiresPage: false,
+    isReady: true,
+  },
+  {
+    key: 'case',
+    label: 'Case Converter',
+    icon: '🔠',
+    blurb:
+      'Converts pasted text between UPPER, lower, Capitalized, Title, Sentence, alternating and inverse case, plus camelCase, PascalCase, snake_case, CONSTANT_CASE and kebab-case. Everything stays on your machine.',
+    mode: null,
+    requiresPage: false,
+    isReady: true,
+  },
+  {
+    key: 'encode',
+    label: 'Encode / Decode',
+    icon: '🔁',
+    blurb:
+      'Encodes or decodes text as Base64, URL/URI, Hex or HTML entities. Everything stays on your machine.',
     mode: null,
     requiresPage: false,
     isReady: true,

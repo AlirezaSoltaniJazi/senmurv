@@ -22,9 +22,16 @@ interface Props {
   /** Merge a query+kind into the Accounts tab's in-progress draft, without
    *  navigating there — the user may want to keep picking/testing here. */
   onAddToAccount: (seed: AccountLocatorSeed) => void;
+  /** Cap on drawn match badges when highlighting every match of a query. */
+  matchHighlightMax: number;
 }
 
-export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactElement {
+export function LocatorTab({
+  state,
+  setState,
+  onAddToAccount,
+  matchHighlightMax,
+}: Props): ReactElement {
   const {
     picking,
     result,
@@ -86,7 +93,7 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
       void (async () => {
         const res = await sendRuntimeMessage<Result<MatchResult>>({
           type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
-          payload: { query: parsed.query, kind: testKind },
+          payload: { query: parsed.query, kind: testKind, maxHighlight: matchHighlightMax },
         });
         if (res.ok) {
           update({ matchInfo: res.value, testError: null });
@@ -96,7 +103,7 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
       })();
     }, 300);
     return () => clearTimeout(id);
-  }, [query, testKind, highlighting, update]);
+  }, [query, testKind, highlighting, update, matchHighlightMax]);
 
   async function startPick(): Promise<void> {
     // Starting a pick switches the in-page mode, which the arbiter tears the
@@ -143,7 +150,7 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
     update({ testedQuery: parsed.query });
     const res = await sendRuntimeMessage<Result<MatchResult>>({
       type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
-      payload: { query: parsed.query, kind: testKind },
+      payload: { query: parsed.query, kind: testKind, maxHighlight: matchHighlightMax },
     });
     if (res.ok) {
       update({ highlighting: true, matchInfo: res.value });

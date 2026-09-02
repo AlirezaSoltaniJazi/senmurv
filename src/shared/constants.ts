@@ -214,8 +214,10 @@ export const FONT_PRESET_ZOOM = {
   xlarge: 1.3,
 } as const;
 
-/** How many tools can be pinned to the top of the Tools launcher at once. */
-export const MAX_PINNED_TOOLS = 5;
+/** How many tools can be pinned to the top of the Tools launcher at once — bounds + default. */
+export const MAX_PINNED_TOOLS_MIN = 1;
+export const MAX_PINNED_TOOLS_MAX = 10;
+export const MAX_PINNED_TOOLS_DEFAULT = 5;
 
 /** Flow run-popup (in-page HUD) auto-close delay bounds + default, in seconds. */
 export const HUD_SECONDS_MIN = 1;
@@ -235,6 +237,31 @@ export const ACCOUNTS_PIN_MAX_LENGTH = 15;
 export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN = 1;
 export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX = 10;
 export const ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT = 2;
+
+/** One-click account login's page-navigate timeout bounds + default, in seconds. */
+export const NAVIGATE_TIMEOUT_SECONDS_MIN = 5;
+export const NAVIGATE_TIMEOUT_SECONDS_MAX = 120;
+export const NAVIGATE_TIMEOUT_SECONDS_DEFAULT = 20;
+
+/** Accounts login-error banner auto-dismiss bounds + default, in seconds. */
+export const ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MIN = 2;
+export const ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MAX = 30;
+export const ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT = 5;
+
+/** Accounts "Apply to group(s)" result banner auto-dismiss bounds + default, in seconds. */
+export const ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MIN = 2;
+export const ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MAX = 30;
+export const ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT = 5;
+
+/** Site data tool's "click again to confirm" arm window bounds + default, in seconds. */
+export const SITE_DATA_CONFIRM_SECONDS_MIN = 1;
+export const SITE_DATA_CONFIRM_SECONDS_MAX = 10;
+export const SITE_DATA_CONFIRM_SECONDS_DEFAULT = 3;
+
+/** Notes draft-autosave debounce bounds + default, in milliseconds. */
+export const NOTES_AUTOSAVE_MS_MIN = 300;
+export const NOTES_AUTOSAVE_MS_MAX = 5000;
+export const NOTES_AUTOSAVE_MS_DEFAULT = 1200;
 
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;
@@ -334,16 +361,22 @@ export const BYPASS_CSS = `
 }
 `;
 
-/** Cap on tab-order stops, so a pathological page can't stall the scan. */
-export const TAB_ORDER_MAX_STOPS = 500;
+/** Cap on tab-order stops, so a pathological page can't stall the scan — bounds + default. */
+export const TAB_ORDER_MAX_STOPS_MIN = 50;
+export const TAB_ORDER_MAX_STOPS_MAX = 2000;
+export const TAB_ORDER_MAX_STOPS_DEFAULT = 500;
 
 /** Cap on drawn locator-match badges, so a broad selector (e.g. `div`) can't
- *  paint thousands of boxes. The true match count is still reported. */
-export const MATCH_HIGHLIGHT_MAX = 200;
+ *  paint thousands of boxes. The true match count is still reported. Bounds + default. */
+export const MATCH_HIGHLIGHT_MAX_MIN = 10;
+export const MATCH_HIGHLIGHT_MAX_MAX = 1000;
+export const MATCH_HIGHLIGHT_MAX_DEFAULT = 200;
 
 /** Cap on drawn logical-name labels, so a huge Dynamics form can't stall the
- *  overlay. The true control count is still reported. */
-export const LOGICAL_NAMES_MAX = 500;
+ *  overlay. The true control count is still reported. Bounds + default. */
+export const LOGICAL_NAMES_MAX_MIN = 50;
+export const LOGICAL_NAMES_MAX_MAX = 2000;
+export const LOGICAL_NAMES_MAX_DEFAULT = 500;
 
 /** Snap-to-element-edge threshold for the Measure tool, in CSS px. */
 export const MEASURE_SNAP_PX = 6;
