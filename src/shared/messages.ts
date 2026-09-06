@@ -184,6 +184,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE }
   | { type: typeof MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD; payload: { password: string } }
   | { type: typeof MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD }
+  | { type: typeof MESSAGE_TYPES.GET_DEFAULT_OTP_STATE }
+  | { type: typeof MESSAGE_TYPES.SAVE_DEFAULT_OTP; payload: { otp: string } }
+  | { type: typeof MESSAGE_TYPES.CLEAR_DEFAULT_OTP }
   | { type: typeof MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE }
   | {
       type: typeof MESSAGE_TYPES.SET_ACCOUNTS_PIN;
@@ -208,6 +211,11 @@ export type RuntimeMessage =
         passwordField: AccountLocator;
         loginButton: AccountLocator;
         timeoutMs: number;
+        // Present only when the account has OTP configured — filled/clicked
+        // after the login button, in that order.
+        otpField?: AccountLocator;
+        otp?: string;
+        confirmOtpButton?: AccountLocator;
       };
     }
   | { type: typeof MESSAGE_TYPES.EXPORT_ACCOUNTS; payload: { pin: string; ids?: string[] } }

@@ -15,8 +15,12 @@ import {
   FONT_SCALE_STEP,
   HUD_SECONDS_MAX,
   HUD_SECONDS_MIN,
+  LOCATOR_ADDED_CONFIRM_SECONDS_MAX,
+  LOCATOR_ADDED_CONFIRM_SECONDS_MIN,
   LOGICAL_NAMES_MAX_MAX,
   LOGICAL_NAMES_MAX_MIN,
+  LOGIN_PREFILL_DELAY_SECONDS_MAX,
+  LOGIN_PREFILL_DELAY_SECONDS_MIN,
   MATCH_HIGHLIGHT_MAX_MAX,
   MATCH_HIGHLIGHT_MAX_MIN,
   MAX_PINNED_TOOLS_MAX,
@@ -82,6 +86,12 @@ interface Props {
   /** Milliseconds a Notes draft sits idle before autosaving. */
   notesAutosaveMs: number;
   onNotesAutosaveMsChange: (n: number) => void;
+  /** Seconds one-click Accounts login waits after page load before filling the form. */
+  loginPrefillDelaySeconds: number;
+  onLoginPrefillDelaySecondsChange: (n: number) => void;
+  /** Seconds the Locator tab's "Added!" confirmation stays visible. */
+  locatorAddedConfirmSeconds: number;
+  onLocatorAddedConfirmSecondsChange: (n: number) => void;
 }
 
 const FONT_SIZES: { value: FontSize; label: string }[] = [
@@ -190,6 +200,10 @@ export function SettingsTab({
   onAccountApplyResultDisplaySecondsChange,
   notesAutosaveMs,
   onNotesAutosaveMsChange,
+  loginPrefillDelaySeconds,
+  onLoginPrefillDelaySecondsChange,
+  locatorAddedConfirmSeconds,
+  onLocatorAddedConfirmSecondsChange,
 }: Props): ReactElement {
   // The slider sits at the manual scale when set, else the active preset's zoom.
   const sliderValue = fontScale ?? FONT_PRESET_ZOOM[fontSize];
@@ -303,6 +317,15 @@ export function SettingsTab({
             onChange={onNavigateTimeoutSecondsChange}
           />
           <NumberSetting
+            id="login-prefill-delay"
+            label="Login pre-fill delay (seconds)"
+            hint="How long one-click login waits after the page loads before filling the form — some SPAs render the login form before it's actually interactive."
+            min={LOGIN_PREFILL_DELAY_SECONDS_MIN}
+            max={LOGIN_PREFILL_DELAY_SECONDS_MAX}
+            value={loginPrefillDelaySeconds}
+            onChange={onLoginPrefillDelaySecondsChange}
+          />
+          <NumberSetting
             id="login-error-display"
             label="Login error banner (seconds)"
             hint="How long a login-error message stays visible before it auto-dismisses."
@@ -376,6 +399,15 @@ export function SettingsTab({
             max={MATCH_HIGHLIGHT_MAX_MAX}
             value={matchHighlightMax}
             onChange={onMatchHighlightMaxChange}
+          />
+          <NumberSetting
+            id="locator-added-confirm"
+            label={'"Added!" confirmation (seconds)'}
+            hint={'How long the Locator tab\'s "Added to account" confirmation stays visible.'}
+            min={LOCATOR_ADDED_CONFIRM_SECONDS_MIN}
+            max={LOCATOR_ADDED_CONFIRM_SECONDS_MAX}
+            value={locatorAddedConfirmSeconds}
+            onChange={onLocatorAddedConfirmSecondsChange}
           />
         </>
       )}

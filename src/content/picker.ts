@@ -236,7 +236,19 @@ function onMouseMove(e: MouseEvent): void {
   if (el) highlight(el);
 }
 
-function onClick(e: MouseEvent): void {
+/**
+ * The pick gesture itself. Runs on `pointerdown`, not `click` or even
+ * `mousedown`: a native disabled form control (`<button disabled>`,
+ * `<input disabled>`, …) never dispatches `mousedown`/`mouseup`/`click` at all
+ * — Chrome suppresses all three outright — but it still dispatches
+ * `pointerdown`/`pointerup` (verified empirically against real Chrome via the
+ * runInChrome skill; do not trust doc-comment claims about this without
+ * re-verifying, it's easy to get backwards). Triggering on `pointerdown` is
+ * what makes a disabled element pickable; `suppressClick` (below) stops the
+ * real `click` that still follows on pointerup from reaching the page for an
+ * ENABLED element.
+ */
+function onPickerPointerDown(e: PointerEvent): void {
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
@@ -263,6 +275,22 @@ function onClick(e: MouseEvent): void {
   }
 }
 
+/**
+ * The `click` that follows `pointerdown`+`pointerup` on the same ENABLED
+ * element still fires even though `onPickerPointerDown` already handled (and
+ * prevented-default on) the pointerdown — `preventDefault()`/
+ * `stopPropagation()` on one event type don't suppress a later,
+ * independently-dispatched one. Swallow it too, or an enabled element's own
+ * click handler (e.g. an actual form submit) would fire while the user is
+ * just trying to pick it. (A disabled element never reaches this listener at
+ * all — it never dispatches `click` in the first place.)
+ */
+function suppressClick(e: MouseEvent): void {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+}
+
 function onKeyDown(e: KeyboardEvent): void {
   if (e.key !== 'Escape') return;
   e.preventDefault();
@@ -276,7 +304,8 @@ let pickHover: RafThrottled | null = null;
 function startPickListeners(): void {
   pickHover = rafThrottle(onMouseMove);
   document.addEventListener('mousemove', pickHover.handler, true);
-  document.addEventListener('click', onClick, true);
+  document.addEventListener('pointerdown', onPickerPointerDown, true);
+  document.addEventListener('click', suppressClick, true);
   document.addEventListener('keydown', onKeyDown, true);
 }
 
@@ -286,7 +315,8 @@ function stopPickListeners(): void {
     pickHover.cancel();
     pickHover = null;
   }
-  document.removeEventListener('click', onClick, true);
+  document.removeEventListener('pointerdown', onPickerPointerDown, true);
+  document.removeEventListener('click', suppressClick, true);
   document.removeEventListener('keydown', onKeyDown, true);
   destroyOverlay();
 }

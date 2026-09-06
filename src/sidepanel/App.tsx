@@ -11,7 +11,9 @@ import {
   FONT_SCALE_MIN,
   FONT_SCALE_STEP,
   HUD_SECONDS_DEFAULT,
+  LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT,
   LOGICAL_NAMES_MAX_DEFAULT,
+  LOGIN_PREFILL_DELAY_SECONDS_DEFAULT,
   MATCH_HIGHLIGHT_MAX_DEFAULT,
   MAX_PINNED_TOOLS_DEFAULT,
   MESSAGE_TYPES,
@@ -173,6 +175,14 @@ export function App(): ReactElement {
   );
   // Milliseconds a Notes draft sits idle before autosaving.
   const [notesAutosaveMs, setNotesAutosaveMs] = useState<number>(NOTES_AUTOSAVE_MS_DEFAULT);
+  // Seconds one-click Accounts login waits after page load before filling the form.
+  const [loginPrefillDelaySeconds, setLoginPrefillDelaySeconds] = useState<number>(
+    LOGIN_PREFILL_DELAY_SECONDS_DEFAULT
+  );
+  // Seconds the Locator tab's "Added!" confirmation stays visible.
+  const [locatorAddedConfirmSeconds, setLocatorAddedConfirmSeconds] = useState<number>(
+    LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT
+  );
   // Auto-refresh (Tools): the tab being reloaded + its interval, or null when off.
   // Lifted here so it survives switching Tools sub-tools / panel tabs; stops on
   // Stop or when the panel closes (this component unmounts).
@@ -246,6 +256,12 @@ export function App(): ReactElement {
           res.value.accountApplyResultDisplaySeconds ?? ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT
         );
         setNotesAutosaveMs(res.value.notesAutosaveMs ?? NOTES_AUTOSAVE_MS_DEFAULT);
+        setLoginPrefillDelaySeconds(
+          res.value.loginPrefillDelaySeconds ?? LOGIN_PREFILL_DELAY_SECONDS_DEFAULT
+        );
+        setLocatorAddedConfirmSeconds(
+          res.value.locatorAddedConfirmSeconds ?? LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT
+        );
       }
     })();
     return () => {
@@ -272,6 +288,8 @@ export function App(): ReactElement {
       accountLoginErrorDisplaySeconds,
       accountApplyResultDisplaySeconds,
       notesAutosaveMs,
+      loginPrefillDelaySeconds,
+      locatorAddedConfirmSeconds,
     };
     if (fontScale !== undefined) prefs.fontScale = fontScale;
     if (Object.keys(tagColors).length > 0) prefs.tagColors = tagColors;
@@ -400,6 +418,16 @@ export function App(): ReactElement {
     persistPrefs({ ...currentPrefs(), notesAutosaveMs: n });
   }
 
+  function changeLoginPrefillDelaySeconds(n: number): void {
+    setLoginPrefillDelaySeconds(n);
+    persistPrefs({ ...currentPrefs(), loginPrefillDelaySeconds: n });
+  }
+
+  function changeLocatorAddedConfirmSeconds(n: number): void {
+    setLocatorAddedConfirmSeconds(n);
+    persistPrefs({ ...currentPrefs(), locatorAddedConfirmSeconds: n });
+  }
+
   // Cmd/Ctrl + Plus/Minus/0 zooms the panel — the same shortcut the browser
   // itself uses, since the panel is its own document (chrome.sidePanel /
   // sidebar_action) and doesn't share the host tab's native zoom.
@@ -507,6 +535,7 @@ export function App(): ReactElement {
               setState={setLocatorState}
               onAddToAccount={addLocatorToAccount}
               matchHighlightMax={matchHighlightMax}
+              addedConfirmSeconds={locatorAddedConfirmSeconds}
             />
           )}
           {tab === 'recorder' && (
@@ -596,6 +625,10 @@ export function App(): ReactElement {
               onAccountApplyResultDisplaySecondsChange={changeAccountApplyResultDisplaySeconds}
               notesAutosaveMs={notesAutosaveMs}
               onNotesAutosaveMsChange={changeNotesAutosaveMs}
+              loginPrefillDelaySeconds={loginPrefillDelaySeconds}
+              onLoginPrefillDelaySecondsChange={changeLoginPrefillDelaySeconds}
+              locatorAddedConfirmSeconds={locatorAddedConfirmSeconds}
+              onLocatorAddedConfirmSecondsChange={changeLocatorAddedConfirmSeconds}
             />
           )}
           {tab === 'dataio' && <DataIOTab reloadNonce={reloadNonce} />}

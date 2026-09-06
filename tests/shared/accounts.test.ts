@@ -43,6 +43,14 @@ describe('newAccount', () => {
     expect(account.createdAt).toBe(100);
     expect(account.updatedAt).toBe(100);
   });
+
+  it('has no OTP configured by default', () => {
+    const account = newAccount(100);
+    expect(account.useDefaultOtp).toBe(false);
+    expect(account.otpField).toBeUndefined();
+    expect(account.confirmOtpButton).toBeUndefined();
+    expect(account.encryptedOtp).toBeUndefined();
+  });
 });
 
 describe('validateAccount', () => {
@@ -148,6 +156,108 @@ describe('validateAccount', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.description).toBeUndefined();
   });
+
+  it('accepts an account with no OTP configured at all', () => {
+    const result = validateAccount(mk());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.otpField).toBeUndefined();
+      expect(result.value.confirmOtpButton).toBeUndefined();
+      expect(result.value.encryptedOtp).toBeUndefined();
+      expect(result.value.useDefaultOtp).toBeUndefined();
+    }
+  });
+
+  it('requires the confirm-OTP button once the OTP field is set', () => {
+    const result = validateAccount(
+      mk({ otpField: { kind: 'css', query: '#otp' }, useDefaultOtp: true })
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: 'Enter a locator for the confirm-OTP button, or clear the other OTP fields.',
+    });
+  });
+
+  it('requires the OTP field once the confirm-OTP button is set', () => {
+    const result = validateAccount(
+      mk({ confirmOtpButton: { kind: 'css', query: '#confirm' }, useDefaultOtp: true })
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: 'Enter a locator for the OTP field, or clear the other OTP fields.',
+    });
+  });
+
+  it('requires an OTP code (own or default) once both OTP locators are set', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: false,
+      })
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: 'Enter an OTP code, or check "use default OTP code".',
+    });
+  });
+
+  it('accepts a fully-configured OTP setup and keeps all three fields', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: true,
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.otpField).toEqual({ kind: 'css', query: '#otp' });
+      expect(result.value.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+      expect(result.value.useDefaultOtp).toBe(true);
+    }
+  });
+
+  it('accepts an own OTP code (not the default) and keeps encryptedOtp', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: false,
+        encryptedOtp: { ciphertext: 'xyz', iv: 'abc' },
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.encryptedOtp).toEqual({ ciphertext: 'xyz', iv: 'abc' });
+  });
+
+  it('drops encryptedOtp when useDefaultOtp is true', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: true,
+        encryptedOtp: { ciphertext: 'xyz', iv: 'abc' },
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.encryptedOtp).toBeUndefined();
+  });
+
+  it('trims OTP locator queries', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '  #otp  ' },
+        confirmOtpButton: { kind: 'css', query: '  #confirm  ' },
+        useDefaultOtp: true,
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.otpField?.query).toBe('#otp');
+      expect(result.value.confirmOtpButton?.query).toBe('#confirm');
+    }
+  });
 });
 
 describe('upsertAccount', () => {
@@ -224,6 +334,51 @@ describe('applyLocatorSeed', () => {
     expect(next.name).toBe(account.name);
     expect(next.address).toBe(account.address);
     expect(next.id).toBe(account.id);
+  });
+
+  it('merges an OTP-field seed', () => {
+    const account = mk();
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '#otp' });
+    expect(next.otpField).toEqual({ kind: 'css', query: '#otp' });
+  });
+
+  it('merges a confirm-OTP-button seed', () => {
+    const account = mk();
+    const next = applyLocatorSeed(account, {
+      field: 'confirmOtpButton',
+      kind: 'css',
+      query: '#confirm',
+    });
+    expect(next.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+  });
+
+  it('also assigns the group when the seed carries one', () => {
+    const account = mk();
+    const next = applyLocatorSeed(account, {
+      field: 'username',
+      kind: 'css',
+      query: '#u',
+      group: 'Group A',
+    });
+    expect(next.group).toBe('Group A');
+    expect(next.usernameField).toEqual({ kind: 'css', query: '#u' });
+  });
+
+  it('leaves the group untouched when the seed has none', () => {
+    const account = mk({ group: 'Existing Group' });
+    const next = applyLocatorSeed(account, { field: 'username', kind: 'css', query: '#u' });
+    expect(next.group).toBe('Existing Group');
+  });
+
+  it('trims a blank/whitespace-only seed group into a no-op', () => {
+    const account = mk({ group: 'Existing Group' });
+    const next = applyLocatorSeed(account, {
+      field: 'username',
+      kind: 'css',
+      query: '#u',
+      group: '   ',
+    });
+    expect(next.group).toBe('Existing Group');
   });
 });
 

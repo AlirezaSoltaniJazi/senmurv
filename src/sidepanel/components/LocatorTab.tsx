@@ -1,10 +1,11 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
+import { existingGroupNames } from '@/shared/accounts';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
-import type { AccountLocatorSeed, MatchResult, Result } from '@/shared/types';
+import type { Account, AccountLocatorSeed, LocatorKind, MatchResult, Result } from '@/shared/types';
 import { IconActionButton } from './IconActionButton';
 import { LocatorKindToggle } from './LocatorKindToggle';
 import { FrameworkChips, LocatorSuggestions } from './LocatorSuggestions';
@@ -14,6 +15,8 @@ const ACCOUNT_TARGETS: { field: AccountLocatorSeed['field']; label: string }[] =
   { field: 'username', label: 'Username field' },
   { field: 'password', label: 'Password field' },
   { field: 'loginButton', label: 'Login button' },
+  { field: 'otp', label: 'OTP field' },
+  { field: 'confirmOtpButton', label: 'Confirm OTP button' },
 ];
 
 interface Props {
@@ -24,6 +27,8 @@ interface Props {
   onAddToAccount: (seed: AccountLocatorSeed) => void;
   /** Cap on drawn match badges when highlighting every match of a query. */
   matchHighlightMax: number;
+  /** Seconds the "Added!" confirmation stays visible after adding to an account. */
+  addedConfirmSeconds: number;
 }
 
 export function LocatorTab({
@@ -31,6 +36,7 @@ export function LocatorTab({
   setState,
   onAddToAccount,
   matchHighlightMax,
+  addedConfirmSeconds,
 }: Props): ReactElement {
   const {
     picking,
@@ -46,10 +52,34 @@ export function LocatorTab({
     matchInfo,
   } = state;
 
+  // Existing group names, for the "Add to account" group picker — fetched
+  // once; this tab has no other reason to hold the accounts list.
+  const [existingGroups, setExistingGroups] = useState<string[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState('');
+  const [addedMessage, setAddedMessage] = useState<string | null>(null);
+  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const update = useCallback(
     (patch: Partial<LocatorTabState>) => setState((prev) => ({ ...prev, ...patch })),
     [setState]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await sendRuntimeMessage<Result<Account[]>>({ type: MESSAGE_TYPES.GET_ACCOUNTS });
+      if (!cancelled && res.ok) setExistingGroups(existingGroupNames(res.value));
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (addedTimerRef.current !== null) clearTimeout(addedTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     function onMessage(message: unknown): void {
@@ -122,17 +152,22 @@ export function LocatorTab({
     update({ picking: false });
   }
 
-  async function runTest(): Promise<void> {
-    update({ testError: null, testCount: null });
-    const parsed = parseLocatorInput(query);
-    if (!parsed.query) return;
-    update({ testedQuery: parsed.query });
+  /** Fill the Test-a-locator box with `q`/`kind` and run it immediately —
+   *  shared by the manual Test button and each suggestion's own Test button. */
+  async function testValue(q: string, kind: LocatorKind): Promise<void> {
+    update({ query: q, testKind: kind, testedQuery: q, testError: null, testCount: null });
     const res = await sendRuntimeMessage<Result<{ count: number }>>({
       type: MESSAGE_TYPES.TEST_LOCATOR,
-      payload: { query: parsed.query, kind: testKind },
+      payload: { query: q, kind },
     });
     if (res.ok) update({ testCount: res.value.count });
     else update({ testError: res.error });
+  }
+
+  async function runTest(): Promise<void> {
+    const parsed = parseLocatorInput(query);
+    if (!parsed.query) return;
+    await testValue(parsed.query, testKind);
   }
 
   async function toggleHighlight(): Promise<void> {
@@ -162,7 +197,15 @@ export function LocatorTab({
   function addToAccount(field: AccountLocatorSeed['field']): void {
     const parsed = parseLocatorInput(query);
     if (!parsed.query) return;
-    onAddToAccount({ query: parsed.query, kind: testKind, field });
+    const seed: AccountLocatorSeed = { query: parsed.query, kind: testKind, field };
+    const group = selectedGroup.trim();
+    if (group !== '') seed.group = group;
+    onAddToAccount(seed);
+
+    const label = ACCOUNT_TARGETS.find((t) => t.field === field)?.label ?? field;
+    if (addedTimerRef.current !== null) clearTimeout(addedTimerRef.current);
+    setAddedMessage(`Added to ${label}${group !== '' ? ` (group: ${group})` : ''}.`);
+    addedTimerRef.current = setTimeout(() => setAddedMessage(null), addedConfirmSeconds * 1000);
   }
 
   /** Scroll to the previous/next match (delta ±1), wrapping around. */
@@ -239,8 +282,23 @@ export function LocatorTab({
                 {target.label}
               </button>
             ))}
+            {existingGroups.length > 0 && (
+              <select
+                aria-label="Target group"
+                value={selectedGroup}
+                onChange={(e) => setSelectedGroup(e.target.value)}
+              >
+                <option value="">(current group)</option>
+                {existingGroups.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         )}
+        {addedMessage !== null && <p className="status">{addedMessage}</p>}
         {testCount !== null && (
           <p className={testCount === 1 ? 'status' : 'hint'}>
             {testCount === 0
@@ -295,7 +353,11 @@ export function LocatorTab({
           </div>
 
           <FrameworkChips filter={filter} onChange={(f) => update({ filter: f })} />
-          <LocatorSuggestions suggestions={result.suggestions} filter={filter} />
+          <LocatorSuggestions
+            suggestions={result.suggestions}
+            filter={filter}
+            onTest={(q, kind) => void testValue(q, kind)}
+          />
         </>
       )}
     </div>

@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { FRAMEWORK_LABELS, FRAMEWORKS } from '@/shared/constants';
-import type { Framework, LocatorSuggestion } from '@/shared/types';
+import type { Framework, LocatorKind, LocatorSuggestion } from '@/shared/types';
 import { CopyButton } from './CopyButton';
 
 /**
@@ -56,9 +56,15 @@ export function FrameworkChips({
 export function LocatorSuggestions({
   suggestions,
   filter,
+  onTest,
 }: {
   suggestions: LocatorSuggestion[];
   filter: FrameworkFilter;
+  /** Fill "Test a locator" with this suggestion's query/kind and run it
+   *  immediately. Omitted for a suggestion with no runnable `testQuery`
+   *  (e.g. `roleName`'s accessible name, or the Selenium-only `relative`
+   *  strategy, which has no CSS/XPath form at all). */
+  onTest?: (query: string, kind: LocatorKind) => void;
 }): ReactElement {
   return (
     <ul className="locator-list">
@@ -70,6 +76,7 @@ export function LocatorSuggestions({
             : filter === 'all'
               ? s.snippets
               : s.snippets.filter((sn) => sn.framework === filter);
+        const canTest = onTest !== undefined && s.testQuery !== undefined && s.kind !== undefined;
         return (
           <li key={`${s.strategy}-${s.value}`} className="locator-card">
             <div className="locator-head">
@@ -81,6 +88,15 @@ export function LocatorSuggestions({
             {showGeneral && (
               <div className="locator-value">
                 <code>{s.value}</code>
+                {canTest && (
+                  <button
+                    type="button"
+                    title="Fill and run Test a locator with this suggestion"
+                    onClick={() => onTest(s.testQuery!, s.kind!)}
+                  >
+                    Test
+                  </button>
+                )}
                 <CopyButton text={s.value} />
               </div>
             )}

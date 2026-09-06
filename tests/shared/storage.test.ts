@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '@/shared/constants';
 import {
+  clearDefaultOtpRecord,
   clearDefaultPasswordRecord,
   DEFAULT_PREFS,
   deleteAccount,
@@ -15,6 +16,7 @@ import {
   getAccounts,
   getAccountsSecurityConfig,
   getChecklists,
+  getDefaultOtpRecord,
   getDefaultPasswordRecord,
   getNotes,
   getPrefs,
@@ -27,6 +29,7 @@ import {
   isAccount,
   isAccountsSecurityConfig,
   isChecklist,
+  isDefaultOtpRecord,
   isDefaultPasswordRecord,
   isNote,
   isQueryParamSet,
@@ -40,6 +43,7 @@ import {
   saveProfiles,
   saveQueryParamSets,
   setAccountsSecurityConfig,
+  setDefaultOtpRecord,
   setDefaultPasswordRecord,
   upsertAccountStored,
   upsertChecklist,
@@ -55,6 +59,7 @@ import type {
   Account,
   AccountsSecurityConfig,
   Checklist,
+  DefaultOtpRecord,
   DefaultPasswordRecord,
   Note,
   SavedScript,
@@ -569,6 +574,26 @@ describe('account storage', () => {
     expect(isAccount({ ...mk(), description: 42 })).toBe(false);
   });
 
+  it('isAccount accepts an account with no OTP fields (pre-existing accounts)', () => {
+    expect(isAccount(mk())).toBe(true);
+  });
+
+  it('isAccount accepts valid OTP fields and rejects malformed ones', () => {
+    expect(
+      isAccount({
+        ...mk(),
+        useDefaultOtp: false,
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm-otp' },
+        encryptedOtp: { ciphertext: 'abc', iv: 'def' },
+      })
+    ).toBe(true);
+    expect(isAccount({ ...mk(), useDefaultOtp: 'yes' })).toBe(false);
+    expect(isAccount({ ...mk(), otpField: { kind: 'html', query: 'x' } })).toBe(false);
+    expect(isAccount({ ...mk(), confirmOtpButton: { kind: 'html', query: 'x' } })).toBe(false);
+    expect(isAccount({ ...mk(), encryptedOtp: { ciphertext: 'x' } })).toBe(false);
+  });
+
   it('returns [] when nothing is stored, and drops invalid entries', async () => {
     expect(await getAccounts()).toEqual([]);
     store[STORAGE_KEYS.ACCOUNTS] = [mk({ id: 'good' }), { junk: true }];
@@ -617,6 +642,29 @@ describe('default password storage', () => {
     expect(await getDefaultPasswordRecord()).toEqual(mk());
     await clearDefaultPasswordRecord();
     expect(await getDefaultPasswordRecord()).toBeUndefined();
+  });
+});
+
+describe('default OTP storage', () => {
+  function mk(over: Partial<DefaultOtpRecord> = {}): DefaultOtpRecord {
+    return { encryptedOtp: { ciphertext: 'abc', iv: 'def' }, updatedAt: 1, ...over };
+  }
+
+  it('isDefaultOtpRecord rejects corrupt / foreign data', () => {
+    expect(isDefaultOtpRecord(mk())).toBe(true);
+    expect(isDefaultOtpRecord({ ...mk(), encryptedOtp: 'nope' })).toBe(false);
+    expect(isDefaultOtpRecord(null)).toBe(false);
+  });
+
+  it('returns undefined when nothing is stored', async () => {
+    expect(await getDefaultOtpRecord()).toBeUndefined();
+  });
+
+  it('sets, reads, and clears the record', async () => {
+    await setDefaultOtpRecord(mk());
+    expect(await getDefaultOtpRecord()).toEqual(mk());
+    await clearDefaultOtpRecord();
+    expect(await getDefaultOtpRecord()).toBeUndefined();
   });
 });
 
@@ -730,6 +778,34 @@ describe('prefs storage', () => {
 
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 4.6 };
     expect((await getPrefs()).hudSeconds).toBe(5); // rounded
+  });
+
+  it('reads a stored loginPrefillDelaySeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', loginPrefillDelaySeconds: 5 };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(5);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', loginPrefillDelaySeconds: 999 };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(30); // LOGIN_PREFILL_DELAY_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', loginPrefillDelaySeconds: -5 };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(0); // LOGIN_PREFILL_DELAY_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(0); // default
+  });
+
+  it('reads a stored locatorAddedConfirmSeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', locatorAddedConfirmSeconds: 5 };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(5);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', locatorAddedConfirmSeconds: 999 };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(10); // LOCATOR_ADDED_CONFIRM_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', locatorAddedConfirmSeconds: 0 };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(1); // LOCATOR_ADDED_CONFIRM_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(2); // default
   });
 
   it('reads autoReloadOnChange, defaulting to absent (off)', async () => {

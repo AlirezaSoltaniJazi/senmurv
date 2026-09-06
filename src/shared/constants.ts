@@ -12,6 +12,7 @@ export const STORAGE_KEYS = {
   ACCOUNTS_SECURITY: 'senmurv:accountsSecurity',
   SCORECARDS: 'senmurv:scorecards',
   SCORECARD_TEMPLATES: 'senmurv:scorecardTemplates',
+  DEFAULT_OTP: 'senmurv:defaultOtp',
 } as const;
 
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
@@ -146,6 +147,10 @@ export const MESSAGE_TYPES = {
   GET_SCORECARD_TEMPLATES: 'GET_SCORECARD_TEMPLATES',
   SAVE_SCORECARD_TEMPLATE: 'SAVE_SCORECARD_TEMPLATE',
   DELETE_SCORECARD_TEMPLATE: 'DELETE_SCORECARD_TEMPLATE',
+  // Default OTP code — same shape as the Default password messages above.
+  GET_DEFAULT_OTP_STATE: 'GET_DEFAULT_OTP_STATE',
+  SAVE_DEFAULT_OTP: 'SAVE_DEFAULT_OTP',
+  CLEAR_DEFAULT_OTP: 'CLEAR_DEFAULT_OTP',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -206,11 +211,18 @@ export const LOCATOR_PRIORITY = [
   'testId',
   'formControl',
   'id',
+  'name',
   'attr',
   'ariaLabel',
   'roleName',
+  'text',
+  'linkText',
+  'partialLinkText',
   'css',
+  'className',
   'xpath',
+  // Selenium-only (no CSS/XPath equivalent) — always the last resort.
+  'relative',
 ] as const;
 
 /** Manual UI-zoom (font-scale) slider bounds + step. */
@@ -274,6 +286,20 @@ export const SITE_DATA_CONFIRM_SECONDS_DEFAULT = 3;
 export const NOTES_AUTOSAVE_MS_MIN = 300;
 export const NOTES_AUTOSAVE_MS_MAX = 5000;
 export const NOTES_AUTOSAVE_MS_DEFAULT = 1200;
+
+/**
+ * One-click Accounts login's post-navigate, pre-fill delay bounds + default,
+ * in seconds. Default is 0 — most sites don't need it; some SPAs render the
+ * login form before it's actually interactive (e.g. hydration).
+ */
+export const LOGIN_PREFILL_DELAY_SECONDS_MIN = 0;
+export const LOGIN_PREFILL_DELAY_SECONDS_MAX = 30;
+export const LOGIN_PREFILL_DELAY_SECONDS_DEFAULT = 0;
+
+/** Locator tab's "Added!" confirmation display bounds + default, in seconds. */
+export const LOCATOR_ADDED_CONFIRM_SECONDS_MIN = 1;
+export const LOCATOR_ADDED_CONFIRM_SECONDS_MAX = 10;
+export const LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT = 2;
 
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;

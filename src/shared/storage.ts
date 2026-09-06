@@ -18,9 +18,15 @@ import {
   HUD_SECONDS_DEFAULT,
   HUD_SECONDS_MAX,
   HUD_SECONDS_MIN,
+  LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT,
+  LOCATOR_ADDED_CONFIRM_SECONDS_MAX,
+  LOCATOR_ADDED_CONFIRM_SECONDS_MIN,
   LOGICAL_NAMES_MAX_DEFAULT,
   LOGICAL_NAMES_MAX_MAX,
   LOGICAL_NAMES_MAX_MIN,
+  LOGIN_PREFILL_DELAY_SECONDS_DEFAULT,
+  LOGIN_PREFILL_DELAY_SECONDS_MAX,
+  LOGIN_PREFILL_DELAY_SECONDS_MIN,
   MATCH_HIGHLIGHT_MAX_DEFAULT,
   MATCH_HIGHLIGHT_MAX_MAX,
   MATCH_HIGHLIGHT_MAX_MIN,
@@ -53,6 +59,7 @@ import type {
   AccountLocator,
   AccountsSecurityConfig,
   Checklist,
+  DefaultOtpRecord,
   DefaultPasswordRecord,
   EncryptedSecret,
   FontSize,
@@ -610,6 +617,8 @@ export const DEFAULT_PREFS: Prefs = {
   accountLoginErrorDisplaySeconds: ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT,
   accountApplyResultDisplaySeconds: ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT,
   notesAutosaveMs: NOTES_AUTOSAVE_MS_DEFAULT,
+  loginPrefillDelaySeconds: LOGIN_PREFILL_DELAY_SECONDS_DEFAULT,
+  locatorAddedConfirmSeconds: LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT,
 };
 
 function isFontSize(value: unknown): value is FontSize {
@@ -739,6 +748,18 @@ export async function getPrefs(): Promise<Prefs> {
       NOTES_AUTOSAVE_MS_MAX,
       NOTES_AUTOSAVE_MS_DEFAULT
     ),
+    loginPrefillDelaySeconds: clampedInt(
+      v.loginPrefillDelaySeconds,
+      LOGIN_PREFILL_DELAY_SECONDS_MIN,
+      LOGIN_PREFILL_DELAY_SECONDS_MAX,
+      LOGIN_PREFILL_DELAY_SECONDS_DEFAULT
+    ),
+    locatorAddedConfirmSeconds: clampedInt(
+      v.locatorAddedConfirmSeconds,
+      LOCATOR_ADDED_CONFIRM_SECONDS_MIN,
+      LOCATOR_ADDED_CONFIRM_SECONDS_MAX,
+      LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT
+    ),
   };
   if (typeof v.fontScale === 'number' && Number.isFinite(v.fontScale)) {
     prefs.fontScale = Math.min(FONT_SCALE_MAX, Math.max(FONT_SCALE_MIN, v.fontScale));
@@ -791,7 +812,13 @@ export function isAccount(value: unknown): value is Account {
     typeof v.updatedAt === 'number' &&
     (v.encryptedPassword === undefined || isEncryptedSecret(v.encryptedPassword)) &&
     (v.group === undefined || typeof v.group === 'string') &&
-    (v.description === undefined || typeof v.description === 'string')
+    (v.description === undefined || typeof v.description === 'string') &&
+    // OTP fields are all optional — an account that has never used OTP
+    // predates this feature or simply doesn't need it.
+    (v.useDefaultOtp === undefined || typeof v.useDefaultOtp === 'boolean') &&
+    (v.otpField === undefined || isAccountLocator(v.otpField)) &&
+    (v.confirmOtpButton === undefined || isAccountLocator(v.confirmOtpButton)) &&
+    (v.encryptedOtp === undefined || isEncryptedSecret(v.encryptedOtp))
   );
 }
 
@@ -855,6 +882,34 @@ export async function setDefaultPasswordRecord(record: DefaultPasswordRecord): P
 export async function clearDefaultPasswordRecord(): Promise<void> {
   await withKeyLock(STORAGE_KEYS.DEFAULT_PASSWORD, () =>
     browser.storage.local.remove(STORAGE_KEYS.DEFAULT_PASSWORD)
+  );
+}
+
+/** Type guard for the stored default-OTP record. */
+export function isDefaultOtpRecord(value: unknown): value is DefaultOtpRecord {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return isEncryptedSecret(v.encryptedOtp) && typeof v.updatedAt === 'number';
+}
+
+/** Read the shared default OTP code record, or undefined if none is set. */
+export async function getDefaultOtpRecord(): Promise<DefaultOtpRecord | undefined> {
+  const result = await browser.storage.local.get(STORAGE_KEYS.DEFAULT_OTP);
+  const raw = result[STORAGE_KEYS.DEFAULT_OTP];
+  return isDefaultOtpRecord(raw) ? raw : undefined;
+}
+
+/** Set (or replace) the shared default OTP code record. */
+export async function setDefaultOtpRecord(record: DefaultOtpRecord): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.DEFAULT_OTP, () =>
+    browser.storage.local.set({ [STORAGE_KEYS.DEFAULT_OTP]: record })
+  );
+}
+
+/** Clear the shared default OTP code. */
+export async function clearDefaultOtpRecord(): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.DEFAULT_OTP, () =>
+    browser.storage.local.remove(STORAGE_KEYS.DEFAULT_OTP)
   );
 }
 

@@ -11,6 +11,7 @@ import type { Account, AccountDraft, AccountsLockState, Result } from '@/shared/
 import { AccountEditor } from './accounts/AccountEditor';
 import { AccountList } from './accounts/AccountList';
 import { AccountsSecurity } from './accounts/AccountsSecurity';
+import { DefaultOtpSettings } from './accounts/DefaultOtpSettings';
 import { DefaultPasswordSettings } from './accounts/DefaultPasswordSettings';
 
 /** The in-progress account draft, if any — lifted to App.tsx so it (and the
@@ -64,6 +65,8 @@ export function AccountsTab({
   // Told by DefaultPasswordSettings whenever it changes; lets the editor's
   // "use default password" checkbox disable itself until one is set.
   const [isDefaultPasswordSet, setIsDefaultPasswordSet] = useState(false);
+  // Same, for DefaultOtpSettings / "use default OTP code".
+  const [isDefaultOtpSet, setIsDefaultOtpSet] = useState(false);
 
   async function refreshLockState(): Promise<AccountsLockState | null> {
     const res = await sendRuntimeMessage<Result<AccountsLockState>>({
@@ -286,6 +289,7 @@ export function AccountsTab({
           initial={editing.account}
           isNew={editing.isNew}
           isDefaultPasswordSet={isDefaultPasswordSet}
+          isDefaultOtpSet={isDefaultOtpSet}
           existingGroups={existingGroupNames(accounts)}
           onGroupAccountsChanged={setAccounts}
           applyResultDisplaySeconds={applyResultDisplaySeconds}
@@ -310,6 +314,11 @@ export function AccountsTab({
         reloadNonce={unlockNonce}
         onStateChange={setIsDefaultPasswordSet}
         accountsUsingDefaultCount={accounts.filter((a) => a.useDefaultPassword).length}
+      />
+      <DefaultOtpSettings
+        reloadNonce={unlockNonce}
+        onStateChange={setIsDefaultOtpSet}
+        accountsUsingDefaultCount={accounts.filter((a) => a.useDefaultOtp).length}
       />
       <AccountsSecurity
         sessionMinutes={lockState.sessionMinutes}

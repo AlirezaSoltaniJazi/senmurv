@@ -35,6 +35,7 @@ export function newAccount(now: number): Account {
     usernameField: { kind: 'css', query: '' },
     passwordField: { kind: 'css', query: '' },
     loginButton: { kind: 'css', query: '' },
+    useDefaultOtp: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -55,10 +56,10 @@ function normalizeAddress(input: string): Result<string> {
 }
 
 /**
- * Validate a fully-formed candidate account (with `encryptedPassword` already
- * resolved by the caller). Returns the cleaned account (trimmed fields,
- * normalized address) or the first problem found, so the editor can block
- * Save and say why.
+ * Validate a fully-formed candidate account (with `encryptedPassword`/
+ * `encryptedOtp` already resolved by the caller). Returns the cleaned account
+ * (trimmed fields, normalized address) or the first problem found, so the
+ * editor can block Save and say why.
  */
 export function validateAccount(draft: Account): Result<Account> {
   const name = draft.name.trim();
@@ -83,6 +84,33 @@ export function validateAccount(draft: Account): Result<Account> {
     return { ok: false, error: 'Enter a password, or check "use default password".' };
   }
 
+  // OTP is entirely optional — but if ANY piece of it is set, the whole set
+  // (both locators + a code) must be, so login never half-configures OTP.
+  const otpFieldQuery = draft.otpField?.query.trim() ?? '';
+  const confirmOtpButtonQuery = draft.confirmOtpButton?.query.trim() ?? '';
+  const usesOtp =
+    otpFieldQuery !== '' ||
+    confirmOtpButtonQuery !== '' ||
+    Boolean(draft.useDefaultOtp) ||
+    Boolean(draft.encryptedOtp);
+  if (usesOtp) {
+    if (otpFieldQuery === '') {
+      return {
+        ok: false,
+        error: 'Enter a locator for the OTP field, or clear the other OTP fields.',
+      };
+    }
+    if (confirmOtpButtonQuery === '') {
+      return {
+        ok: false,
+        error: 'Enter a locator for the confirm-OTP button, or clear the other OTP fields.',
+      };
+    }
+    if (!draft.useDefaultOtp && !draft.encryptedOtp) {
+      return { ok: false, error: 'Enter an OTP code, or check "use default OTP code".' };
+    }
+  }
+
   const clean: Account = {
     ...draft,
     name,
@@ -93,6 +121,20 @@ export function validateAccount(draft: Account): Result<Account> {
     loginButton: { ...draft.loginButton, query: loginButtonQuery },
   };
   if (draft.useDefaultPassword) delete clean.encryptedPassword;
+  if (usesOtp) {
+    clean.otpField = { kind: draft.otpField?.kind ?? 'css', query: otpFieldQuery };
+    clean.confirmOtpButton = {
+      kind: draft.confirmOtpButton?.kind ?? 'css',
+      query: confirmOtpButtonQuery,
+    };
+    clean.useDefaultOtp = Boolean(draft.useDefaultOtp);
+    if (draft.useDefaultOtp) delete clean.encryptedOtp;
+  } else {
+    delete clean.otpField;
+    delete clean.confirmOtpButton;
+    delete clean.encryptedOtp;
+    delete clean.useDefaultOtp;
+  }
   const group = draft.group?.trim();
   if (group) clean.group = group;
   else delete clean.group;
@@ -103,12 +145,31 @@ export function validateAccount(draft: Account): Result<Account> {
 }
 
 /** `account` with the seeded locator merged into whichever field it targets
- *  (the Locator tab's "Add to account" buttons). */
+ *  (the Locator tab's "Add to account" buttons), plus its group when the
+ *  seed carries one. */
 export function applyLocatorSeed(account: Account, seed: AccountLocatorSeed): Account {
   const locator = { kind: seed.kind, query: seed.query };
-  if (seed.field === 'username') return { ...account, usernameField: locator };
-  if (seed.field === 'password') return { ...account, passwordField: locator };
-  return { ...account, loginButton: locator };
+  let next: Account;
+  switch (seed.field) {
+    case 'username':
+      next = { ...account, usernameField: locator };
+      break;
+    case 'password':
+      next = { ...account, passwordField: locator };
+      break;
+    case 'loginButton':
+      next = { ...account, loginButton: locator };
+      break;
+    case 'otp':
+      next = { ...account, otpField: locator };
+      break;
+    case 'confirmOtpButton':
+      next = { ...account, confirmOtpButton: locator };
+      break;
+  }
+  const group = seed.group?.trim();
+  if (group) next = { ...next, group };
+  return next;
 }
 
 /** One group's worth of accounts (or account-shaped items), in their

@@ -7,6 +7,7 @@ import {
   BYPASS_CSS,
   FIND_TIMEOUT_SECONDS_DEFAULT,
   LOGICAL_NAMES_MAX_DEFAULT,
+  LOGIN_PREFILL_DELAY_SECONDS_DEFAULT,
   MESSAGE_TYPES,
   NAVIGATE_TIMEOUT_SECONDS_DEFAULT,
 } from '@/shared/constants';
@@ -33,6 +34,7 @@ import type { RuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
 import type { ImportedAccount } from '@/shared/data-io';
 import {
+  clearDefaultOtpRecord,
   clearDefaultPasswordRecord,
   deleteAccount,
   deleteChecklist,
@@ -44,6 +46,7 @@ import {
   deleteTask,
   getAccounts,
   getChecklists,
+  getDefaultOtpRecord,
   getDefaultPasswordRecord,
   getNotes,
   getPrefs,
@@ -62,6 +65,7 @@ import {
   saveScripts,
   saveTasks,
   savePrefs,
+  setDefaultOtpRecord,
   setDefaultPasswordRecord,
   transformTasks,
   upsertAccountStored,
@@ -1666,6 +1670,16 @@ async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
     return { ok: false, error: 'Enter a password, or check "use default password".' };
   }
 
+  // Unlike password, OTP is entirely optional — an untouched/blank newOtp
+  // just keeps whatever (if anything) already existed; validateAccount is
+  // what decides whether the account "uses OTP" at all.
+  let encryptedOtp = existing?.encryptedOtp;
+  if (draft.useDefaultOtp) {
+    encryptedOtp = undefined;
+  } else if (draft.newOtp !== undefined && draft.newOtp.trim() !== '') {
+    encryptedOtp = await encryptSecret(draft.newOtp);
+  }
+
   const candidate: Account = {
     id: draft.id,
     name: draft.name,
@@ -1675,10 +1689,14 @@ async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
     usernameField: draft.usernameField,
     passwordField: draft.passwordField,
     loginButton: draft.loginButton,
+    useDefaultOtp: draft.useDefaultOtp,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
   if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
+  if (encryptedOtp) candidate.encryptedOtp = encryptedOtp;
+  if (draft.otpField) candidate.otpField = draft.otpField;
+  if (draft.confirmOtpButton) candidate.confirmOtpButton = draft.confirmOtpButton;
   if (draft.group) candidate.group = draft.group;
   if (draft.description) candidate.description = draft.description;
 
@@ -1830,8 +1848,9 @@ async function importAccountsInStore(
 
 /**
  * Navigate to the saved account's address, wait for the page to load, decrypt
- * the right password (the account's own, or the shared default), and ask the
- * content script to fill + click via the saved locators.
+ * the right password (the account's own, or the shared default) and — when
+ * configured — the right OTP code, then ask the content script to fill +
+ * click via the saved locators.
  */
 async function runAccountLogin(tabId: number, id: string): Promise<Result<void>> {
   const account = (await getAccounts()).find((a) => a.id === id);
@@ -1842,6 +1861,7 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
   }
 
   let password: string;
+  let otp: string | undefined;
   try {
     if (account.useDefaultPassword) {
       const record = await getDefaultPasswordRecord();
@@ -1858,6 +1878,25 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
         return { ok: false, error: 'This account has no password saved.' };
       password = await decryptSecret(account.encryptedPassword);
     }
+
+    const usesOtp = Boolean(account.otpField && account.confirmOtpButton);
+    if (usesOtp) {
+      if (account.useDefaultOtp) {
+        const record = await getDefaultOtpRecord();
+        if (!record) {
+          return {
+            ok: false,
+            error:
+              'No default OTP code is set — set one in Accounts, or give this account its own OTP code.',
+          };
+        }
+        otp = await decryptSecret(record.encryptedOtp);
+      } else {
+        if (!account.encryptedOtp)
+          return { ok: false, error: 'This account has no OTP code saved.' };
+        otp = await decryptSecret(account.encryptedOtp);
+      }
+    }
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
@@ -1867,6 +1906,10 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
     (prefs.navigateTimeoutSeconds ?? NAVIGATE_TIMEOUT_SECONDS_DEFAULT) * 1000;
   const navResult = await navigateAndWaitForLoad(tabId, account.address, navigateTimeoutMs);
   if (!navResult.ok) return navResult;
+
+  const prefillDelayMs =
+    (prefs.loginPrefillDelaySeconds ?? LOGIN_PREFILL_DELAY_SECONDS_DEFAULT) * 1000;
+  if (prefillDelayMs > 0) await delay(prefillDelayMs);
 
   const timeoutMs = (prefs.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000;
 
@@ -1879,42 +1922,64 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
       passwordField: account.passwordField,
       loginButton: account.loginButton,
       timeoutMs,
+      ...(account.otpField && account.confirmOtpButton && otp !== undefined
+        ? { otpField: account.otpField, otp, confirmOtpButton: account.confirmOtpButton }
+        : {}),
     },
   });
 }
 
 /**
  * Change the PIN and re-encrypt every existing secret (every account's own
- * password, plus the shared default password if one is set) under the new
- * key. shared/crypto.ts's changePin computes everything before returning —
- * nothing is written until this function persists it, so a failure never
- * leaves mixed old-key/new-key ciphertext on disk.
+ * password and OTP code, plus the shared default password/OTP if set) under
+ * the new key. shared/crypto.ts's changePin computes everything before
+ * returning — nothing is written until this function persists it, so a
+ * failure never leaves mixed old-key/new-key ciphertext on disk.
  */
 async function changeAccountsPin(currentPin: string, newPin: string): Promise<Result<void>> {
   const accounts = await getAccounts();
-  const defaultRecord = await getDefaultPasswordRecord();
+  const defaultPasswordRecord = await getDefaultPasswordRecord();
+  const defaultOtpRecord = await getDefaultOtpRecord();
 
+  // Fixed order (password, then OTP, per account; defaults last) — the apply
+  // pass below MUST walk `reencrypted` in this exact same order.
   const secretsToReencrypt: EncryptedSecret[] = [];
   for (const account of accounts) {
     if (account.encryptedPassword) secretsToReencrypt.push(account.encryptedPassword);
+    if (account.encryptedOtp) secretsToReencrypt.push(account.encryptedOtp);
   }
-  if (defaultRecord) secretsToReencrypt.push(defaultRecord.encryptedPassword);
+  if (defaultPasswordRecord) secretsToReencrypt.push(defaultPasswordRecord.encryptedPassword);
+  if (defaultOtpRecord) secretsToReencrypt.push(defaultOtpRecord.encryptedOtp);
 
   const result = await changePin(currentPin, newPin, secretsToReencrypt);
   if (!result.ok) return result;
 
   let cursor = 0;
   const updatedAccounts = accounts.map((account) => {
-    if (!account.encryptedPassword) return account;
-    const encryptedPassword = result.value.reencrypted[cursor];
-    cursor += 1;
-    return { ...account, encryptedPassword: encryptedPassword! };
+    let next = account;
+    if (next.encryptedPassword) {
+      const encryptedPassword = result.value.reencrypted[cursor]!;
+      cursor += 1;
+      next = { ...next, encryptedPassword };
+    }
+    if (next.encryptedOtp) {
+      const encryptedOtp = result.value.reencrypted[cursor]!;
+      cursor += 1;
+      next = { ...next, encryptedOtp };
+    }
+    return next;
   });
   await saveAccounts(updatedAccounts);
 
-  if (defaultRecord) {
+  if (defaultPasswordRecord) {
     const encryptedPassword = result.value.reencrypted[cursor]!;
+    cursor += 1;
     await setDefaultPasswordRecord({ encryptedPassword, updatedAt: Date.now() });
+  }
+  if (defaultOtpRecord) {
+    const encryptedOtp = result.value.reencrypted[cursor]!;
+    cursor += 1;
+    await setDefaultOtpRecord({ encryptedOtp, updatedAt: Date.now() });
   }
 
   return { ok: true, value: undefined };
@@ -2353,6 +2418,36 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
 
       case MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD:
         clearDefaultPasswordRecord()
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_DEFAULT_OTP_STATE:
+        getDefaultOtpRecord()
+          .then((record) =>
+            sendResponse({
+              ok: true,
+              value: { isSet: record !== undefined, updatedAt: record?.updatedAt ?? null },
+            })
+          )
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_DEFAULT_OTP: {
+        const otp = message.payload.otp.trim();
+        if (otp === '') {
+          sendResponse({ ok: false, error: 'Enter an OTP code.' });
+          return true;
+        }
+        encryptSecret(otp)
+          .then((encryptedOtp) => setDefaultOtpRecord({ encryptedOtp, updatedAt: Date.now() }))
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+      }
+
+      case MESSAGE_TYPES.CLEAR_DEFAULT_OTP:
+        clearDefaultOtpRecord()
           .then(() => sendResponse({ ok: true, value: undefined }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;

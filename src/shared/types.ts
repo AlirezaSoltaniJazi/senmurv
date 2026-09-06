@@ -84,9 +84,22 @@ export type LocatorStrategy =
   | 'attr'
   | 'ariaLabel'
   | 'roleName'
+  | 'name'
+  | 'className'
+  | 'linkText'
+  | 'partialLinkText'
+  | 'text'
   | 'css'
   | 'xpath'
-  | 'xpathAbsolute';
+  | 'xpathAbsolute'
+  /**
+   * Selenium-only (Selenium 4's `RelativeLocator`) — no other supported
+   * framework (Playwright, WebdriverIO, Cypress, Robot Framework) has an
+   * equivalent concept, so this strategy's `snippets` only ever contain a
+   * `selenium` entry, and it has no `kind` (its "value" isn't a CSS/XPath
+   * query, so it can't be run through "Test a locator").
+   */
+  | 'relative';
 
 export type LocatorQuality = 'high' | 'medium' | 'low';
 
@@ -114,6 +127,17 @@ export interface LocatorSuggestion {
   recommended: boolean;
   /** How many elements this locator matches on the live page (omitted if not computable). */
   matchCount?: number;
+  /**
+   * The runnable CSS/XPath query for "Test a locator", when this suggestion
+   * is testable. Not always equal to `value` — e.g. `testId`/`id` display
+   * the bare attribute value, but `testQuery` is the real `[data-testid="…"]`
+   * / `#…` selector. Omitted when nothing runnable exists (`roleName`'s
+   * value is an accessible name, not a selector; `relative` has no CSS/XPath
+   * form at all) — the panel uses this (paired with `kind`) to decide
+   * whether a suggestion gets a "Test" button.
+   */
+  testQuery?: string;
+  kind?: LocatorKind;
   snippets: FrameworkSnippet[];
 }
 
@@ -871,6 +895,19 @@ export interface Prefs {
    * Omitted → NOTES_AUTOSAVE_MS_DEFAULT applies.
    */
   notesAutosaveMs?: number;
+  /**
+   * Seconds one-click Accounts login waits after the page finishes loading
+   * before it starts filling the form — some SPAs (Angular/React hydration)
+   * render the login form before it's actually interactive.
+   * Omitted → LOGIN_PREFILL_DELAY_SECONDS_DEFAULT applies.
+   */
+  loginPrefillDelaySeconds?: number;
+  /**
+   * Seconds the Locator tab's "Added!" confirmation stays visible after
+   * adding a locator (or group) to the in-progress Accounts draft.
+   * Omitted → LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT applies.
+   */
+  locatorAddedConfirmSeconds?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -978,13 +1015,17 @@ export interface AccountLocator {
 export interface AccountLocatorSeed {
   query: string;
   kind: LocatorKind;
-  field: 'username' | 'password' | 'loginButton';
+  field: 'username' | 'password' | 'loginButton' | 'otp' | 'confirmOtpButton';
+  /** When set, also assigns the target account to this group. */
+  group?: string;
 }
 
 /**
  * A saved login account (Accounts tab). `encryptedPassword` is present only
  * when `useDefaultPassword` is false; when true it is not stored at all (the
- * global default password is substituted at login time).
+ * global default password is substituted at login time). The OTP fields are
+ * the same shape, one level more optional: an account may not use OTP at all,
+ * in which case `otpField`/`confirmOtpButton`/`encryptedOtp` are all absent.
  */
 export interface Account {
   id: string; // newId('acct_')
@@ -997,6 +1038,17 @@ export interface Account {
   usernameField: AccountLocator;
   passwordField: AccountLocator;
   loginButton: AccountLocator;
+  /** Locator for the one-time-code input, only when this account uses OTP. */
+  otpField?: AccountLocator;
+  /** Locator for the button that submits/confirms the OTP step. */
+  confirmOtpButton?: AccountLocator;
+  encryptedOtp?: EncryptedSecret;
+  /**
+   * Optional (not required, unlike `useDefaultPassword`): every account saved
+   * before this feature shipped predates this field entirely. Absent is
+   * equivalent to `false` everywhere it's read.
+   */
+  useDefaultOtp?: boolean;
   /** Free-text group label (e.g. "Group A"); absent/blank falls into the
    *  "Default" bucket shown on the Accounts tab's main list. */
   group?: string;
@@ -1009,10 +1061,10 @@ export interface Account {
 
 /**
  * The wire shape SAVE_ACCOUNT carries. Deliberately not `Account`: the panel
- * never holds a plaintext password to send, so "set/change this account's
- * password" (`newPassword` present) must be distinguishable from "leave the
- * existing password alone" (`newPassword` omitted) without the panel needing
- * to know the current ciphertext.
+ * never holds a plaintext password (or OTP code) to send, so "set/change this
+ * account's password/OTP" (`newPassword`/`newOtp` present) must be
+ * distinguishable from "leave the existing one alone" (omitted) without the
+ * panel needing to know the current ciphertext.
  */
 export interface AccountDraft {
   id: string;
@@ -1024,6 +1076,10 @@ export interface AccountDraft {
   usernameField: AccountLocator;
   passwordField: AccountLocator;
   loginButton: AccountLocator;
+  otpField?: AccountLocator;
+  confirmOtpButton?: AccountLocator;
+  useDefaultOtp: boolean;
+  newOtp?: string;
   group?: string;
   description?: string;
 }
@@ -1038,6 +1094,20 @@ export interface DefaultPasswordRecord {
 /** What GET_DEFAULT_PASSWORD_STATE returns — never the ciphertext, just
  *  enough for the UI to show "set" / "not set". */
 export interface DefaultPasswordState {
+  isSet: boolean;
+  updatedAt: number | null;
+}
+
+/** The one shared "default OTP code" accounts can opt into — same shape and
+ *  security model as {@link DefaultPasswordRecord}, for staging/QA environments
+ *  where a fixed test code is accepted instead of a real one-time code. */
+export interface DefaultOtpRecord {
+  encryptedOtp: EncryptedSecret;
+  updatedAt: number;
+}
+
+/** What GET_DEFAULT_OTP_STATE returns — never the ciphertext. */
+export interface DefaultOtpState {
   isSet: boolean;
   updatedAt: number | null;
 }

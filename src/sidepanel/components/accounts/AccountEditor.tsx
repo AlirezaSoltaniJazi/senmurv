@@ -21,6 +21,8 @@ interface Props {
   /** Whether a shared default password currently exists — the "use default
    *  password" checkbox can't be turned on until one does. */
   isDefaultPasswordSet: boolean;
+  /** Same gate as `isDefaultPasswordSet`, for the "use default OTP code" checkbox. */
+  isDefaultOtpSet: boolean;
   /** Existing group names, offered as autocomplete suggestions. */
   existingGroups: string[];
   /** Told whenever "Apply to group" changes other accounts' stored data, so
@@ -175,10 +177,13 @@ function LocatorField({
 /** Create/edit one saved account. Mirrors ScriptsTab's list-replaced-by-editor
  *  pattern rather than a modal. The password field renders only when "use
  *  default password" is unchecked, per the spec: not even shown otherwise. */
+const BLANK_LOCATOR: AccountLocator = { kind: 'css', query: '' };
+
 export function AccountEditor({
   initial,
   isNew,
   isDefaultPasswordSet,
+  isDefaultOtpSet,
   existingGroups,
   onGroupAccountsChanged,
   applyResultDisplaySeconds,
@@ -197,6 +202,13 @@ export function AccountEditor({
   const [usernameField, setUsernameField] = useState<AccountLocator>(initial.usernameField);
   const [passwordField, setPasswordField] = useState<AccountLocator>(initial.passwordField);
   const [loginButton, setLoginButton] = useState<AccountLocator>(initial.loginButton);
+  // OTP is fully optional — every field below may stay blank.
+  const [useDefaultOtp, setUseDefaultOtp] = useState(initial.useDefaultOtp ?? false);
+  const [otp, setOtp] = useState('');
+  const [otpField, setOtpField] = useState<AccountLocator>(initial.otpField ?? BLANK_LOCATOR);
+  const [confirmOtpButton, setConfirmOtpButton] = useState<AccountLocator>(
+    initial.confirmOtpButton ?? BLANK_LOCATOR
+  );
   // Which groups "Apply to group(s)" targets, shared by all three locator
   // fields — defaults to just this account's own group, if it has one.
   const [applyTargets, setApplyTargets] = useState<Set<string>>(() => {
@@ -233,8 +245,12 @@ export function AccountEditor({
       usernameField,
       passwordField,
       loginButton,
+      useDefaultOtp,
+      otpField,
+      confirmOtpButton,
     };
     if (!useDefaultPassword && password.trim() !== '') draft.newPassword = password;
+    if (!useDefaultOtp && otp.trim() !== '') draft.newOtp = otp;
     if (group.trim() !== '') draft.group = group.trim();
     if (description.trim() !== '') draft.description = description.trim();
     onSave(draft);
@@ -345,6 +361,54 @@ export function AccountEditor({
         value={loginButton}
         onChange={setLoginButton}
         field="loginButton"
+        groups={[...applyTargets]}
+        onGroupAccountsChanged={onGroupAccountsChanged}
+        applyResultDisplaySeconds={applyResultDisplaySeconds}
+      />
+
+      <p className="hint">
+        OTP (optional) — leave every field below blank if this login has no 2FA step.
+      </p>
+
+      <label className="checkbox-inline">
+        <input
+          type="checkbox"
+          checked={useDefaultOtp}
+          disabled={!isDefaultOtpSet && !useDefaultOtp}
+          onChange={(e) => setUseDefaultOtp(e.target.checked)}
+        />
+        Use default OTP code
+      </label>
+      {!isDefaultOtpSet && !useDefaultOtp && (
+        <p className="hint">Set a default OTP code below to enable this.</p>
+      )}
+      {!useDefaultOtp && (
+        <input
+          className="name-input"
+          type="password"
+          placeholder={isNew ? 'OTP code' : 'Leave blank to keep the current OTP code'}
+          aria-label="OTP code"
+          value={otp}
+          onChange={(e) => setOtp(e.target.value)}
+        />
+      )}
+
+      <LocatorField
+        label="OTP field locator"
+        ariaLabel="OTP field locator"
+        value={otpField}
+        onChange={setOtpField}
+        field="otp"
+        groups={[...applyTargets]}
+        onGroupAccountsChanged={onGroupAccountsChanged}
+        applyResultDisplaySeconds={applyResultDisplaySeconds}
+      />
+      <LocatorField
+        label="Confirm OTP button locator"
+        ariaLabel="Confirm OTP button locator"
+        value={confirmOtpButton}
+        onChange={setConfirmOtpButton}
+        field="confirmOtpButton"
         groups={[...applyTargets]}
         onGroupAccountsChanged={onGroupAccountsChanged}
         applyResultDisplaySeconds={applyResultDisplaySeconds}
