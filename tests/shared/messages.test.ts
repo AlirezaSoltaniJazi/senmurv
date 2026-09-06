@@ -86,6 +86,15 @@ describe('isRuntimeMessage', () => {
         payload: { from: 'Group A', to: 'Group B' },
       })
     ).toBe(true);
+    expect(
+      isRuntimeMessage({
+        type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+        payload: {
+          groups: ['Group A', 'Group B'],
+          seed: { field: 'username', kind: 'css', query: '#u' },
+        },
+      })
+    ).toBe(true);
     expect(isRuntimeMessage({ type: MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE })).toBe(true);
     expect(
       isRuntimeMessage({ type: MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD, payload: { password: 'x' } })

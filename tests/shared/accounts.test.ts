@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyLocatorSeed,
+  applyLocatorToGroups,
   DEFAULT_GROUP_NAME,
   duplicateAccount,
   existingGroupNames,
   groupAccounts,
   isValidPin,
+  moveAccountBefore,
+  moveAccountToGroup,
   newAccount,
   renameGroup,
   upsertAccount,
@@ -41,6 +44,14 @@ describe('newAccount', () => {
     expect(account.usernameField).toEqual({ kind: 'css', query: '' });
     expect(account.createdAt).toBe(100);
     expect(account.updatedAt).toBe(100);
+  });
+
+  it('has no OTP configured by default', () => {
+    const account = newAccount(100);
+    expect(account.useDefaultOtp).toBe(false);
+    expect(account.otpField).toBeUndefined();
+    expect(account.confirmOtpButton).toBeUndefined();
+    expect(account.encryptedOtp).toBeUndefined();
   });
 });
 
@@ -147,6 +158,170 @@ describe('validateAccount', () => {
     expect(result.ok).toBe(true);
     if (result.ok) expect(result.value.description).toBeUndefined();
   });
+
+  it('accepts an account with no OTP configured at all', () => {
+    const result = validateAccount(mk());
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.otpField).toBeUndefined();
+      expect(result.value.confirmOtpButton).toBeUndefined();
+      expect(result.value.encryptedOtp).toBeUndefined();
+      expect(result.value.useDefaultOtp).toBeUndefined();
+    }
+  });
+
+  it('requires the confirm-OTP button once the OTP field is set', () => {
+    const result = validateAccount(
+      mk({ otpField: { kind: 'css', query: '#otp' }, useDefaultOtp: true })
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: 'Enter a locator for the confirm-OTP button, or clear the other OTP fields.',
+    });
+  });
+
+  it('requires the OTP field once the confirm-OTP button is set', () => {
+    const result = validateAccount(
+      mk({ confirmOtpButton: { kind: 'css', query: '#confirm' }, useDefaultOtp: true })
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: 'Enter a locator for the OTP field, or clear the other OTP fields.',
+    });
+  });
+
+  it('requires an OTP code (own or default) once both OTP locators are set', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: false,
+      })
+    );
+    expect(result).toEqual({
+      ok: false,
+      error: 'Enter an OTP code, or check "use default OTP code".',
+    });
+  });
+
+  it('accepts a fully-configured OTP setup and keeps all three fields', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: true,
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.otpField).toEqual({ kind: 'css', query: '#otp' });
+      expect(result.value.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+      expect(result.value.useDefaultOtp).toBe(true);
+    }
+  });
+
+  it('accepts an own OTP code (not the default) and keeps encryptedOtp', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: false,
+        encryptedOtp: { ciphertext: 'xyz', iv: 'abc' },
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.encryptedOtp).toEqual({ ciphertext: 'xyz', iv: 'abc' });
+  });
+
+  it('drops encryptedOtp when useDefaultOtp is true', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm' },
+        useDefaultOtp: true,
+        encryptedOtp: { ciphertext: 'xyz', iv: 'abc' },
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.encryptedOtp).toBeUndefined();
+  });
+
+  it('trims OTP locator queries', () => {
+    const result = validateAccount(
+      mk({
+        otpField: { kind: 'css', query: '  #otp  ' },
+        confirmOtpButton: { kind: 'css', query: '  #confirm  ' },
+        useDefaultOtp: true,
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.otpField?.query).toBe('#otp');
+      expect(result.value.confirmOtpButton?.query).toBe('#confirm');
+    }
+  });
+
+  it('keeps well-formed stepDelays', () => {
+    const result = validateAccount(
+      mk({
+        stepDelays: [{ id: 'd1', step: 'username', position: 'before', seconds: 1.5 }],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.stepDelays).toEqual([
+        { id: 'd1', step: 'username', position: 'before', seconds: 1.5 },
+      ]);
+    }
+  });
+
+  it('clamps out-of-range seconds and rounds to 0.1', () => {
+    const result = validateAccount(
+      mk({
+        stepDelays: [
+          { id: 'd1', step: 'username', position: 'before', seconds: -5 },
+          { id: 'd2', step: 'password', position: 'after', seconds: 999 },
+          { id: 'd3', step: 'loginButton', position: 'before', seconds: 1.23 },
+        ],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.stepDelays).toEqual([
+        { id: 'd1', step: 'username', position: 'before', seconds: 0 },
+        { id: 'd2', step: 'password', position: 'after', seconds: 30 },
+        { id: 'd3', step: 'loginButton', position: 'before', seconds: 1.2 },
+      ]);
+    }
+  });
+
+  it('drops entries with an unrecognized step or position', () => {
+    const result = validateAccount(
+      mk({
+        stepDelays: [
+          { id: 'd1', step: 'bogus' as never, position: 'before', seconds: 1 },
+          { id: 'd2', step: 'username', position: 'sideways' as never, seconds: 1 },
+          { id: 'd3', step: 'username', position: 'before', seconds: 1 },
+        ],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.stepDelays).toEqual([
+        { id: 'd3', step: 'username', position: 'before', seconds: 1 },
+      ]);
+    }
+  });
+
+  it('omits stepDelays entirely when empty or absent', () => {
+    const result = validateAccount(mk({ stepDelays: [] }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.stepDelays).toBeUndefined();
+
+    const result2 = validateAccount(mk());
+    expect(result2.ok).toBe(true);
+    if (result2.ok) expect(result2.value.stepDelays).toBeUndefined();
+  });
 });
 
 describe('upsertAccount', () => {
@@ -223,6 +398,104 @@ describe('applyLocatorSeed', () => {
     expect(next.name).toBe(account.name);
     expect(next.address).toBe(account.address);
     expect(next.id).toBe(account.id);
+  });
+
+  it('merges an OTP-field seed', () => {
+    const account = mk();
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '#otp' });
+    expect(next.otpField).toEqual({ kind: 'css', query: '#otp' });
+  });
+
+  it('merges a confirm-OTP-button seed', () => {
+    const account = mk();
+    const next = applyLocatorSeed(account, {
+      field: 'confirmOtpButton',
+      kind: 'css',
+      query: '#confirm',
+    });
+    expect(next.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+  });
+
+  it('also assigns the group when the seed carries one', () => {
+    const account = mk();
+    const next = applyLocatorSeed(account, {
+      field: 'username',
+      kind: 'css',
+      query: '#u',
+      group: 'Group A',
+    });
+    expect(next.group).toBe('Group A');
+    expect(next.usernameField).toEqual({ kind: 'css', query: '#u' });
+  });
+
+  it('leaves the group untouched when the seed has none', () => {
+    const account = mk({ group: 'Existing Group' });
+    const next = applyLocatorSeed(account, { field: 'username', kind: 'css', query: '#u' });
+    expect(next.group).toBe('Existing Group');
+  });
+
+  it('trims a blank/whitespace-only seed group into a no-op', () => {
+    const account = mk({ group: 'Existing Group' });
+    const next = applyLocatorSeed(account, {
+      field: 'username',
+      kind: 'css',
+      query: '#u',
+      group: '   ',
+    });
+    expect(next.group).toBe('Existing Group');
+  });
+
+  it('strips OTP entirely when clearing the OTP field leaves no other trace of OTP usage', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '#otp' },
+      confirmOtpButton: { kind: 'css', query: '' },
+    });
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '' });
+    expect(next.otpField).toBeUndefined();
+    expect(next.confirmOtpButton).toBeUndefined();
+  });
+
+  it('strips useDefaultOtp/encryptedOtp too when OTP is no longer used', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '' },
+      confirmOtpButton: { kind: 'css', query: '' },
+      useDefaultOtp: false,
+    });
+    const next = applyLocatorSeed(account, { field: 'confirmOtpButton', kind: 'css', query: '' });
+    expect(next.useDefaultOtp).toBeUndefined();
+    expect(next.encryptedOtp).toBeUndefined();
+  });
+
+  it('does NOT strip OTP when the other OTP locator still has a real query', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '#otp' },
+      confirmOtpButton: { kind: 'css', query: '#confirm' },
+    });
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '' });
+    expect(next.otpField).toEqual({ kind: 'css', query: '' });
+    expect(next.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+  });
+
+  it('does NOT strip OTP when useDefaultOtp is on, even with both locators blank', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '' },
+      confirmOtpButton: { kind: 'css', query: '' },
+      useDefaultOtp: true,
+    });
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '' });
+    expect(next.useDefaultOtp).toBe(true);
+  });
+
+  it('leaves an unrelated account with real OTP config untouched when applying username/password/loginButton', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '#otp' },
+      confirmOtpButton: { kind: 'css', query: '#confirm' },
+      useDefaultOtp: true,
+    });
+    const next = applyLocatorSeed(account, { field: 'username', kind: 'css', query: '#u' });
+    expect(next.otpField).toEqual({ kind: 'css', query: '#otp' });
+    expect(next.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+    expect(next.useDefaultOtp).toBe(true);
   });
 });
 
@@ -391,6 +664,161 @@ describe('renameGroup', () => {
   it('leaves accounts in other groups untouched', () => {
     const other = mk({ id: 'b', group: 'Group B' });
     const next = renameGroup([mk({ id: 'a', group: 'Group A' }), other], 'Group A', 'Renamed');
+    expect(next.find((a) => a.id === 'b')).toEqual(other);
+  });
+});
+
+describe('moveAccountToGroup', () => {
+  it('moves an account into a different group, appended after its last member', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A' }),
+      mk({ id: 'b', group: 'Group B' }),
+      mk({ id: 'c', group: 'Group B' }),
+    ];
+    const next = moveAccountToGroup(accounts, 'a', 'Group B');
+    expect(next.map((x) => x.id)).toEqual(['b', 'c', 'a']);
+    expect(next.find((x) => x.id === 'a')?.group).toBe('Group B');
+  });
+
+  it('trims the target group name', () => {
+    const next = moveAccountToGroup([mk({ id: 'a' })], 'a', '  Group B  ');
+    expect(next.find((x) => x.id === 'a')?.group).toBe('Group B');
+  });
+
+  it('clears the group field when moved to Default (blank or the reserved name)', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' }), mk({ id: 'b' })];
+    const next = moveAccountToGroup(accounts, 'a', '');
+    expect(next.find((x) => x.id === 'a')?.group).toBeUndefined();
+
+    const next2 = moveAccountToGroup(accounts, 'a', 'default');
+    expect(next2.find((x) => x.id === 'a')?.group).toBeUndefined();
+  });
+
+  it('is a no-op when the account is already in that group, or not found', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' })];
+    expect(moveAccountToGroup(accounts, 'a', 'Group A')).toEqual(accounts);
+    expect(moveAccountToGroup(accounts, 'a', '  Group A  ')).toEqual(accounts);
+    expect(moveAccountToGroup(accounts, 'missing', 'Group B')).toEqual(accounts);
+  });
+
+  it('does not stamp updatedAt', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A', updatedAt: 5 })];
+    const next = moveAccountToGroup(accounts, 'a', 'Group B');
+    expect(next[0]?.updatedAt).toBe(5);
+  });
+});
+
+describe('moveAccountBefore', () => {
+  it('reorders within the same group', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A' }),
+      mk({ id: 'b', group: 'Group A' }),
+      mk({ id: 'c', group: 'Group A' }),
+    ];
+    const next = moveAccountBefore(accounts, 'c', 'a');
+    expect(next.map((x) => x.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('is a no-op across different groups', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' }), mk({ id: 'b', group: 'Group B' })];
+    expect(moveAccountBefore(accounts, 'a', 'b')).toEqual(accounts);
+  });
+
+  it('is a no-op when moving an item before itself, or either id is missing', () => {
+    const accounts = [mk({ id: 'a' }), mk({ id: 'b' })];
+    expect(moveAccountBefore(accounts, 'a', 'a')).toEqual(accounts);
+    expect(moveAccountBefore(accounts, 'missing', 'a')).toEqual(accounts);
+    expect(moveAccountBefore(accounts, 'a', 'missing')).toEqual(accounts);
+  });
+
+  it('treats blank/absent group the same as Default when comparing', () => {
+    const accounts = [mk({ id: 'a' }), mk({ id: 'b', group: '  ' }), mk({ id: 'c' })];
+    const next = moveAccountBefore(accounts, 'c', 'a');
+    expect(next.map((x) => x.id)).toEqual(['c', 'a', 'b']);
+  });
+});
+
+describe('applyLocatorToGroups', () => {
+  const seed = { field: 'username' as const, kind: 'xpath' as const, query: '//input[@id="u"]' };
+
+  it('applies the locator to every account in the group, stamping updatedAt', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A', updatedAt: 1 }),
+      mk({ id: 'b', group: 'Group A', updatedAt: 1 }),
+      mk({ id: 'c', group: 'Group B', updatedAt: 1 }),
+    ];
+    const next = applyLocatorToGroups(accounts, ['Group A'], seed, 999);
+    expect(next.find((a) => a.id === 'a')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(next.find((a) => a.id === 'a')?.updatedAt).toBe(999);
+    expect(next.find((a) => a.id === 'b')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(next.find((a) => a.id === 'c')?.usernameField).toEqual(mk().usernameField);
+    expect(next.find((a) => a.id === 'c')?.updatedAt).toBe(1);
+  });
+
+  it('applies to every account across several groups at once', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A' }),
+      mk({ id: 'b', group: 'Group B' }),
+      mk({ id: 'c', group: 'Group C' }),
+    ];
+    const next = applyLocatorToGroups(accounts, ['Group A', 'Group B'], seed, 2);
+    const expected = { kind: seed.kind, query: seed.query };
+    expect(next.find((a) => a.id === 'a')?.usernameField).toEqual(expected);
+    expect(next.find((a) => a.id === 'b')?.usernameField).toEqual(expected);
+    expect(next.find((a) => a.id === 'c')?.usernameField).toEqual(mk().usernameField);
+  });
+
+  it('applies to the password field and the login button field too', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' })];
+    const password = applyLocatorToGroups(
+      accounts,
+      ['Group A'],
+      { field: 'password', kind: 'css', query: '#pw' },
+      2
+    );
+    expect(password[0]?.passwordField).toEqual({ kind: 'css', query: '#pw' });
+
+    const button = applyLocatorToGroups(
+      accounts,
+      ['Group A'],
+      { field: 'loginButton', kind: 'css', query: '#go' },
+      2
+    );
+    expect(button[0]?.loginButton).toEqual({ kind: 'css', query: '#go' });
+  });
+
+  it('leaves every other field on an updated account untouched', () => {
+    const account = mk({ id: 'a', group: 'Group A', name: 'My Site' });
+    const next = applyLocatorToGroups([account], ['Group A'], seed, 2);
+    expect(next[0]?.name).toBe('My Site');
+    expect(next[0]?.address).toBe(account.address);
+    expect(next[0]?.passwordField).toEqual(account.passwordField);
+  });
+
+  it('is a no-op for an empty list, or one with only blank/Default entries', () => {
+    const accounts = [mk({ id: 'a' })]; // no group -> Default
+    expect(applyLocatorToGroups(accounts, [], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, [''], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, ['   '], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, [DEFAULT_GROUP_NAME], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, ['default'], seed, 2)).toEqual(accounts);
+    expect(applyLocatorToGroups(accounts, ['', DEFAULT_GROUP_NAME], seed, 2)).toEqual(accounts);
+  });
+
+  it('leaves accounts in other groups untouched', () => {
+    const other = mk({ id: 'b', group: 'Group B' });
+    const next = applyLocatorToGroups(
+      [mk({ id: 'a', group: 'Group A' }), other],
+      ['Group A'],
+      seed,
+      2
+    );
     expect(next.find((a) => a.id === 'b')).toEqual(other);
   });
 });

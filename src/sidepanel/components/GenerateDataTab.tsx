@@ -5,8 +5,8 @@ import {
   DIAL_CODES,
   ensureFaker,
   generateTestData,
-  RANDOM_NUMBER_LENGTH_DEFAULT,
   RANDOM_NUMBER_LENGTH_MAX,
+  RANDOM_NUMBER_LENGTH_MIN,
 } from '@/shared/faker-data';
 import type { GeneratedData, Locale } from '@/shared/types';
 import { CopyButton } from './CopyButton';
@@ -26,11 +26,26 @@ const FIELDS: { key: keyof GeneratedData; label: string }[] = [
   { key: 'randomNumber', label: 'Random number' },
 ];
 
-export function GenerateDataTab(): ReactElement {
+interface Props {
+  /** Digit count the random number field starts at on a fresh visit to this tab. */
+  randomNumberLengthDefault: number;
+}
+
+export function GenerateDataTab({ randomNumberLengthDefault }: Props): ReactElement {
   const [locale, setLocale] = useState<Locale>(DEFAULT_LOCALE);
   const [phoneWithCode, setPhoneWithCode] = useState(true);
-  const [randomNumberLength, setRandomNumberLength] = useState(RANDOM_NUMBER_LENGTH_DEFAULT);
+  const [randomNumberLength, setRandomNumberLength] = useState(randomNumberLengthDefault);
   const [data, setData] = useState<GeneratedData | null>(null);
+
+  // Prefs load asynchronously and this tab may already be mounted (Data is the
+  // default tab) before they resolve — resync once the real default arrives.
+  // Set during render (not an effect) per React's "adjusting state when a
+  // prop changes" pattern: it bails out before committing a stale paint.
+  const [prevDefault, setPrevDefault] = useState(randomNumberLengthDefault);
+  if (randomNumberLengthDefault !== prevDefault) {
+    setPrevDefault(randomNumberLengthDefault);
+    setRandomNumberLength(randomNumberLengthDefault);
+  }
 
   // First render: paint the shell instantly, then load the default locale's
   // faker chunk and fill in values (rather than blocking on it synchronously).
@@ -41,7 +56,7 @@ export function GenerateDataTab(): ReactElement {
         setData(
           generateTestData(DEFAULT_LOCALE, {
             phoneWithCode: true,
-            randomNumberLength: RANDOM_NUMBER_LENGTH_DEFAULT,
+            randomNumberLength: randomNumberLengthDefault,
           })
         );
       }
@@ -49,6 +64,9 @@ export function GenerateDataTab(): ReactElement {
     return () => {
       alive = false;
     };
+    // Run once on mount only — the render-time sync above keeps
+    // randomNumberLength itself correct if the prop resolves after this fires.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   function regenerate(
@@ -64,7 +82,10 @@ export function GenerateDataTab(): ReactElement {
   }
 
   function changeRandomNumberLength(raw: string): void {
-    const n = Math.min(RANDOM_NUMBER_LENGTH_MAX, Math.max(1, Math.floor(Number(raw)) || 1));
+    const n = Math.min(
+      RANDOM_NUMBER_LENGTH_MAX,
+      Math.max(RANDOM_NUMBER_LENGTH_MIN, Math.floor(Number(raw)) || RANDOM_NUMBER_LENGTH_MIN)
+    );
     setRandomNumberLength(n);
     regenerate(locale, phoneWithCode, n);
   }

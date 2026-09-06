@@ -1,4 +1,4 @@
-import { MATCH_HIGHLIGHT_MAX } from '@/shared/constants';
+import { MATCH_HIGHLIGHT_MAX_DEFAULT } from '@/shared/constants';
 import { clearOverlay, destroyOverlay, drawBoxes } from '@/content/overlay';
 import type { OverlayBox } from '@/content/overlay';
 import type { LocatorKind, MatchResult, Result } from '@/shared/types';
@@ -71,14 +71,18 @@ export function isMatchActive(): boolean {
  * Highlight every match of `query`. Re-callable to update the drawing live as
  * the query changes; an invalid selector tears the mode down and reports why.
  */
-export function startMatch(query: string, kind: LocatorKind): Result<MatchResult> {
+export function startMatch(
+  query: string,
+  kind: LocatorKind,
+  maxHighlight: number = MATCH_HIGHLIGHT_MAX_DEFAULT
+): Result<MatchResult> {
   const found = queryElements(query, kind);
   if (!found.ok) {
     stopMatch();
     return found;
   }
   const total = found.value.length;
-  elements = found.value.slice(0, MATCH_HIGHLIGHT_MAX);
+  elements = found.value.slice(0, maxHighlight);
   if (selected >= elements.length) selected = -1;
   if (!active) {
     active = true;

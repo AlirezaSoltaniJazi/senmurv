@@ -10,6 +10,9 @@ export const STORAGE_KEYS = {
   ACCOUNTS: 'senmurv:accounts',
   DEFAULT_PASSWORD: 'senmurv:defaultPassword',
   ACCOUNTS_SECURITY: 'senmurv:accountsSecurity',
+  SCORECARDS: 'senmurv:scorecards',
+  SCORECARD_TEMPLATES: 'senmurv:scorecardTemplates',
+  DEFAULT_OTP: 'senmurv:defaultOtp',
 } as const;
 
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
@@ -120,6 +123,10 @@ export const MESSAGE_TYPES = {
   DELETE_ACCOUNT: 'DELETE_ACCOUNT',
   DUPLICATE_ACCOUNT: 'DUPLICATE_ACCOUNT',
   RENAME_GROUP: 'RENAME_GROUP',
+  MOVE_ACCOUNT_TO_GROUP: 'MOVE_ACCOUNT_TO_GROUP',
+  MOVE_ACCOUNT_BEFORE: 'MOVE_ACCOUNT_BEFORE',
+  APPLY_LOCATOR_TO_GROUPS: 'APPLY_LOCATOR_TO_GROUPS',
+  APPLY_LOCATOR_TO_ACCOUNT: 'APPLY_LOCATOR_TO_ACCOUNT',
   GET_DEFAULT_PASSWORD_STATE: 'GET_DEFAULT_PASSWORD_STATE',
   SAVE_DEFAULT_PASSWORD: 'SAVE_DEFAULT_PASSWORD',
   CLEAR_DEFAULT_PASSWORD: 'CLEAR_DEFAULT_PASSWORD',
@@ -133,6 +140,20 @@ export const MESSAGE_TYPES = {
   ACCOUNT_LOGIN_FILL: 'ACCOUNT_LOGIN_FILL',
   EXPORT_ACCOUNTS: 'EXPORT_ACCOUNTS',
   IMPORT_ACCOUNTS: 'IMPORT_ACCOUNTS',
+  // Scorecard tool — a named, saved rubric (categories + scores). Same shape
+  // as Query param sets: GET the list, SAVE upserts one by id, DELETE by id.
+  GET_SCORECARDS: 'GET_SCORECARDS',
+  SAVE_SCORECARD: 'SAVE_SCORECARD',
+  DELETE_SCORECARD: 'DELETE_SCORECARD',
+  // Scorecard templates — reusable named rubrics (categories only, no scores),
+  // e.g. "QA Interview". No built-in template ships; the user builds each one.
+  GET_SCORECARD_TEMPLATES: 'GET_SCORECARD_TEMPLATES',
+  SAVE_SCORECARD_TEMPLATE: 'SAVE_SCORECARD_TEMPLATE',
+  DELETE_SCORECARD_TEMPLATE: 'DELETE_SCORECARD_TEMPLATE',
+  // Default OTP code — same shape as the Default password messages above.
+  GET_DEFAULT_OTP_STATE: 'GET_DEFAULT_OTP_STATE',
+  SAVE_DEFAULT_OTP: 'SAVE_DEFAULT_OTP',
+  CLEAR_DEFAULT_OTP: 'CLEAR_DEFAULT_OTP',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
@@ -193,11 +214,18 @@ export const LOCATOR_PRIORITY = [
   'testId',
   'formControl',
   'id',
+  'name',
   'attr',
   'ariaLabel',
   'roleName',
+  'text',
+  'linkText',
+  'partialLinkText',
   'css',
+  'className',
   'xpath',
+  // Selenium-only (no CSS/XPath equivalent) — always the last resort.
+  'relative',
 ] as const;
 
 /** Manual UI-zoom (font-scale) slider bounds + step. */
@@ -213,8 +241,10 @@ export const FONT_PRESET_ZOOM = {
   xlarge: 1.3,
 } as const;
 
-/** How many tools can be pinned to the top of the Tools launcher at once. */
-export const MAX_PINNED_TOOLS = 5;
+/** How many tools can be pinned to the top of the Tools launcher at once — bounds + default. */
+export const MAX_PINNED_TOOLS_MIN = 1;
+export const MAX_PINNED_TOOLS_MAX = 10;
+export const MAX_PINNED_TOOLS_DEFAULT = 5;
 
 /** Flow run-popup (in-page HUD) auto-close delay bounds + default, in seconds. */
 export const HUD_SECONDS_MIN = 1;
@@ -234,6 +264,55 @@ export const ACCOUNTS_PIN_MAX_LENGTH = 15;
 export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MIN = 1;
 export const ACCOUNT_TOOLTIP_DELAY_SECONDS_MAX = 10;
 export const ACCOUNT_TOOLTIP_DELAY_SECONDS_DEFAULT = 2;
+
+/** One-click account login's page-navigate timeout bounds + default, in seconds. */
+export const NAVIGATE_TIMEOUT_SECONDS_MIN = 5;
+export const NAVIGATE_TIMEOUT_SECONDS_MAX = 120;
+export const NAVIGATE_TIMEOUT_SECONDS_DEFAULT = 20;
+
+/** Accounts login-error banner auto-dismiss bounds + default, in seconds. */
+export const ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MIN = 2;
+export const ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_MAX = 30;
+export const ACCOUNT_LOGIN_ERROR_DISPLAY_SECONDS_DEFAULT = 5;
+
+/** Accounts "Apply to group(s)" result banner auto-dismiss bounds + default, in seconds. */
+export const ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MIN = 2;
+export const ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_MAX = 30;
+export const ACCOUNT_APPLY_RESULT_DISPLAY_SECONDS_DEFAULT = 5;
+
+/** Site data tool's "click again to confirm" arm window bounds + default, in seconds. */
+export const SITE_DATA_CONFIRM_SECONDS_MIN = 1;
+export const SITE_DATA_CONFIRM_SECONDS_MAX = 10;
+export const SITE_DATA_CONFIRM_SECONDS_DEFAULT = 3;
+
+/** Notes draft-autosave debounce bounds + default, in milliseconds. */
+export const NOTES_AUTOSAVE_MS_MIN = 300;
+export const NOTES_AUTOSAVE_MS_MAX = 5000;
+export const NOTES_AUTOSAVE_MS_DEFAULT = 1200;
+
+/**
+ * One-click Accounts login's post-navigate, pre-fill delay bounds + default,
+ * in seconds. Default is 0 — most sites don't need it; some SPAs render the
+ * login form before it's actually interactive (e.g. hydration).
+ */
+export const LOGIN_PREFILL_DELAY_SECONDS_MIN = 0;
+export const LOGIN_PREFILL_DELAY_SECONDS_MAX = 30;
+export const LOGIN_PREFILL_DELAY_SECONDS_DEFAULT = 0;
+
+/** Locator tab's "Added!" confirmation display bounds + default, in seconds. */
+export const LOCATOR_ADDED_CONFIRM_SECONDS_MIN = 1;
+export const LOCATOR_ADDED_CONFIRM_SECONDS_MAX = 10;
+export const LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT = 2;
+
+/**
+ * Bounds for one `AccountStepDelay`'s `seconds` — a per-account, per-step
+ * pause in the one-click login fill sequence (e.g. "wait 1.5s after the
+ * Login button click"), in addition to `LOGIN_PREFILL_DELAY_SECONDS_*`'s
+ * single delay before the whole sequence starts. Decimal values (0.1
+ * granularity) are allowed, unlike the whole-second prefs above.
+ */
+export const ACCOUNT_STEP_DELAY_SECONDS_MIN = 0;
+export const ACCOUNT_STEP_DELAY_SECONDS_MAX = 30;
 
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;
@@ -333,16 +412,22 @@ export const BYPASS_CSS = `
 }
 `;
 
-/** Cap on tab-order stops, so a pathological page can't stall the scan. */
-export const TAB_ORDER_MAX_STOPS = 500;
+/** Cap on tab-order stops, so a pathological page can't stall the scan — bounds + default. */
+export const TAB_ORDER_MAX_STOPS_MIN = 50;
+export const TAB_ORDER_MAX_STOPS_MAX = 2000;
+export const TAB_ORDER_MAX_STOPS_DEFAULT = 500;
 
 /** Cap on drawn locator-match badges, so a broad selector (e.g. `div`) can't
- *  paint thousands of boxes. The true match count is still reported. */
-export const MATCH_HIGHLIGHT_MAX = 200;
+ *  paint thousands of boxes. The true match count is still reported. Bounds + default. */
+export const MATCH_HIGHLIGHT_MAX_MIN = 10;
+export const MATCH_HIGHLIGHT_MAX_MAX = 1000;
+export const MATCH_HIGHLIGHT_MAX_DEFAULT = 200;
 
 /** Cap on drawn logical-name labels, so a huge Dynamics form can't stall the
- *  overlay. The true control count is still reported. */
-export const LOGICAL_NAMES_MAX = 500;
+ *  overlay. The true control count is still reported. Bounds + default. */
+export const LOGICAL_NAMES_MAX_MIN = 50;
+export const LOGICAL_NAMES_MAX_MAX = 2000;
+export const LOGICAL_NAMES_MAX_DEFAULT = 500;
 
 /** Snap-to-element-edge threshold for the Measure tool, in CSS px. */
 export const MEASURE_SNAP_PX = 6;

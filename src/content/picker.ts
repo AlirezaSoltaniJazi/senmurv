@@ -15,7 +15,15 @@ import type {
 } from '@/shared/types';
 import { runAccountLoginFill } from './account-login';
 import { contextAlive, notify } from './context';
-import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
+import {
+  clearOverlay,
+  destroyOverlay,
+  disableHitTestOverride,
+  drawBoxes,
+  enableHitTestOverride,
+  flashOverlay,
+  targetAt,
+} from './overlay';
 import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
 import { rafThrottle } from './raf-throttle';
 import type { RafThrottled } from './raf-throttle';
@@ -189,12 +197,16 @@ async function enterToolMode(next: PageMode, measureMode?: MeasureMode): Promise
  * in it so the panel can update the drawing live as the query changes; an
  * invalid selector leaves the mode idle and reports why.
  */
-function enterMatchMode(query: string, kind: LocatorKind): Result<MatchResult> {
+function enterMatchMode(
+  query: string,
+  kind: LocatorKind,
+  maxHighlight: number
+): Result<MatchResult> {
   if (pageMode !== 'match') {
     stopCurrentMode();
     pageMode = 'match';
   }
-  const res = startMatch(query, kind);
+  const res = startMatch(query, kind, maxHighlight);
   if (!res.ok) pageMode = 'idle';
   return res;
 }
@@ -227,16 +239,96 @@ function bail(): void {
   destroyOverlay();
 }
 
+const INTERACTIVE_TAGS = new Set([
+  'a',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'summary',
+  'option',
+]);
+const INTERACTIVE_ROLES = new Set([
+  'button',
+  'link',
+  'checkbox',
+  'radio',
+  'tab',
+  'menuitem',
+  'switch',
+  'textbox',
+  'combobox',
+  'option',
+]);
+const TEST_ATTR_PREFIXES = ['data-testid', 'data-test', 'data-cy', 'data-qa'];
+
+/** Does `el` carry anything a QA engineer would actually want to locate on? */
+function isMeaningful(el: Element): boolean {
+  if (INTERACTIVE_TAGS.has(el.tagName.toLowerCase())) return true;
+  const role = el.getAttribute('role');
+  if (role !== null && INTERACTIVE_ROLES.has(role)) return true;
+  if (el.id !== '' || el.getAttribute('name') !== null || el.getAttribute('aria-label') !== null) {
+    return true;
+  }
+  if (
+    TEST_ATTR_PREFIXES.some((prefix) => el.getAttributeNames().some((n) => n.startsWith(prefix)))
+  ) {
+    return true;
+  }
+  return (el.textContent ?? '').trim() !== '';
+}
+
+/**
+ * Climb from a hit-tested element to the nearest ancestor worth locating on,
+ * when the exact pixel under the pointer landed on a purely decorative
+ * pass-through node that carries no text and no identifying attribute of its
+ * own — a Material ripple/touch-target/focus-indicator `<span>` is the
+ * concrete case (see `enableHitTestOverride`'s doc comment): even once
+ * hit-testing can reach it at all, it's a bare sibling `<span>` of the real
+ * `<button data-testid="…">`, not a wrapper around it, so nothing about
+ * `buildLocatorSet` or a DOM-tree search from the hit element would find the
+ * testid without this climb. Bounded to a few levels so a genuinely
+ * meaningful but unlabelled leaf (e.g. an icon-only element with real
+ * sibling text elsewhere in a big container) doesn't climb arbitrarily far.
+ */
+function resolvePickable(el: Element): Element {
+  if (isMeaningful(el)) return el;
+  let cur = el.parentElement;
+  for (let depth = 0; cur !== null && depth < 5; depth += 1) {
+    if (isMeaningful(cur)) return cur;
+    cur = cur.parentElement;
+  }
+  return el;
+}
+
+/** The element the user meant to pick at this point — see `resolvePickable`. */
+function pickTarget(x: number, y: number): Element | null {
+  const el = targetAt(x, y);
+  return el ? resolvePickable(el) : null;
+}
+
 function onMouseMove(e: MouseEvent): void {
-  const el = targetAt(e.clientX, e.clientY);
+  const el = pickTarget(e.clientX, e.clientY);
   if (el) highlight(el);
 }
 
-function onClick(e: MouseEvent): void {
+/**
+ * The pick gesture itself. Runs on `pointerdown`, not `click` or even
+ * `mousedown`: a native disabled form control (`<button disabled>`,
+ * `<input disabled>`, …) never dispatches `mousedown`/`mouseup`/`click` at all
+ * — Chrome suppresses all three outright — but it still dispatches
+ * `pointerdown`/`pointerup` (verified empirically against real Chrome via the
+ * runInChrome skill; do not trust doc-comment claims about this without
+ * re-verifying, it's easy to get backwards). Triggering on `pointerdown` is
+ * what makes a disabled element pickable; `suppressClick` (below) stops the
+ * real `click` that still follows on pointerup from reaching the page for an
+ * ENABLED element.
+ */
+function onPickerPointerDown(e: PointerEvent): void {
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
-  const el = targetAt(e.clientX, e.clientY);
+  const el = pickTarget(e.clientX, e.clientY);
 
   if (pageMode === 'pick-fields') {
     // Continuous: report each clicked field and stay active for the next.
@@ -259,6 +351,22 @@ function onClick(e: MouseEvent): void {
   }
 }
 
+/**
+ * The `click` that follows `pointerdown`+`pointerup` on the same ENABLED
+ * element still fires even though `onPickerPointerDown` already handled (and
+ * prevented-default on) the pointerdown — `preventDefault()`/
+ * `stopPropagation()` on one event type don't suppress a later,
+ * independently-dispatched one. Swallow it too, or an enabled element's own
+ * click handler (e.g. an actual form submit) would fire while the user is
+ * just trying to pick it. (A disabled element never reaches this listener at
+ * all — it never dispatches `click` in the first place.)
+ */
+function suppressClick(e: MouseEvent): void {
+  e.preventDefault();
+  e.stopPropagation();
+  e.stopImmediatePropagation();
+}
+
 function onKeyDown(e: KeyboardEvent): void {
   if (e.key !== 'Escape') return;
   e.preventDefault();
@@ -270,9 +378,15 @@ function onKeyDown(e: KeyboardEvent): void {
 let pickHover: RafThrottled | null = null;
 
 function startPickListeners(): void {
+  // Only element/field picking forces every element hit-testable — see
+  // `enableHitTestOverride`'s doc comment. Other overlay-consuming modes
+  // (Assertions, Recorder, …) deliberately observe the page's REAL
+  // interactive behavior and must not have it overridden.
+  enableHitTestOverride();
   pickHover = rafThrottle(onMouseMove);
   document.addEventListener('mousemove', pickHover.handler, true);
-  document.addEventListener('click', onClick, true);
+  document.addEventListener('pointerdown', onPickerPointerDown, true);
+  document.addEventListener('click', suppressClick, true);
   document.addEventListener('keydown', onKeyDown, true);
 }
 
@@ -282,8 +396,10 @@ function stopPickListeners(): void {
     pickHover.cancel();
     pickHover = null;
   }
-  document.removeEventListener('click', onClick, true);
+  document.removeEventListener('pointerdown', onPickerPointerDown, true);
+  document.removeEventListener('click', suppressClick, true);
   document.removeEventListener('keydown', onKeyDown, true);
+  disableHitTestOverride();
   destroyOverlay();
 }
 
@@ -415,8 +531,8 @@ function register(): void {
         return true;
 
       case MESSAGE_TYPES.HIGHLIGHT_MATCHES: {
-        const { query, kind } = message.payload;
-        sendResponse(enterMatchMode(query, kind));
+        const { query, kind, maxHighlight } = message.payload;
+        sendResponse(enterMatchMode(query, kind, maxHighlight));
         return true;
       }
 
@@ -449,14 +565,14 @@ function register(): void {
         return true;
 
       case MESSAGE_TYPES.SCAN_TAB_ORDER:
-        void withTools((tools) => tools.scanTabOrder()).then(sendResponse);
+        void withTools((tools) => tools.scanTabOrder(message.payload.maxStops)).then(sendResponse);
         return true;
 
       case MESSAGE_TYPES.DRAW_LOGICAL_NAMES: {
         // The names were read in the MAIN world by the worker; we only resolve
         // them to elements and label them.
-        const { records } = message.payload;
-        void withTools((tools) => tools.drawLogicalNames(records)).then(sendResponse);
+        const { records, maxNames } = message.payload;
+        void withTools((tools) => tools.drawLogicalNames(records, maxNames)).then(sendResponse);
         return true;
       }
 

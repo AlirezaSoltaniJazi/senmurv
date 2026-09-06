@@ -202,7 +202,8 @@ function regionOf(faker: Faker): string {
   return loc.city();
 }
 
-/** Default digit count for the Random Number field. */
+/** Digit count bounds + default for the Random Number field. */
+export const RANDOM_NUMBER_LENGTH_MIN = 1;
 export const RANDOM_NUMBER_LENGTH_DEFAULT = 5;
 export const RANDOM_NUMBER_LENGTH_MAX = 32;
 

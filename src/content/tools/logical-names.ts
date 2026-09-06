@@ -1,4 +1,4 @@
-import { LOGICAL_NAMES_MAX } from '@/shared/constants';
+import { LOGICAL_NAMES_MAX_DEFAULT } from '@/shared/constants';
 import { clearOverlay, destroyOverlay, drawBoxes, isOurHost } from '@/content/overlay';
 import type { OverlayBox, OverlayTone } from '@/content/overlay';
 import type { LogicalNameKind, LogicalNameRecord, LogicalNamesReport } from '@/shared/types';
@@ -102,9 +102,12 @@ function startObservers(): void {
  * Draw the supplied names. Safe to call while already active — the panel
  * re-sends to refresh after the form re-renders, which just replaces the set.
  */
-export function drawLogicalNames(next: LogicalNameRecord[]): LogicalNamesReport {
+export function drawLogicalNames(
+  next: LogicalNameRecord[],
+  maxNames: number = LOGICAL_NAMES_MAX_DEFAULT
+): LogicalNamesReport {
   active = true;
-  const capped = next.slice(0, LOGICAL_NAMES_MAX);
+  const capped = next.slice(0, maxNames);
 
   elements = [];
   records = [];

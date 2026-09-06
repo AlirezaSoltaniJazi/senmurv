@@ -311,6 +311,105 @@ describe('RENAME_GROUP', () => {
   });
 });
 
+describe('APPLY_LOCATOR_TO_GROUPS', () => {
+  it('applies the locator to every account in the group, without needing to unlock', async () => {
+    store['senmurv:accounts'] = [
+      makeAccount({ id: 'acct_1', group: 'Group A' }),
+      makeAccount({ id: 'acct_2', group: 'Group A' }),
+      makeAccount({ id: 'acct_3', group: 'Group B' }),
+    ];
+
+    const res = await send({
+      type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+      payload: {
+        groups: ['Group A'],
+        seed: { field: 'username', kind: 'xpath', query: '//input[@id="u"]' },
+      },
+    });
+    expect(res).toMatchObject({ ok: true });
+    const accounts = (res as Response).value as Account[];
+    expect(accounts.find((a) => a.id === 'acct_1')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(accounts.find((a) => a.id === 'acct_2')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(accounts.find((a) => a.id === 'acct_3')?.usernameField).toEqual(
+      makeAccount().usernameField
+    );
+    expect(store['senmurv:accounts']).toEqual(accounts);
+  });
+
+  it('applies to every account across several groups at once', async () => {
+    store['senmurv:accounts'] = [
+      makeAccount({ id: 'acct_1', group: 'Group A' }),
+      makeAccount({ id: 'acct_2', group: 'Group B' }),
+      makeAccount({ id: 'acct_3', group: 'Group C' }),
+    ];
+
+    const res = await send({
+      type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+      payload: {
+        groups: ['Group A', 'Group B'],
+        seed: { field: 'username', kind: 'xpath', query: '//input[@id="u"]' },
+      },
+    });
+    expect(res).toMatchObject({ ok: true });
+    const accounts = (res as Response).value as Account[];
+    expect(accounts.find((a) => a.id === 'acct_1')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(accounts.find((a) => a.id === 'acct_2')?.usernameField).toEqual({
+      kind: 'xpath',
+      query: '//input[@id="u"]',
+    });
+    expect(accounts.find((a) => a.id === 'acct_3')?.usernameField).toEqual(
+      makeAccount().usernameField
+    );
+  });
+
+  it('applies to the password field and the login button field too', async () => {
+    store['senmurv:accounts'] = [makeAccount({ id: 'acct_1', group: 'Group A' })];
+
+    const passwordRes = await send({
+      type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+      payload: { groups: ['Group A'], seed: { field: 'password', kind: 'css', query: '#pw' } },
+    });
+    const passwordAccounts = (passwordRes as Response).value as Account[];
+    expect(passwordAccounts[0]?.passwordField).toEqual({ kind: 'css', query: '#pw' });
+
+    const buttonRes = await send({
+      type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+      payload: { groups: ['Group A'], seed: { field: 'loginButton', kind: 'css', query: '#go' } },
+    });
+    const buttonAccounts = (buttonRes as Response).value as Account[];
+    expect(buttonAccounts[0]?.loginButton).toEqual({ kind: 'css', query: '#go' });
+  });
+
+  it('is a no-op for an empty list, or one with only Default in it', async () => {
+    const original = [makeAccount({ id: 'acct_1' })]; // ungrouped -> Default
+    store['senmurv:accounts'] = original;
+
+    const emptyRes = await send({
+      type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+      payload: { groups: [], seed: { field: 'username', kind: 'css', query: '#u' } },
+    });
+    expect(emptyRes).toEqual({ ok: true, value: original });
+
+    const defaultRes = await send({
+      type: MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS,
+      payload: {
+        groups: ['Default'],
+        seed: { field: 'username', kind: 'css', query: '#u' },
+      },
+    });
+    expect(defaultRes).toEqual({ ok: true, value: original });
+  });
+});
+
 describe('GET_DEFAULT_PASSWORD_STATE / SAVE_DEFAULT_PASSWORD / CLEAR_DEFAULT_PASSWORD', () => {
   it('reports not set initially', async () => {
     const res = await send({ type: MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE });

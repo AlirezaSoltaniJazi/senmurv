@@ -1,6 +1,11 @@
-import { ACCOUNTS_PIN_MAX_LENGTH, ACCOUNTS_PIN_MIN_LENGTH } from '@/shared/constants';
+import {
+  ACCOUNT_STEP_DELAY_SECONDS_MAX,
+  ACCOUNT_STEP_DELAY_SECONDS_MIN,
+  ACCOUNTS_PIN_MAX_LENGTH,
+  ACCOUNTS_PIN_MIN_LENGTH,
+} from '@/shared/constants';
 import { uniqueName } from '@/shared/script-io';
-import type { Account, AccountLocatorSeed, Result } from '@/shared/types';
+import type { Account, AccountLocatorSeed, AccountStepDelay, Result } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 /**
@@ -35,6 +40,7 @@ export function newAccount(now: number): Account {
     usernameField: { kind: 'css', query: '' },
     passwordField: { kind: 'css', query: '' },
     loginButton: { kind: 'css', query: '' },
+    useDefaultOtp: false,
     createdAt: now,
     updatedAt: now,
   };
@@ -54,11 +60,43 @@ function normalizeAddress(input: string): Result<string> {
   return { ok: true, value: withScheme };
 }
 
+const STEP_DELAY_STEPS = new Set([
+  'username',
+  'password',
+  'loginButton',
+  'otp',
+  'confirmOtpButton',
+]);
+const STEP_DELAY_POSITIONS = new Set(['before', 'after']);
+
 /**
- * Validate a fully-formed candidate account (with `encryptedPassword` already
- * resolved by the caller). Returns the cleaned account (trimmed fields,
- * normalized address) or the first problem found, so the editor can block
- * Save and say why.
+ * Clamp every entry's `seconds` into bounds (rounded to 0.1) and drop any
+ * entry with an unrecognized `step`/`position` — defensive, since these
+ * normally only ever come from the editor's own controlled selects, but
+ * `validateAccount` is the one place untrusted-shaped data could still slip
+ * through (e.g. a hand-edited import).
+ */
+function cleanStepDelays(delays: AccountStepDelay[] | undefined): AccountStepDelay[] {
+  if (!delays) return [];
+  return delays
+    .filter((d) => STEP_DELAY_STEPS.has(d.step) && STEP_DELAY_POSITIONS.has(d.position))
+    .map((d) => ({
+      ...d,
+      seconds:
+        Math.round(
+          Math.min(
+            ACCOUNT_STEP_DELAY_SECONDS_MAX,
+            Math.max(ACCOUNT_STEP_DELAY_SECONDS_MIN, d.seconds)
+          ) * 10
+        ) / 10,
+    }));
+}
+
+/**
+ * Validate a fully-formed candidate account (with `encryptedPassword`/
+ * `encryptedOtp` already resolved by the caller). Returns the cleaned account
+ * (trimmed fields, normalized address) or the first problem found, so the
+ * editor can block Save and say why.
  */
 export function validateAccount(draft: Account): Result<Account> {
   const name = draft.name.trim();
@@ -83,6 +121,33 @@ export function validateAccount(draft: Account): Result<Account> {
     return { ok: false, error: 'Enter a password, or check "use default password".' };
   }
 
+  // OTP is entirely optional — but if ANY piece of it is set, the whole set
+  // (both locators + a code) must be, so login never half-configures OTP.
+  const otpFieldQuery = draft.otpField?.query.trim() ?? '';
+  const confirmOtpButtonQuery = draft.confirmOtpButton?.query.trim() ?? '';
+  const usesOtp =
+    otpFieldQuery !== '' ||
+    confirmOtpButtonQuery !== '' ||
+    Boolean(draft.useDefaultOtp) ||
+    Boolean(draft.encryptedOtp);
+  if (usesOtp) {
+    if (otpFieldQuery === '') {
+      return {
+        ok: false,
+        error: 'Enter a locator for the OTP field, or clear the other OTP fields.',
+      };
+    }
+    if (confirmOtpButtonQuery === '') {
+      return {
+        ok: false,
+        error: 'Enter a locator for the confirm-OTP button, or clear the other OTP fields.',
+      };
+    }
+    if (!draft.useDefaultOtp && !draft.encryptedOtp) {
+      return { ok: false, error: 'Enter an OTP code, or check "use default OTP code".' };
+    }
+  }
+
   const clean: Account = {
     ...draft,
     name,
@@ -93,22 +158,87 @@ export function validateAccount(draft: Account): Result<Account> {
     loginButton: { ...draft.loginButton, query: loginButtonQuery },
   };
   if (draft.useDefaultPassword) delete clean.encryptedPassword;
+  if (usesOtp) {
+    clean.otpField = { kind: draft.otpField?.kind ?? 'css', query: otpFieldQuery };
+    clean.confirmOtpButton = {
+      kind: draft.confirmOtpButton?.kind ?? 'css',
+      query: confirmOtpButtonQuery,
+    };
+    clean.useDefaultOtp = Boolean(draft.useDefaultOtp);
+    if (draft.useDefaultOtp) delete clean.encryptedOtp;
+  } else {
+    delete clean.otpField;
+    delete clean.confirmOtpButton;
+    delete clean.encryptedOtp;
+    delete clean.useDefaultOtp;
+  }
   const group = draft.group?.trim();
   if (group) clean.group = group;
   else delete clean.group;
   const description = draft.description?.trim();
   if (description) clean.description = description;
   else delete clean.description;
+  const stepDelays = cleanStepDelays(draft.stepDelays);
+  if (stepDelays.length > 0) clean.stepDelays = stepDelays;
+  else delete clean.stepDelays;
   return { ok: true, value: clean };
 }
 
+/**
+ * Drop `otpField`/`confirmOtpButton`/`useDefaultOtp`/`encryptedOtp` when
+ * neither locator has a real query and the account isn't otherwise wired for
+ * OTP (no default-OTP opt-in, no saved code). Applying a just-cleared OTP
+ * field to other accounts (the editor's "Apply to group(s)", or the Locator
+ * tab's target-account picker) would otherwise leave those accounts with a
+ * blank-but-still-"present" `otpField` — `RUN_ACCOUNT_LOGIN` only checks
+ * that the locator OBJECT exists, not that its query is non-empty, so a
+ * blank query surfaces as a confusing "could not find the OTP field" login
+ * failure instead of cleanly meaning "this account has no OTP step".
+ */
+function cleanOtpConsistency(account: Account): Account {
+  const otpQuery = account.otpField?.query.trim() ?? '';
+  const confirmQuery = account.confirmOtpButton?.query.trim() ?? '';
+  const usesOtp =
+    otpQuery !== '' ||
+    confirmQuery !== '' ||
+    Boolean(account.useDefaultOtp) ||
+    Boolean(account.encryptedOtp);
+  if (usesOtp) return account;
+  const next = { ...account };
+  delete next.otpField;
+  delete next.confirmOtpButton;
+  delete next.useDefaultOtp;
+  delete next.encryptedOtp;
+  return next;
+}
+
 /** `account` with the seeded locator merged into whichever field it targets
- *  (the Locator tab's "Add to account" buttons). */
+ *  (the Locator tab's "Add to account" buttons), plus its group when the
+ *  seed carries one. */
 export function applyLocatorSeed(account: Account, seed: AccountLocatorSeed): Account {
   const locator = { kind: seed.kind, query: seed.query };
-  if (seed.field === 'username') return { ...account, usernameField: locator };
-  if (seed.field === 'password') return { ...account, passwordField: locator };
-  return { ...account, loginButton: locator };
+  let next: Account;
+  switch (seed.field) {
+    case 'username':
+      next = { ...account, usernameField: locator };
+      break;
+    case 'password':
+      next = { ...account, passwordField: locator };
+      break;
+    case 'loginButton':
+      next = { ...account, loginButton: locator };
+      break;
+    case 'otp':
+      next = { ...account, otpField: locator };
+      break;
+    case 'confirmOtpButton':
+      next = { ...account, confirmOtpButton: locator };
+      break;
+  }
+  next = cleanOtpConsistency(next);
+  const group = seed.group?.trim();
+  if (group) next = { ...next, group };
+  return next;
 }
 
 /** One group's worth of accounts (or account-shaped items), in their
@@ -177,6 +307,103 @@ export function renameGroup(accounts: Account[], from: string, to: string): Acco
   }
   return accounts.map((a) =>
     (a.group?.trim() || DEFAULT_GROUP_NAME) === source ? { ...a, group: target } : a
+  );
+}
+
+/**
+ * Move account `id` into `group` (trimmed; blank or {@link DEFAULT_GROUP_NAME}
+ * clears the field, same fallback every other group operation uses). A no-op
+ * if the account isn't found or is already in that group. The moved account
+ * is repositioned to just after the last existing member of its new group —
+ * it becomes that group's last item, mirroring `nestScript`'s "becomes the
+ * folder's last child" contract for Scripts. Pure — leaves `updatedAt`
+ * untouched, matching `renameGroup` (a structural move, not a content edit).
+ */
+export function moveAccountToGroup(accounts: Account[], id: string, group: string): Account[] {
+  const trimmed = group.trim();
+  const isDefault = trimmed === '' || trimmed.toLowerCase() === DEFAULT_GROUP_NAME.toLowerCase();
+  const targetGroupName = isDefault ? DEFAULT_GROUP_NAME : trimmed;
+  const moving = accounts.find((a) => a.id === id);
+  if (!moving) return accounts;
+  if ((moving.group?.trim() || DEFAULT_GROUP_NAME) === targetGroupName) return accounts;
+
+  let updated: Account;
+  if (isDefault) {
+    const { group: _drop, ...rest } = moving;
+    updated = rest;
+  } else {
+    updated = { ...moving, group: trimmed };
+  }
+
+  const others = accounts.filter((a) => a.id !== id);
+  let insertAt = others.length;
+  for (let i = others.length - 1; i >= 0; i -= 1) {
+    const candidate = others[i];
+    if (candidate && (candidate.group?.trim() || DEFAULT_GROUP_NAME) === targetGroupName) {
+      insertAt = i + 1;
+      break;
+    }
+  }
+  others.splice(insertAt, 0, updated);
+  return others;
+}
+
+/**
+ * Reorder `movingId` to just before `targetId` — only when both are
+ * currently in the SAME group (by the same blank/Default-fallback
+ * comparison every group operation uses). A cross-group drop is a no-op;
+ * use {@link moveAccountToGroup} for that instead. Pure — leaves `updatedAt`
+ * untouched, matching `moveAccountToGroup`/Scripts' `moveScriptBefore`.
+ */
+export function moveAccountBefore(
+  accounts: Account[],
+  movingId: string,
+  targetId: string
+): Account[] {
+  if (movingId === targetId) return accounts;
+  const moving = accounts.find((a) => a.id === movingId);
+  const target = accounts.find((a) => a.id === targetId);
+  if (!moving || !target) return accounts;
+  if (
+    (moving.group?.trim() || DEFAULT_GROUP_NAME) !== (target.group?.trim() || DEFAULT_GROUP_NAME)
+  ) {
+    return accounts;
+  }
+  const rest = accounts.filter((a) => a.id !== movingId);
+  const at = rest.findIndex((a) => a.id === targetId);
+  rest.splice(at, 0, moving);
+  return rest;
+}
+
+/**
+ * Apply one locator field (`seed`) to every account bucketed under any of
+ * `groups` (each trimmed, via {@link DEFAULT_GROUP_NAME}'s blank/absent
+ * fallback like every other group operation) — the editor's "Apply to
+ * group(s)" buttons, for setting up several near-identical accounts (e.g.
+ * the same login form across environments/groups) without re-locating the
+ * same field on each one by hand. Blank and Default entries in `groups` are
+ * dropped before matching: bulk-editing every ungrouped account is a much
+ * bigger, less intentional blast radius than a deliberately named group. A
+ * no-op if that leaves no real target groups. Reuses {@link applyLocatorSeed}
+ * per account, so it's applied uniformly including to the account the seed
+ * came from (a no-op there — it already has this value).
+ */
+export function applyLocatorToGroups(
+  accounts: Account[],
+  groups: string[],
+  seed: AccountLocatorSeed,
+  now: number
+): Account[] {
+  const targets = new Set(
+    groups
+      .map((g) => g.trim())
+      .filter((g) => g !== '' && g.toLowerCase() !== DEFAULT_GROUP_NAME.toLowerCase())
+  );
+  if (targets.size === 0) return accounts;
+  return accounts.map((a) =>
+    targets.has(a.group?.trim() || DEFAULT_GROUP_NAME)
+      ? { ...applyLocatorSeed(a, seed), updatedAt: now }
+      : a
   );
 }
 

@@ -2082,3 +2082,20 @@ input[type='checkbox'] {
   font-family: ui-monospace, Menlo, monospace;
   font-size: 11px;
 }
+
+/* Scorecard — builder rows. The name column gets the room (category names
+   read as prose); score/max are small fixed-width number inputs. */
+.sc-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sc-score,
+.sc-max {
+  flex: 0 0 3.2rem;
+  min-width: 0;
+  text-align: center;
+}
+.sc-slash {
+  color: var(--muted);
+  flex: 0 0 auto;
+}

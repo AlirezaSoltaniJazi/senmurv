@@ -4,6 +4,8 @@ import type { ImportedAccount } from '@/shared/data-io';
 import type {
   AccountDraft,
   AccountLocator,
+  AccountLocatorSeed,
+  AccountStepDelay,
   Checklist,
   ClearTypeId,
   CookieEdit,
@@ -28,6 +30,7 @@ import type {
   WcagLevel,
 } from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
+import type { Scorecard, ScorecardTemplate } from '@/shared/tools/scorecard';
 import type { RecordedStep } from '@/shared/workflow';
 
 /**
@@ -84,7 +87,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.TOOL_PICKED; payload: ToolPickData }
   // Tab order + Accessibility (all askTab). SCAN/RUN compute + retain elements;
   // the panel fetches a row's locators lazily (source picks which tool owns them).
-  | { type: typeof MESSAGE_TYPES.SCAN_TAB_ORDER }
+  // maxStops is the resolved tabOrderMaxStops pref, sent by the panel so the
+  // content script never needs its own storage read.
+  | { type: typeof MESSAGE_TYPES.SCAN_TAB_ORDER; payload: { maxStops: number } }
   | { type: typeof MESSAGE_TYPES.RUN_A11Y_SCAN; payload: { levels: WcagLevel[] } }
   | {
       type: typeof MESSAGE_TYPES.GET_STOP_LOCATORS;
@@ -95,8 +100,12 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.HIGHLIGHT_ELEMENT; payload: { selector: string | null } }
   // Locator tab: highlight every match of a CSS/XPath (returns the count), and
   // scroll the Nth match into view. HIGHLIGHT_MATCHES enters PageMode 'match';
-  // STOP_TOOL_MODE { mode: 'match' } tears it down.
-  | { type: typeof MESSAGE_TYPES.HIGHLIGHT_MATCHES; payload: { query: string; kind: LocatorKind } }
+  // STOP_TOOL_MODE { mode: 'match' } tears it down. maxHighlight is the resolved
+  // matchHighlightMax pref, sent by the panel.
+  | {
+      type: typeof MESSAGE_TYPES.HIGHLIGHT_MATCHES;
+      payload: { query: string; kind: LocatorKind; maxHighlight: number };
+    }
   | { type: typeof MESSAGE_TYPES.SCROLL_TO_MATCH; payload: { index: number } }
   // Selector Hardener: resolve a selector's first match → its ranked locators + count.
   | { type: typeof MESSAGE_TYPES.RESOLVE_SELECTOR; payload: { query: string; kind: LocatorKind } }
@@ -127,7 +136,9 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.SHOW_LOGICAL_NAMES }
   | {
       type: typeof MESSAGE_TYPES.DRAW_LOGICAL_NAMES;
-      payload: { records: LogicalNameRecord[] };
+      // maxNames is the resolved logicalNamesMax pref, filled in by the worker
+      // (which already reads prefs for the MAIN-world read's own cap).
+      payload: { records: LogicalNameRecord[]; maxNames: number };
     }
   // Region emulator. Worker-local like BYPASS_XRM: the shim is a MAIN-world
   // executeScript that passes a real func (not a code string), so it does not
@@ -167,9 +178,25 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.DELETE_ACCOUNT; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.DUPLICATE_ACCOUNT; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.RENAME_GROUP; payload: { from: string; to: string } }
+  | { type: typeof MESSAGE_TYPES.MOVE_ACCOUNT_TO_GROUP; payload: { id: string; group: string } }
+  | {
+      type: typeof MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE;
+      payload: { movingId: string; targetId: string };
+    }
+  | {
+      type: typeof MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS;
+      payload: { groups: string[]; seed: AccountLocatorSeed };
+    }
+  | {
+      type: typeof MESSAGE_TYPES.APPLY_LOCATOR_TO_ACCOUNT;
+      payload: { id: string; seed: AccountLocatorSeed };
+    }
   | { type: typeof MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE }
   | { type: typeof MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD; payload: { password: string } }
   | { type: typeof MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD }
+  | { type: typeof MESSAGE_TYPES.GET_DEFAULT_OTP_STATE }
+  | { type: typeof MESSAGE_TYPES.SAVE_DEFAULT_OTP; payload: { otp: string } }
+  | { type: typeof MESSAGE_TYPES.CLEAR_DEFAULT_OTP }
   | { type: typeof MESSAGE_TYPES.GET_ACCOUNTS_LOCK_STATE }
   | {
       type: typeof MESSAGE_TYPES.SET_ACCOUNTS_PIN;
@@ -194,13 +221,32 @@ export type RuntimeMessage =
         passwordField: AccountLocator;
         loginButton: AccountLocator;
         timeoutMs: number;
+        // Present only when the account has OTP configured — filled/clicked
+        // after the login button, in that order.
+        otpField?: AccountLocator;
+        otp?: string;
+        confirmOtpButton?: AccountLocator;
+        // Per-step pauses in the fill sequence, in addition to the caller's
+        // own pre-fill delay (already applied before this message is sent).
+        stepDelays?: AccountStepDelay[];
       };
     }
   | { type: typeof MESSAGE_TYPES.EXPORT_ACCOUNTS; payload: { pin: string; ids?: string[] } }
   | {
       type: typeof MESSAGE_TYPES.IMPORT_ACCOUNTS;
       payload: { accounts: ImportedAccount[]; defaultPassword?: string };
-    };
+    }
+  // Scorecard tool — same shape as Query param sets above.
+  | { type: typeof MESSAGE_TYPES.GET_SCORECARDS }
+  | { type: typeof MESSAGE_TYPES.SAVE_SCORECARD; payload: { scorecard: Scorecard } }
+  | { type: typeof MESSAGE_TYPES.DELETE_SCORECARD; payload: { id: string } }
+  // Scorecard templates — same shape again.
+  | { type: typeof MESSAGE_TYPES.GET_SCORECARD_TEMPLATES }
+  | {
+      type: typeof MESSAGE_TYPES.SAVE_SCORECARD_TEMPLATE;
+      payload: { template: ScorecardTemplate };
+    }
+  | { type: typeof MESSAGE_TYPES.DELETE_SCORECARD_TEMPLATE; payload: { id: string } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

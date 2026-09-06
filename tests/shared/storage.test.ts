@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STORAGE_KEYS } from '@/shared/constants';
 import {
+  clearDefaultOtpRecord,
   clearDefaultPasswordRecord,
   DEFAULT_PREFS,
   deleteAccount,
@@ -8,24 +9,32 @@ import {
   deleteNote,
   deleteProfile,
   deleteQueryParamSet,
+  deleteScorecard,
+  deleteScorecardTemplate,
   deleteScript,
   deleteTask,
   getAccounts,
   getAccountsSecurityConfig,
   getChecklists,
+  getDefaultOtpRecord,
   getDefaultPasswordRecord,
   getNotes,
   getPrefs,
   getProfiles,
   getQueryParamSets,
+  getScorecards,
+  getScorecardTemplates,
   getScripts,
   getTasks,
   isAccount,
   isAccountsSecurityConfig,
   isChecklist,
+  isDefaultOtpRecord,
   isDefaultPasswordRecord,
   isNote,
   isQueryParamSet,
+  isScorecard,
+  isScorecardTemplate,
   isSavedScript,
   isTimeEntry,
   isValueProfile,
@@ -34,12 +43,15 @@ import {
   saveProfiles,
   saveQueryParamSets,
   setAccountsSecurityConfig,
+  setDefaultOtpRecord,
   setDefaultPasswordRecord,
   upsertAccountStored,
   upsertChecklist,
   upsertNote,
   upsertProfileStored,
   upsertQueryParamSet,
+  upsertScorecard,
+  upsertScorecardTemplate,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
@@ -47,6 +59,7 @@ import type {
   Account,
   AccountsSecurityConfig,
   Checklist,
+  DefaultOtpRecord,
   DefaultPasswordRecord,
   Note,
   SavedScript,
@@ -54,6 +67,7 @@ import type {
   ValueProfile,
 } from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
+import type { Scorecard, ScorecardTemplate } from '@/shared/tools/scorecard';
 import { store } from '../setup';
 
 function makeScript(overrides: Partial<SavedScript> = {}): SavedScript {
@@ -114,6 +128,35 @@ function makeSet(overrides: Partial<QueryParamSet> = {}): QueryParamSet {
       { name: 'pagetype', value: 'entityrecord' },
     ],
     hash: '',
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeScorecard(overrides: Partial<Scorecard> = {}): Scorecard {
+  return {
+    id: 'scc_1',
+    name: 'Jane Doe',
+    categories: [
+      { id: 'cat_1', name: 'Manual Testing', max: 10 },
+      { id: 'cat_2', name: 'Automation', max: 15 },
+    ],
+    scores: { cat_1: 7, cat_2: 12 },
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeTemplate(overrides: Partial<ScorecardTemplate> = {}): ScorecardTemplate {
+  return {
+    id: 'tpl_1',
+    name: 'QA Interview',
+    categories: [
+      { id: 'cat_1', name: 'Manual Testing', max: 10 },
+      { id: 'cat_2', name: 'Automation', max: 15 },
+    ],
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -352,6 +395,84 @@ describe('query param set storage', () => {
   });
 });
 
+describe('isScorecard', () => {
+  it('accepts a well-formed scorecard and rejects junk', () => {
+    expect(isScorecard(makeScorecard())).toBe(true);
+    expect(isScorecard({ ...makeScorecard(), categories: [{ id: 'x' }] })).toBe(false);
+    expect(isScorecard({ ...makeScorecard(), scores: { cat_1: 'seven' } })).toBe(false);
+    expect(isScorecard({ ...makeScorecard(), name: 5 })).toBe(false);
+    expect(isScorecard(null)).toBe(false);
+  });
+});
+
+describe('scorecard storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getScorecards()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.SCORECARDS] = [makeScorecard(), { id: 'bad' }];
+    expect(await getScorecards()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertScorecard(makeScorecard());
+    let all = await getScorecards();
+    expect(all).toHaveLength(1);
+
+    all = await upsertScorecard(makeScorecard({ name: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.name).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertScorecard(makeScorecard());
+    await upsertScorecard(makeScorecard({ id: 'scc_2' }));
+    const remaining = await deleteScorecard('scc_1');
+    expect(remaining.map((s) => s.id)).toEqual(['scc_2']);
+  });
+});
+
+describe('isScorecardTemplate', () => {
+  it('accepts a well-formed template and rejects junk', () => {
+    expect(isScorecardTemplate(makeTemplate())).toBe(true);
+    expect(isScorecardTemplate({ ...makeTemplate(), categories: [{ id: 'x' }] })).toBe(false);
+    expect(isScorecardTemplate({ ...makeTemplate(), name: 5 })).toBe(false);
+    // Shape-only, like isScorecard — an extra `scores` field (as on a real
+    // Scorecard) is simply ignored, not rejected.
+    expect(isScorecardTemplate({ ...makeScorecard(), id: 'tpl_1' })).toBe(true);
+    expect(isScorecardTemplate(null)).toBe(false);
+  });
+});
+
+describe('scorecard template storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getScorecardTemplates()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.SCORECARD_TEMPLATES] = [makeTemplate(), { id: 'bad' }];
+    expect(await getScorecardTemplates()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertScorecardTemplate(makeTemplate());
+    let all = await getScorecardTemplates();
+    expect(all).toHaveLength(1);
+
+    all = await upsertScorecardTemplate(makeTemplate({ name: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.name).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertScorecardTemplate(makeTemplate());
+    await upsertScorecardTemplate(makeTemplate({ id: 'tpl_2' }));
+    const remaining = await deleteScorecardTemplate('tpl_1');
+    expect(remaining.map((t) => t.id)).toEqual(['tpl_2']);
+  });
+});
+
 describe('value profiles storage', () => {
   function mk(over: Partial<ValueProfile> = {}): ValueProfile {
     return {
@@ -453,6 +574,55 @@ describe('account storage', () => {
     expect(isAccount({ ...mk(), description: 42 })).toBe(false);
   });
 
+  it('isAccount accepts an account with no OTP fields (pre-existing accounts)', () => {
+    expect(isAccount(mk())).toBe(true);
+  });
+
+  it('isAccount accepts valid OTP fields and rejects malformed ones', () => {
+    expect(
+      isAccount({
+        ...mk(),
+        useDefaultOtp: false,
+        otpField: { kind: 'css', query: '#otp' },
+        confirmOtpButton: { kind: 'css', query: '#confirm-otp' },
+        encryptedOtp: { ciphertext: 'abc', iv: 'def' },
+      })
+    ).toBe(true);
+    expect(isAccount({ ...mk(), useDefaultOtp: 'yes' })).toBe(false);
+    expect(isAccount({ ...mk(), otpField: { kind: 'html', query: 'x' } })).toBe(false);
+    expect(isAccount({ ...mk(), confirmOtpButton: { kind: 'html', query: 'x' } })).toBe(false);
+    expect(isAccount({ ...mk(), encryptedOtp: { ciphertext: 'x' } })).toBe(false);
+  });
+
+  it('isAccount accepts valid stepDelays and rejects malformed ones', () => {
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'username', position: 'before', seconds: 1.5 }],
+      })
+    ).toBe(true);
+    expect(isAccount({ ...mk(), stepDelays: undefined })).toBe(true);
+    expect(isAccount({ ...mk(), stepDelays: 'nope' })).toBe(false);
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'bogus', position: 'before', seconds: 1 }],
+      })
+    ).toBe(false);
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'username', position: 'sideways', seconds: 1 }],
+      })
+    ).toBe(false);
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'username', position: 'before', seconds: '1' }],
+      })
+    ).toBe(false);
+  });
+
   it('returns [] when nothing is stored, and drops invalid entries', async () => {
     expect(await getAccounts()).toEqual([]);
     store[STORAGE_KEYS.ACCOUNTS] = [mk({ id: 'good' }), { junk: true }];
@@ -501,6 +671,29 @@ describe('default password storage', () => {
     expect(await getDefaultPasswordRecord()).toEqual(mk());
     await clearDefaultPasswordRecord();
     expect(await getDefaultPasswordRecord()).toBeUndefined();
+  });
+});
+
+describe('default OTP storage', () => {
+  function mk(over: Partial<DefaultOtpRecord> = {}): DefaultOtpRecord {
+    return { encryptedOtp: { ciphertext: 'abc', iv: 'def' }, updatedAt: 1, ...over };
+  }
+
+  it('isDefaultOtpRecord rejects corrupt / foreign data', () => {
+    expect(isDefaultOtpRecord(mk())).toBe(true);
+    expect(isDefaultOtpRecord({ ...mk(), encryptedOtp: 'nope' })).toBe(false);
+    expect(isDefaultOtpRecord(null)).toBe(false);
+  });
+
+  it('returns undefined when nothing is stored', async () => {
+    expect(await getDefaultOtpRecord()).toBeUndefined();
+  });
+
+  it('sets, reads, and clears the record', async () => {
+    await setDefaultOtpRecord(mk());
+    expect(await getDefaultOtpRecord()).toEqual(mk());
+    await clearDefaultOtpRecord();
+    expect(await getDefaultOtpRecord()).toBeUndefined();
   });
 });
 
@@ -567,25 +760,14 @@ describe('prefs storage', () => {
   });
 
   it('round-trips through savePrefs (preset and manual scale)', async () => {
-    // getPrefs always fills the default hudSeconds/findTimeoutSeconds/
-    // accountTooltipDelaySeconds, so a saved prefs object without them reads
-    // back with those defaults (3 / 10 / 2).
+    // getPrefs always fills every bounded-number field with its default when
+    // absent from storage, so a saved prefs object without them reads back
+    // with the rest of DEFAULT_PREFS alongside the one field actually saved.
     await savePrefs({ fontSize: 'small' });
-    expect(await getPrefs()).toEqual({
-      fontSize: 'small',
-      hudSeconds: 3,
-      findTimeoutSeconds: 10,
-      accountTooltipDelaySeconds: 2,
-    });
+    expect(await getPrefs()).toEqual({ ...DEFAULT_PREFS, fontSize: 'small' });
 
     await savePrefs({ fontSize: 'large', fontScale: 1.4 });
-    expect(await getPrefs()).toEqual({
-      fontSize: 'large',
-      fontScale: 1.4,
-      hudSeconds: 3,
-      findTimeoutSeconds: 10,
-      accountTooltipDelaySeconds: 2,
-    });
+    expect(await getPrefs()).toEqual({ ...DEFAULT_PREFS, fontSize: 'large', fontScale: 1.4 });
   });
 
   it('reads a stored findTimeoutSeconds, clamped and rounded to the bounds', async () => {
@@ -625,6 +807,34 @@ describe('prefs storage', () => {
 
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', hudSeconds: 4.6 };
     expect((await getPrefs()).hudSeconds).toBe(5); // rounded
+  });
+
+  it('reads a stored loginPrefillDelaySeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', loginPrefillDelaySeconds: 5 };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(5);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', loginPrefillDelaySeconds: 999 };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(30); // LOGIN_PREFILL_DELAY_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', loginPrefillDelaySeconds: -5 };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(0); // LOGIN_PREFILL_DELAY_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).loginPrefillDelaySeconds).toBe(0); // default
+  });
+
+  it('reads a stored locatorAddedConfirmSeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', locatorAddedConfirmSeconds: 5 };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(5);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', locatorAddedConfirmSeconds: 999 };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(10); // LOCATOR_ADDED_CONFIRM_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', locatorAddedConfirmSeconds: 0 };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(1); // LOCATOR_ADDED_CONFIRM_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).locatorAddedConfirmSeconds).toBe(2); // default
   });
 
   it('reads autoReloadOnChange, defaulting to absent (off)', async () => {
@@ -685,5 +895,79 @@ describe('prefs storage', () => {
 
     store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', accountTooltipDelaySeconds: 'soon' };
     expect((await getPrefs()).accountTooltipDelaySeconds).toBe(2); // non-numeric ignored
+  });
+
+  it('reads maxPinnedTools, clamped and rounded to the bounds, and caps pinnedTools accordingly', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', maxPinnedTools: 3 };
+    expect((await getPrefs()).maxPinnedTools).toBe(3);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', maxPinnedTools: 999 };
+    expect((await getPrefs()).maxPinnedTools).toBe(10); // MAX_PINNED_TOOLS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', maxPinnedTools: 0 };
+    expect((await getPrefs()).maxPinnedTools).toBe(1); // MAX_PINNED_TOOLS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).maxPinnedTools).toBe(5); // default
+
+    // A lowered cap trims pinnedTools to match, using the RESOLVED
+    // maxPinnedTools for this read — not the hardcoded default — as the cap.
+    store[STORAGE_KEYS.PREFS] = {
+      fontSize: 'medium',
+      maxPinnedTools: 2,
+      pinnedTools: ['bypass', 'measure', 'color', 'a11y'],
+    };
+    expect((await getPrefs()).pinnedTools).toEqual(['bypass', 'measure']);
+  });
+
+  it('reads a stored navigateTimeoutSeconds, clamped and rounded to the bounds', async () => {
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', navigateTimeoutSeconds: 45 };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(45);
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', navigateTimeoutSeconds: 9999 };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(120); // NAVIGATE_TIMEOUT_SECONDS_MAX
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', navigateTimeoutSeconds: 0 };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(5); // NAVIGATE_TIMEOUT_SECONDS_MIN
+
+    store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+    expect((await getPrefs()).navigateTimeoutSeconds).toBe(20); // default
+  });
+
+  it('reads the remaining bounded prefs, clamped and defaulted correctly', async () => {
+    const cases: {
+      field:
+        | 'tabOrderMaxStops'
+        | 'matchHighlightMax'
+        | 'logicalNamesMax'
+        | 'randomNumberLengthDefault'
+        | 'siteDataConfirmSeconds'
+        | 'accountLoginErrorDisplaySeconds'
+        | 'accountApplyResultDisplaySeconds'
+        | 'notesAutosaveMs';
+      min: number;
+      max: number;
+      def: number;
+    }[] = [
+      { field: 'tabOrderMaxStops', min: 50, max: 2000, def: 500 },
+      { field: 'matchHighlightMax', min: 10, max: 1000, def: 200 },
+      { field: 'logicalNamesMax', min: 50, max: 2000, def: 500 },
+      { field: 'randomNumberLengthDefault', min: 1, max: 32, def: 5 },
+      { field: 'siteDataConfirmSeconds', min: 1, max: 10, def: 3 },
+      { field: 'accountLoginErrorDisplaySeconds', min: 2, max: 30, def: 5 },
+      { field: 'accountApplyResultDisplaySeconds', min: 2, max: 30, def: 5 },
+      { field: 'notesAutosaveMs', min: 300, max: 5000, def: 1200 },
+    ];
+
+    for (const { field, min, max, def } of cases) {
+      store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', [field]: 999_999 };
+      expect((await getPrefs())[field], field).toBe(max);
+
+      store[STORAGE_KEYS.PREFS] = { fontSize: 'medium', [field]: -1 };
+      expect((await getPrefs())[field], field).toBe(min);
+
+      store[STORAGE_KEYS.PREFS] = { fontSize: 'medium' };
+      expect((await getPrefs())[field], field).toBe(def);
+    }
   });
 });

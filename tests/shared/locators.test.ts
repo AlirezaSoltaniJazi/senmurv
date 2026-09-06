@@ -9,6 +9,7 @@ import {
   getTestIdAttr,
   isStableId,
   parseLocatorInput,
+  relativePosition,
   resolveFirstMatch,
 } from '@/shared/locators';
 
@@ -281,12 +282,21 @@ describe('buildLocatorSet ranking', () => {
     expect(idSuggestion?.value).toBe('fn');
   });
 
-  it('recommends an aria-label CSS selector and still offers role+name', () => {
+  it('recommends the name attribute over aria-label, and still offers both plus role+name', () => {
     const el = document.querySelector('input[type="email"]')!;
     const set = buildLocatorSet(el, document);
     const top = set.suggestions[0]!;
-    expect(top.strategy).toBe('ariaLabel');
-    expect(top.value).toBe('input[aria-label="Email"]');
+    // `name` outranks `ariaLabel` in LOCATOR_PRIORITY — both are stable, but
+    // `name` is the more conventional form-field-targeting attribute.
+    expect(top.strategy).toBe('name');
+    expect(top.value).toBe('input[name="email"]');
+    expect(top.testQuery).toBe('input[name="email"]');
+    expect(top.kind).toBe('css');
+    const namePw = top.snippets.find((s) => s.framework === 'selenium');
+    expect(namePw?.code).toContain('By.name("email")');
+
+    const ariaLabel = set.suggestions.find((s) => s.strategy === 'ariaLabel');
+    expect(ariaLabel?.value).toBe('input[aria-label="Email"]');
 
     const roleName = set.suggestions.find((s) => s.strategy === 'roleName');
     expect(roleName?.value).toBe('Email');
@@ -294,10 +304,16 @@ describe('buildLocatorSet ranking', () => {
     expect(pw?.code).toContain("getByRole('textbox'");
   });
 
-  it('falls back to css/xpath for a plain element and covers all frameworks', () => {
+  it('recommends visible text over a bare CSS/XPath fallback, but still offers both', () => {
     const el = document.querySelector('span.tag')!;
     const set = buildLocatorSet(el, document);
-    expect(set.suggestions[0]!.strategy).toBe('css');
+    // The span has no id/testid/name/aria-label — but it does have text, so
+    // the new `text` strategy now outranks the generic CSS/XPath fallback.
+    const top = set.suggestions[0]!;
+    expect(top.strategy).toBe('text');
+    expect(top.value).toBe('hello world');
+    expect(top.kind).toBe('xpath');
+    expect(top.testQuery).toBe('//span[normalize-space(.)="hello world"]');
 
     const cssSuggestion = set.suggestions.find((s) => s.strategy === 'css')!;
     const frameworks = cssSuggestion.snippets.map((s) => s.framework).sort();
@@ -307,5 +323,165 @@ describe('buildLocatorSet ranking', () => {
     expect(set.suggestions.some((s) => s.strategy === 'xpath')).toBe(true);
     expect(set.element.tagName).toBe('span');
     expect(set.element.textPreview).toBe('hello world');
+  });
+
+  it('recommends the data-testid on a disabled button, exactly like an enabled one', () => {
+    // The exact shape of a real bug report: a disabled Angular Material button
+    // with a data-testid. buildLocatorSet has no notion of `disabled` at all —
+    // this asserts that directly, so a regression here is caught even though
+    // the actual root cause (a disabled control never dispatching `mousedown`/
+    // `mouseup`/`click`, fixed in content/picker.ts by picking on `pointerdown`
+    // instead, since that's the one event Chrome still dispatches on a
+    // disabled control) lives one layer up, in code this suite can't exercise
+    // (no real layout/event engine).
+    setBody(`
+      <button data-testid="huma-auth-kit-login" disabled="true" class="mdc-button mat-mdc-button-disabled">
+        <span class="mdc-button__label"><span> Login </span></span>
+      </button>
+    `);
+    const el = document.querySelector('button')!;
+    const set = buildLocatorSet(el, document);
+    const top = set.suggestions[0]!;
+    expect(top.strategy).toBe('testId');
+    expect(top.recommended).toBe(true);
+    expect(top.value).toBe('huma-auth-kit-login');
+    expect(top.quality).toBe('high');
+  });
+});
+
+describe('buildLocatorSet — link text / partial link text (anchors only)', () => {
+  it('offers linkText and partialLinkText for an anchor with text', () => {
+    setBody(`<a href="/account">My Account</a>`);
+    const el = document.querySelector('a')!;
+    const set = buildLocatorSet(el, document);
+
+    const linkText = set.suggestions.find((s) => s.strategy === 'linkText');
+    expect(linkText?.value).toBe('My Account');
+    expect(linkText?.kind).toBe('xpath');
+    expect(linkText?.testQuery).toBe('//a[normalize-space(text())="My Account"]');
+    const selenium = linkText?.snippets.find((s) => s.framework === 'selenium');
+    expect(selenium?.code).toBe('By.linkText("My Account")');
+
+    const partial = set.suggestions.find((s) => s.strategy === 'partialLinkText');
+    expect(partial?.value).toBe('My Account');
+    expect(partial?.testQuery).toBe('//a[contains(normalize-space(text()),"My Account")]');
+    const partialSelenium = partial?.snippets.find((s) => s.framework === 'selenium');
+    expect(partialSelenium?.code).toBe('By.partialLinkText("My Account")');
+  });
+
+  it('never offers linkText/partialLinkText for a non-anchor, even with text', () => {
+    const el = document.querySelector('span.tag')!; // from the shared fixture, has text
+    const set = buildLocatorSet(el, document);
+    expect(set.suggestions.some((s) => s.strategy === 'linkText')).toBe(false);
+    expect(set.suggestions.some((s) => s.strategy === 'partialLinkText')).toBe(false);
+  });
+
+  // happy-dom does not implement document.evaluate() at all (not partially —
+  // absent), so these two assert the generated XPath string only; the real
+  // browser (this is a content-script feature) supports both forms per the
+  // XPath 1.0 spec.
+  it('wraps text containing only double quotes in single quotes', () => {
+    setBody(`<a href="/x">Say "hi"</a>`);
+    const el = document.querySelector('a')!;
+    const set = buildLocatorSet(el, document);
+    const linkText = set.suggestions.find((s) => s.strategy === 'linkText');
+    expect(linkText?.testQuery).toBe(`//a[normalize-space(text())='Say "hi"']`);
+  });
+
+  it('falls back to concat() when the text has both quote types (XPath 1.0 has no escape)', () => {
+    setBody(`<a href="/x">Say "hi" y'all</a>`);
+    const el = document.querySelector('a')!;
+    const set = buildLocatorSet(el, document);
+    const linkText = set.suggestions.find((s) => s.strategy === 'linkText');
+    expect(linkText?.testQuery).toBe(
+      `//a[normalize-space(text())=concat("Say ", '"', "hi", '"', " y'all")]`
+    );
+  });
+});
+
+describe('buildLocatorSet — class name', () => {
+  it('picks the one unique class among several, over a non-unique one', () => {
+    setBody(`
+      <div class="row"></div>
+      <div class="row submit-cta"></div>
+    `);
+    const el = document.querySelectorAll('div')[1]!;
+    const set = buildLocatorSet(el, document);
+    const cls = set.suggestions.find((s) => s.strategy === 'className');
+    expect(cls?.value).toBe('submit-cta');
+    expect(cls?.testQuery).toBe('.submit-cta');
+    expect(cls?.quality).toBe('medium');
+    expect(cls?.matchCount).toBe(1);
+    const selenium = cls?.snippets.find((s) => s.framework === 'selenium');
+    expect(selenium?.code).toBe('By.className("submit-cta")');
+  });
+
+  it('falls back to the first class, low quality, when none is unique alone', () => {
+    setBody(`
+      <div class="row highlight"></div>
+      <div class="row highlight"></div>
+    `);
+    const el = document.querySelectorAll('div')[0]!;
+    const set = buildLocatorSet(el, document);
+    const cls = set.suggestions.find((s) => s.strategy === 'className');
+    expect(cls?.value).toBe('row');
+    expect(cls?.quality).toBe('low');
+    expect(cls?.matchCount).toBe(2);
+  });
+});
+
+describe('relativePosition', () => {
+  it('classifies below/above/toLeftOf/toRightOf by the largest gap', () => {
+    const anchor = { top: 100, bottom: 120, left: 0, right: 50 };
+    expect(relativePosition({ top: 130, bottom: 150, left: 0, right: 50 }, anchor)).toBe('below');
+    expect(relativePosition({ top: 60, bottom: 80, left: 0, right: 50 }, anchor)).toBe('above');
+    expect(relativePosition({ top: 100, bottom: 120, left: 60, right: 110 }, anchor)).toBe(
+      'toRightOf'
+    );
+    expect(relativePosition({ top: 100, bottom: 120, left: -60, right: -10 }, anchor)).toBe(
+      'toLeftOf'
+    );
+  });
+
+  it('returns null when the rects overlap on both axes (no clear relationship)', () => {
+    const anchor = { top: 0, bottom: 100, left: 0, right: 100 };
+    expect(relativePosition({ top: 10, bottom: 90, left: 10, right: 90 }, anchor)).toBeNull();
+  });
+});
+
+describe('buildLocatorSet — relative locator (Selenium-only, label-associated only)', () => {
+  it('offers a relative suggestion for a label-associated field, using the injected rect env', () => {
+    setBody(`
+      <label for="otp-code">One-time code</label>
+      <input id="otp-code" />
+    `);
+    const input = document.querySelector('#otp-code')!;
+    const label = document.querySelector('label')!;
+    const env = {
+      rectOf: (el: Element) =>
+        el === input
+          ? { top: 130, bottom: 150, left: 0, right: 50 }
+          : el === label
+            ? { top: 100, bottom: 120, left: 0, right: 50 }
+            : { top: 0, bottom: 0, left: 0, right: 0 },
+    };
+    const set = buildLocatorSet(input, document, env);
+    const relative = set.suggestions.find((s) => s.strategy === 'relative');
+    expect(relative).toBeDefined();
+    expect(relative?.label).toBe('relative (below)');
+    expect(relative?.kind).toBeUndefined();
+    expect(relative?.testQuery).toBeUndefined();
+    expect(relative?.snippets).toHaveLength(1);
+    expect(relative?.snippets[0]?.framework).toBe('selenium');
+    expect(relative?.snippets[0]?.code).toContain(
+      'RelativeLocator.with(By.tagName("input")).below('
+    );
+  });
+
+  it('offers nothing when there is no associated label', () => {
+    setBody(`<input id="lonely" />`);
+    const el = document.querySelector('#lonely')!;
+    const set = buildLocatorSet(el, document);
+    expect(set.suggestions.some((s) => s.strategy === 'relative')).toBe(false);
   });
 });

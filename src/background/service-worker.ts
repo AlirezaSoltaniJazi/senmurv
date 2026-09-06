@@ -6,7 +6,10 @@ import {
   BLOCKED_URL_PREFIXES,
   BYPASS_CSS,
   FIND_TIMEOUT_SECONDS_DEFAULT,
+  LOGICAL_NAMES_MAX_DEFAULT,
+  LOGIN_PREFILL_DELAY_SECONDS_DEFAULT,
   MESSAGE_TYPES,
+  NAVIGATE_TIMEOUT_SECONDS_DEFAULT,
 } from '@/shared/constants';
 import {
   changePin,
@@ -19,27 +22,42 @@ import {
   setUpPin,
   unlockWithPin,
 } from '@/shared/crypto';
-import { duplicateAccount, isValidPin, renameGroup, validateAccount } from '@/shared/accounts';
+import {
+  applyLocatorSeed,
+  applyLocatorToGroups,
+  duplicateAccount,
+  isValidPin,
+  moveAccountBefore,
+  moveAccountToGroup,
+  renameGroup,
+  validateAccount,
+} from '@/shared/accounts';
 import { isRuntimeMessage, sendTabMessage } from '@/shared/messages';
 import type { RuntimeMessage } from '@/shared/messages';
 import { uniqueName } from '@/shared/script-io';
 import type { ImportedAccount } from '@/shared/data-io';
 import {
+  clearDefaultOtpRecord,
   clearDefaultPasswordRecord,
   deleteAccount,
   deleteChecklist,
   deleteNote,
   deleteQueryParamSet,
+  deleteScorecard,
+  deleteScorecardTemplate,
   deleteScript,
   deleteTask,
   getAccounts,
   getChecklists,
+  getDefaultOtpRecord,
   getDefaultPasswordRecord,
   getNotes,
   getPrefs,
   deleteProfile,
   getProfiles,
   getQueryParamSets,
+  getScorecards,
+  getScorecardTemplates,
   getScripts,
   getTasks,
   saveAccounts,
@@ -50,6 +68,7 @@ import {
   saveScripts,
   saveTasks,
   savePrefs,
+  setDefaultOtpRecord,
   setDefaultPasswordRecord,
   transformTasks,
   upsertAccountStored,
@@ -57,6 +76,8 @@ import {
   upsertChecklist,
   upsertNote,
   upsertQueryParamSet,
+  upsertScorecard,
+  upsertScorecardTemplate,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
@@ -67,6 +88,7 @@ import { newId } from '@/utils/id';
 import type {
   Account,
   AccountDraft,
+  AccountLocatorSeed,
   ClearOutcome,
   ClearTypeId,
   CookieEdit,
@@ -200,14 +222,16 @@ async function withAnyActiveTab<T>(fn: (tabId: number) => Promise<Result<T>>): P
   }
 }
 
-const NAVIGATE_TIMEOUT_MS = 20_000;
-
 /**
  * Navigate `tabId` to `url` and wait for it to finish loading. No precedent
  * for this existed anywhere in the codebase before Accounts — the one other
  * `tabs.update` call site (QueryParamsTool) is fire-and-forget.
  */
-function navigateAndWaitForLoad(tabId: number, url: string): Promise<Result<void>> {
+function navigateAndWaitForLoad(
+  tabId: number,
+  url: string,
+  timeoutMs: number = NAVIGATE_TIMEOUT_SECONDS_DEFAULT * 1000
+): Promise<Result<void>> {
   return new Promise((resolve) => {
     let settled = false;
     const finish = (result: Result<void>): void => {
@@ -226,7 +250,7 @@ function navigateAndWaitForLoad(tabId: number, url: string): Promise<Result<void
     }
     const timer = setTimeout(
       () => finish({ ok: false, error: 'Timed out waiting for the page to finish loading.' }),
-      NAVIGATE_TIMEOUT_MS
+      timeoutMs
     );
     browser.tabs.onUpdated.addListener(onUpdated);
     void browser.tabs
@@ -722,11 +746,13 @@ async function xrmWebApiUrl(tabId: number): Promise<Result<XrmWebApiRecord>> {
  * exception. See agents.md → Security.
  *
  * Serialized, therefore self-contained: no closures, no imports, no module
- * constants (the cap is inlined). It returns PLAIN DATA only — `executeScript`
- * results must be JSON-serialisable, so it can hand back names but never the
- * elements they belong to; the content script re-resolves those from `[data-id]`.
+ * constants — `limit` (the resolved `logicalNamesMax` pref) arrives via
+ * `executeScript`'s `args`, the one channel a serialized func can receive
+ * caller state through. It returns PLAIN DATA only — `executeScript` results
+ * must be JSON-serialisable, so it can hand back names but never the elements
+ * they belong to; the content script re-resolves those from `[data-id]`.
  */
-function readXrmLogicalNames(): {
+function readXrmLogicalNames(limit: number): {
   ok: boolean;
   value?: { name: string; kind: 'field' | 'tab' | 'section' }[];
   error?: string;
@@ -753,10 +779,9 @@ function readXrmLogicalNames(): {
       };
     }
 
-    const LIMIT = 500; // mirrors LOGICAL_NAMES_MAX; inlined because this is serialized
     const out: { name: string; kind: 'field' | 'tab' | 'section' }[] = [];
     const push = (named: XrmNamed, kind: 'field' | 'tab' | 'section'): void => {
-      if (out.length >= LIMIT) return;
+      if (out.length >= limit) return;
       // Feature-detected: not every control type implements the full interface.
       if (typeof named.getName !== 'function') return;
       let name: string;
@@ -787,12 +812,15 @@ function readXrmLogicalNames(): {
  * objects, which is exactly why this is a two-step.
  */
 async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesReport>> {
+  const prefs = await getPrefs();
+  const maxNames = prefs.logicalNamesMax ?? LOGICAL_NAMES_MAX_DEFAULT;
   let records: LogicalNameRecord[];
   try {
     const results = await browser.scripting.executeScript({
       target: { tabId },
       world: 'MAIN',
       func: readXrmLogicalNames,
+      args: [maxNames],
     });
     const outcome = results[0]?.result as
       | { ok: boolean; value?: LogicalNameRecord[]; error?: string }
@@ -806,7 +834,7 @@ async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesRepor
   }
   return askTab<LogicalNamesReport>(tabId, {
     type: MESSAGE_TYPES.DRAW_LOGICAL_NAMES,
-    payload: { records },
+    payload: { records, maxNames },
   });
 }
 
@@ -1645,6 +1673,16 @@ async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
     return { ok: false, error: 'Enter a password, or check "use default password".' };
   }
 
+  // Unlike password, OTP is entirely optional — an untouched/blank newOtp
+  // just keeps whatever (if anything) already existed; validateAccount is
+  // what decides whether the account "uses OTP" at all.
+  let encryptedOtp = existing?.encryptedOtp;
+  if (draft.useDefaultOtp) {
+    encryptedOtp = undefined;
+  } else if (draft.newOtp !== undefined && draft.newOtp.trim() !== '') {
+    encryptedOtp = await encryptSecret(draft.newOtp);
+  }
+
   const candidate: Account = {
     id: draft.id,
     name: draft.name,
@@ -1654,10 +1692,15 @@ async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
     usernameField: draft.usernameField,
     passwordField: draft.passwordField,
     loginButton: draft.loginButton,
+    useDefaultOtp: draft.useDefaultOtp,
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
   };
   if (encryptedPassword) candidate.encryptedPassword = encryptedPassword;
+  if (encryptedOtp) candidate.encryptedOtp = encryptedOtp;
+  if (draft.otpField) candidate.otpField = draft.otpField;
+  if (draft.confirmOtpButton) candidate.confirmOtpButton = draft.confirmOtpButton;
+  if (draft.stepDelays && draft.stepDelays.length > 0) candidate.stepDelays = draft.stepDelays;
   if (draft.group) candidate.group = draft.group;
   if (draft.description) candidate.description = draft.description;
 
@@ -1682,6 +1725,48 @@ async function renameGroupInStore(from: string, to: string): Promise<Account[]> 
   const renamed = renameGroup(await getAccounts(), from, to);
   await saveAccounts(renamed);
   return renamed;
+}
+
+/** Move an account into a (possibly different) group. Pure/crypto-free —
+ *  works even while Accounts is locked, same as renameGroupInStore. */
+async function moveAccountToGroupInStore(id: string, group: string): Promise<Account[]> {
+  const moved = moveAccountToGroup(await getAccounts(), id, group);
+  await saveAccounts(moved);
+  return moved;
+}
+
+/** Reorder one account before another within the same group. Pure/crypto-
+ *  free — works even while Accounts is locked, same as renameGroupInStore. */
+async function moveAccountBeforeInStore(movingId: string, targetId: string): Promise<Account[]> {
+  const moved = moveAccountBefore(await getAccounts(), movingId, targetId);
+  await saveAccounts(moved);
+  return moved;
+}
+
+/** Apply one locator field to every account in any of `groups`. Pure/crypto-
+ *  free — works even while Accounts is locked, same as renameGroupInStore. */
+async function applyLocatorToGroupsInStore(
+  groups: string[],
+  seed: AccountLocatorSeed
+): Promise<Account[]> {
+  const applied = applyLocatorToGroups(await getAccounts(), groups, seed, Date.now());
+  await saveAccounts(applied);
+  return applied;
+}
+
+/** Apply one locator field directly to a single EXISTING account (the
+ *  Locator tab's "Add to account" target-account picker, as opposed to
+ *  seeding the in-progress editor draft). Pure/crypto-free — works even
+ *  while Accounts is locked, same as applyLocatorToGroupsInStore. */
+async function applyLocatorToAccountInStore(
+  id: string,
+  seed: AccountLocatorSeed
+): Promise<Result<Account[]>> {
+  const accounts = await getAccounts();
+  const target = accounts.find((a) => a.id === id);
+  if (!target) return { ok: false, error: 'Account not found — it may have been deleted.' };
+  const updated = { ...applyLocatorSeed(target, seed), updatedAt: Date.now() };
+  return { ok: true, value: await upsertAccountStored(updated) };
 }
 
 /**
@@ -1798,8 +1883,9 @@ async function importAccountsInStore(
 
 /**
  * Navigate to the saved account's address, wait for the page to load, decrypt
- * the right password (the account's own, or the shared default), and ask the
- * content script to fill + click via the saved locators.
+ * the right password (the account's own, or the shared default) and — when
+ * configured — the right OTP code, then ask the content script to fill +
+ * click via the saved locators.
  */
 async function runAccountLogin(tabId: number, id: string): Promise<Result<void>> {
   const account = (await getAccounts()).find((a) => a.id === id);
@@ -1810,6 +1896,7 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
   }
 
   let password: string;
+  let otp: string | undefined;
   try {
     if (account.useDefaultPassword) {
       const record = await getDefaultPasswordRecord();
@@ -1826,14 +1913,39 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
         return { ok: false, error: 'This account has no password saved.' };
       password = await decryptSecret(account.encryptedPassword);
     }
+
+    const usesOtp = Boolean(account.otpField && account.confirmOtpButton);
+    if (usesOtp) {
+      if (account.useDefaultOtp) {
+        const record = await getDefaultOtpRecord();
+        if (!record) {
+          return {
+            ok: false,
+            error:
+              'No default OTP code is set — set one in Accounts, or give this account its own OTP code.',
+          };
+        }
+        otp = await decryptSecret(record.encryptedOtp);
+      } else {
+        if (!account.encryptedOtp)
+          return { ok: false, error: 'This account has no OTP code saved.' };
+        otp = await decryptSecret(account.encryptedOtp);
+      }
+    }
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
   }
 
-  const navResult = await navigateAndWaitForLoad(tabId, account.address);
+  const prefs = await getPrefs();
+  const navigateTimeoutMs =
+    (prefs.navigateTimeoutSeconds ?? NAVIGATE_TIMEOUT_SECONDS_DEFAULT) * 1000;
+  const navResult = await navigateAndWaitForLoad(tabId, account.address, navigateTimeoutMs);
   if (!navResult.ok) return navResult;
 
-  const prefs = await getPrefs();
+  const prefillDelayMs =
+    (prefs.loginPrefillDelaySeconds ?? LOGIN_PREFILL_DELAY_SECONDS_DEFAULT) * 1000;
+  if (prefillDelayMs > 0) await delay(prefillDelayMs);
+
   const timeoutMs = (prefs.findTimeoutSeconds ?? FIND_TIMEOUT_SECONDS_DEFAULT) * 1000;
 
   return askTab<void>(tabId, {
@@ -1845,42 +1957,67 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
       passwordField: account.passwordField,
       loginButton: account.loginButton,
       timeoutMs,
+      ...(account.otpField && account.confirmOtpButton && otp !== undefined
+        ? { otpField: account.otpField, otp, confirmOtpButton: account.confirmOtpButton }
+        : {}),
+      ...(account.stepDelays && account.stepDelays.length > 0
+        ? { stepDelays: account.stepDelays }
+        : {}),
     },
   });
 }
 
 /**
  * Change the PIN and re-encrypt every existing secret (every account's own
- * password, plus the shared default password if one is set) under the new
- * key. shared/crypto.ts's changePin computes everything before returning —
- * nothing is written until this function persists it, so a failure never
- * leaves mixed old-key/new-key ciphertext on disk.
+ * password and OTP code, plus the shared default password/OTP if set) under
+ * the new key. shared/crypto.ts's changePin computes everything before
+ * returning — nothing is written until this function persists it, so a
+ * failure never leaves mixed old-key/new-key ciphertext on disk.
  */
 async function changeAccountsPin(currentPin: string, newPin: string): Promise<Result<void>> {
   const accounts = await getAccounts();
-  const defaultRecord = await getDefaultPasswordRecord();
+  const defaultPasswordRecord = await getDefaultPasswordRecord();
+  const defaultOtpRecord = await getDefaultOtpRecord();
 
+  // Fixed order (password, then OTP, per account; defaults last) — the apply
+  // pass below MUST walk `reencrypted` in this exact same order.
   const secretsToReencrypt: EncryptedSecret[] = [];
   for (const account of accounts) {
     if (account.encryptedPassword) secretsToReencrypt.push(account.encryptedPassword);
+    if (account.encryptedOtp) secretsToReencrypt.push(account.encryptedOtp);
   }
-  if (defaultRecord) secretsToReencrypt.push(defaultRecord.encryptedPassword);
+  if (defaultPasswordRecord) secretsToReencrypt.push(defaultPasswordRecord.encryptedPassword);
+  if (defaultOtpRecord) secretsToReencrypt.push(defaultOtpRecord.encryptedOtp);
 
   const result = await changePin(currentPin, newPin, secretsToReencrypt);
   if (!result.ok) return result;
 
   let cursor = 0;
   const updatedAccounts = accounts.map((account) => {
-    if (!account.encryptedPassword) return account;
-    const encryptedPassword = result.value.reencrypted[cursor];
-    cursor += 1;
-    return { ...account, encryptedPassword: encryptedPassword! };
+    let next = account;
+    if (next.encryptedPassword) {
+      const encryptedPassword = result.value.reencrypted[cursor]!;
+      cursor += 1;
+      next = { ...next, encryptedPassword };
+    }
+    if (next.encryptedOtp) {
+      const encryptedOtp = result.value.reencrypted[cursor]!;
+      cursor += 1;
+      next = { ...next, encryptedOtp };
+    }
+    return next;
   });
   await saveAccounts(updatedAccounts);
 
-  if (defaultRecord) {
+  if (defaultPasswordRecord) {
     const encryptedPassword = result.value.reencrypted[cursor]!;
+    cursor += 1;
     await setDefaultPasswordRecord({ encryptedPassword, updatedAt: Date.now() });
+  }
+  if (defaultOtpRecord) {
+    const encryptedOtp = result.value.reencrypted[cursor]!;
+    cursor += 1;
+    await setDefaultOtpRecord({ encryptedOtp, updatedAt: Date.now() });
   }
 
   return { ok: true, value: undefined };
@@ -2045,6 +2182,42 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
 
       case MESSAGE_TYPES.DELETE_QUERY_PARAM_SET:
         deleteQueryParamSet(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_SCORECARDS:
+        getScorecards()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_SCORECARD:
+        upsertScorecard(message.payload.scorecard)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_SCORECARD:
+        deleteScorecard(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_SCORECARD_TEMPLATES:
+        getScorecardTemplates()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_SCORECARD_TEMPLATE:
+        upsertScorecardTemplate(message.payload.template)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_SCORECARD_TEMPLATE:
+        deleteScorecardTemplate(message.payload.id)
           .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
@@ -2237,6 +2410,30 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 
+      case MESSAGE_TYPES.MOVE_ACCOUNT_TO_GROUP:
+        moveAccountToGroupInStore(message.payload.id, message.payload.group)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE:
+        moveAccountBeforeInStore(message.payload.movingId, message.payload.targetId)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS:
+        applyLocatorToGroupsInStore(message.payload.groups, message.payload.seed)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.APPLY_LOCATOR_TO_ACCOUNT:
+        applyLocatorToAccountInStore(message.payload.id, message.payload.seed)
+          .then(sendResponse)
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
       case MESSAGE_TYPES.EXPORT_ACCOUNTS:
         exportAccounts(message.payload.pin, message.payload.ids)
           .then(sendResponse)
@@ -2277,6 +2474,36 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
 
       case MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD:
         clearDefaultPasswordRecord()
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_DEFAULT_OTP_STATE:
+        getDefaultOtpRecord()
+          .then((record) =>
+            sendResponse({
+              ok: true,
+              value: { isSet: record !== undefined, updatedAt: record?.updatedAt ?? null },
+            })
+          )
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_DEFAULT_OTP: {
+        const otp = message.payload.otp.trim();
+        if (otp === '') {
+          sendResponse({ ok: false, error: 'Enter an OTP code.' });
+          return true;
+        }
+        encryptSecret(otp)
+          .then((encryptedOtp) => setDefaultOtpRecord({ encryptedOtp, updatedAt: Date.now() }))
+          .then(() => sendResponse({ ok: true, value: undefined }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+      }
+
+      case MESSAGE_TYPES.CLEAR_DEFAULT_OTP:
+        clearDefaultOtpRecord()
           .then(() => sendResponse({ ok: true, value: undefined }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
