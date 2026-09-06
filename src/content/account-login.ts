@@ -1,5 +1,11 @@
 import { resolveFirstMatch } from '@/shared/locators';
-import type { AccountLocator, LocatorKind, Result } from '@/shared/types';
+import type {
+  AccountLocator,
+  AccountLoginStep,
+  AccountStepDelay,
+  LocatorKind,
+  Result,
+} from '@/shared/types';
 
 /**
  * The Accounts tab's one-shot login-fill action: resolve the username field,
@@ -28,9 +34,33 @@ export interface AccountLoginFillInput {
   otpField?: AccountLocator;
   otp?: string;
   confirmOtpButton?: AccountLocator;
+  /** Per-step pauses in the fill sequence — e.g. a slow-rendering SPA needs
+   *  a moment after the login button click before the OTP field exists at
+   *  all. In addition to the caller's own pre-fill delay, already applied
+   *  before this whole fill sequence starts. */
+  stepDelays?: AccountStepDelay[];
 }
 
 const POLL_INTERVAL_MS = 200;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** Pause for every `stepDelays` entry matching this exact step + position,
+ *  summing their seconds (normally at most one, but nothing stops the
+ *  editor from adding more than one for the same point). */
+async function waitStep(
+  stepDelays: AccountStepDelay[] | undefined,
+  step: AccountLoginStep,
+  position: 'before' | 'after'
+): Promise<void> {
+  if (!stepDelays) return;
+  const seconds = stepDelays
+    .filter((d) => d.step === step && d.position === position)
+    .reduce((sum, d) => sum + d.seconds, 0);
+  if (seconds > 0) await delay(seconds * 1000);
+}
 
 /** Poll `resolveFirstMatch` until it finds something or `timeoutMs` elapses. */
 function waitForMatch(
@@ -68,6 +98,7 @@ function setNativeValue(el: HTMLInputElement, value: string): void {
 
 export async function runAccountLoginFill(input: AccountLoginFillInput): Promise<Result<void>> {
   try {
+    await waitStep(input.stepDelays, 'username', 'before');
     const userEl = await waitForMatch(
       input.usernameField.query,
       input.usernameField.kind,
@@ -80,7 +111,9 @@ export async function runAccountLoginFill(input: AccountLoginFillInput): Promise
       };
     }
     setNativeValue(userEl, input.username);
+    await waitStep(input.stepDelays, 'username', 'after');
 
+    await waitStep(input.stepDelays, 'password', 'before');
     const passEl = await waitForMatch(
       input.passwordField.query,
       input.passwordField.kind,
@@ -93,7 +126,9 @@ export async function runAccountLoginFill(input: AccountLoginFillInput): Promise
       };
     }
     setNativeValue(passEl, input.password);
+    await waitStep(input.stepDelays, 'password', 'after');
 
+    await waitStep(input.stepDelays, 'loginButton', 'before');
     const btnEl = await waitForMatch(
       input.loginButton.query,
       input.loginButton.kind,
@@ -106,8 +141,10 @@ export async function runAccountLoginFill(input: AccountLoginFillInput): Promise
       };
     }
     (btnEl as HTMLElement).click();
+    await waitStep(input.stepDelays, 'loginButton', 'after');
 
     if (input.otpField && input.confirmOtpButton && input.otp !== undefined) {
+      await waitStep(input.stepDelays, 'otp', 'before');
       const otpEl = await waitForMatch(input.otpField.query, input.otpField.kind, input.timeoutMs);
       if (!(otpEl instanceof HTMLInputElement)) {
         return {
@@ -116,7 +153,9 @@ export async function runAccountLoginFill(input: AccountLoginFillInput): Promise
         };
       }
       setNativeValue(otpEl, input.otp);
+      await waitStep(input.stepDelays, 'otp', 'after');
 
+      await waitStep(input.stepDelays, 'confirmOtpButton', 'before');
       const confirmEl = await waitForMatch(
         input.confirmOtpButton.query,
         input.confirmOtpButton.kind,
@@ -129,6 +168,7 @@ export async function runAccountLoginFill(input: AccountLoginFillInput): Promise
         };
       }
       (confirmEl as HTMLElement).click();
+      await waitStep(input.stepDelays, 'confirmOtpButton', 'after');
     }
 
     return { ok: true, value: undefined };

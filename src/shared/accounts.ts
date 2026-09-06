@@ -1,6 +1,11 @@
-import { ACCOUNTS_PIN_MAX_LENGTH, ACCOUNTS_PIN_MIN_LENGTH } from '@/shared/constants';
+import {
+  ACCOUNT_STEP_DELAY_SECONDS_MAX,
+  ACCOUNT_STEP_DELAY_SECONDS_MIN,
+  ACCOUNTS_PIN_MAX_LENGTH,
+  ACCOUNTS_PIN_MIN_LENGTH,
+} from '@/shared/constants';
 import { uniqueName } from '@/shared/script-io';
-import type { Account, AccountLocatorSeed, Result } from '@/shared/types';
+import type { Account, AccountLocatorSeed, AccountStepDelay, Result } from '@/shared/types';
 import { newId } from '@/utils/id';
 
 /**
@@ -53,6 +58,38 @@ function normalizeAddress(input: string): Result<string> {
     return { ok: false, error: 'That does not look like a valid address.' };
   }
   return { ok: true, value: withScheme };
+}
+
+const STEP_DELAY_STEPS = new Set([
+  'username',
+  'password',
+  'loginButton',
+  'otp',
+  'confirmOtpButton',
+]);
+const STEP_DELAY_POSITIONS = new Set(['before', 'after']);
+
+/**
+ * Clamp every entry's `seconds` into bounds (rounded to 0.1) and drop any
+ * entry with an unrecognized `step`/`position` — defensive, since these
+ * normally only ever come from the editor's own controlled selects, but
+ * `validateAccount` is the one place untrusted-shaped data could still slip
+ * through (e.g. a hand-edited import).
+ */
+function cleanStepDelays(delays: AccountStepDelay[] | undefined): AccountStepDelay[] {
+  if (!delays) return [];
+  return delays
+    .filter((d) => STEP_DELAY_STEPS.has(d.step) && STEP_DELAY_POSITIONS.has(d.position))
+    .map((d) => ({
+      ...d,
+      seconds:
+        Math.round(
+          Math.min(
+            ACCOUNT_STEP_DELAY_SECONDS_MAX,
+            Math.max(ACCOUNT_STEP_DELAY_SECONDS_MIN, d.seconds)
+          ) * 10
+        ) / 10,
+    }));
 }
 
 /**
@@ -141,6 +178,9 @@ export function validateAccount(draft: Account): Result<Account> {
   const description = draft.description?.trim();
   if (description) clean.description = description;
   else delete clean.description;
+  const stepDelays = cleanStepDelays(draft.stepDelays);
+  if (stepDelays.length > 0) clean.stepDelays = stepDelays;
+  else delete clean.stepDelays;
   return { ok: true, value: clean };
 }
 

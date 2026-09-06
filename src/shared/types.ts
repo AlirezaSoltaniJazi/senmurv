@@ -1020,6 +1020,24 @@ export interface AccountLocatorSeed {
   group?: string;
 }
 
+/** One of the five points in a one-click login's fill sequence a step delay
+ *  can target. */
+export type AccountLoginStep = 'username' | 'password' | 'loginButton' | 'otp' | 'confirmOtpButton';
+
+/**
+ * Pause the fill sequence for `seconds` immediately before or after `step`
+ * runs — e.g. a slow-rendering SPA needs a moment after the login button
+ * click before the OTP field exists at all. Configured per-account, in
+ * addition to `Prefs.loginPrefillDelaySeconds` (a single delay before the
+ * whole sequence starts, set once in Settings for every account).
+ */
+export interface AccountStepDelay {
+  id: string; // newId('delay_') — React key + identifies the row being edited
+  step: AccountLoginStep;
+  position: 'before' | 'after';
+  seconds: number;
+}
+
 /**
  * A saved login account (Accounts tab). `encryptedPassword` is present only
  * when `useDefaultPassword` is false; when true it is not stored at all (the
@@ -1049,6 +1067,9 @@ export interface Account {
    * equivalent to `false` everywhere it's read.
    */
   useDefaultOtp?: boolean;
+  /** Optional, same reason as `useDefaultOtp`: absent means no per-step
+   *  delays, equivalent to an empty array everywhere it's read. */
+  stepDelays?: AccountStepDelay[];
   /** Free-text group label (e.g. "Group A"); absent/blank falls into the
    *  "Default" bucket shown on the Accounts tab's main list. */
   group?: string;
@@ -1080,6 +1101,7 @@ export interface AccountDraft {
   confirmOtpButton?: AccountLocator;
   useDefaultOtp: boolean;
   newOtp?: string;
+  stepDelays: AccountStepDelay[];
   group?: string;
   description?: string;
 }

@@ -1699,6 +1699,7 @@ async function saveAccount(draft: AccountDraft): Promise<Result<Account[]>> {
   if (encryptedOtp) candidate.encryptedOtp = encryptedOtp;
   if (draft.otpField) candidate.otpField = draft.otpField;
   if (draft.confirmOtpButton) candidate.confirmOtpButton = draft.confirmOtpButton;
+  if (draft.stepDelays && draft.stepDelays.length > 0) candidate.stepDelays = draft.stepDelays;
   if (draft.group) candidate.group = draft.group;
   if (draft.description) candidate.description = draft.description;
 
@@ -1942,6 +1943,9 @@ async function runAccountLogin(tabId: number, id: string): Promise<Result<void>>
       timeoutMs,
       ...(account.otpField && account.confirmOtpButton && otp !== undefined
         ? { otpField: account.otpField, otp, confirmOtpButton: account.confirmOtpButton }
+        : {}),
+      ...(account.stepDelays && account.stepDelays.length > 0
+        ? { stepDelays: account.stepDelays }
         : {}),
     },
   });

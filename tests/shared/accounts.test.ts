@@ -260,6 +260,68 @@ describe('validateAccount', () => {
       expect(result.value.confirmOtpButton?.query).toBe('#confirm');
     }
   });
+
+  it('keeps well-formed stepDelays', () => {
+    const result = validateAccount(
+      mk({
+        stepDelays: [{ id: 'd1', step: 'username', position: 'before', seconds: 1.5 }],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.stepDelays).toEqual([
+        { id: 'd1', step: 'username', position: 'before', seconds: 1.5 },
+      ]);
+    }
+  });
+
+  it('clamps out-of-range seconds and rounds to 0.1', () => {
+    const result = validateAccount(
+      mk({
+        stepDelays: [
+          { id: 'd1', step: 'username', position: 'before', seconds: -5 },
+          { id: 'd2', step: 'password', position: 'after', seconds: 999 },
+          { id: 'd3', step: 'loginButton', position: 'before', seconds: 1.23 },
+        ],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.stepDelays).toEqual([
+        { id: 'd1', step: 'username', position: 'before', seconds: 0 },
+        { id: 'd2', step: 'password', position: 'after', seconds: 30 },
+        { id: 'd3', step: 'loginButton', position: 'before', seconds: 1.2 },
+      ]);
+    }
+  });
+
+  it('drops entries with an unrecognized step or position', () => {
+    const result = validateAccount(
+      mk({
+        stepDelays: [
+          { id: 'd1', step: 'bogus' as never, position: 'before', seconds: 1 },
+          { id: 'd2', step: 'username', position: 'sideways' as never, seconds: 1 },
+          { id: 'd3', step: 'username', position: 'before', seconds: 1 },
+        ],
+      })
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.stepDelays).toEqual([
+        { id: 'd3', step: 'username', position: 'before', seconds: 1 },
+      ]);
+    }
+  });
+
+  it('omits stepDelays entirely when empty or absent', () => {
+    const result = validateAccount(mk({ stepDelays: [] }));
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.stepDelays).toBeUndefined();
+
+    const result2 = validateAccount(mk());
+    expect(result2.ok).toBe(true);
+    if (result2.ok) expect(result2.value.stepDelays).toBeUndefined();
+  });
 });
 
 describe('upsertAccount', () => {

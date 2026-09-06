@@ -58,6 +58,7 @@ import type {
   Account,
   AccountLocator,
   AccountsSecurityConfig,
+  AccountStepDelay,
   Checklist,
   DefaultOtpRecord,
   DefaultPasswordRecord,
@@ -795,6 +796,26 @@ function isAccountLocator(value: unknown): value is AccountLocator {
   return (v.kind === 'css' || v.kind === 'xpath') && typeof v.query === 'string';
 }
 
+const ACCOUNT_LOGIN_STEPS = new Set([
+  'username',
+  'password',
+  'loginButton',
+  'otp',
+  'confirmOtpButton',
+]);
+
+function isAccountStepDelay(value: unknown): value is AccountStepDelay {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.step === 'string' &&
+    ACCOUNT_LOGIN_STEPS.has(v.step) &&
+    (v.position === 'before' || v.position === 'after') &&
+    typeof v.seconds === 'number'
+  );
+}
+
 /** Type guard for a stored account (rejects corrupt / legacy data). */
 export function isAccount(value: unknown): value is Account {
   if (typeof value !== 'object' || value === null) return false;
@@ -818,7 +839,10 @@ export function isAccount(value: unknown): value is Account {
     (v.useDefaultOtp === undefined || typeof v.useDefaultOtp === 'boolean') &&
     (v.otpField === undefined || isAccountLocator(v.otpField)) &&
     (v.confirmOtpButton === undefined || isAccountLocator(v.confirmOtpButton)) &&
-    (v.encryptedOtp === undefined || isEncryptedSecret(v.encryptedOtp))
+    (v.encryptedOtp === undefined || isEncryptedSecret(v.encryptedOtp)) &&
+    // Optional, same reason as useDefaultOtp — predates this feature.
+    (v.stepDelays === undefined ||
+      (Array.isArray(v.stepDelays) && v.stepDelays.every(isAccountStepDelay)))
   );
 }
 

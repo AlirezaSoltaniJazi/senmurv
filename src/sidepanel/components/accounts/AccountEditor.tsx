@@ -1,17 +1,32 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import { groupAccounts } from '@/shared/accounts';
-import { MESSAGE_TYPES } from '@/shared/constants';
+import {
+  ACCOUNT_STEP_DELAY_SECONDS_MAX,
+  ACCOUNT_STEP_DELAY_SECONDS_MIN,
+  MESSAGE_TYPES,
+} from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
 import type {
   Account,
   AccountDraft,
   AccountLocator,
   AccountLocatorSeed,
+  AccountLoginStep,
+  AccountStepDelay,
   Result,
 } from '@/shared/types';
+import { newId } from '@/utils/id';
 import { AutocompleteInput } from '../AutocompleteInput';
 import { LocatorKindToggle } from '../LocatorKindToggle';
+
+const STEP_DELAY_TARGETS: { value: AccountLoginStep; label: string }[] = [
+  { value: 'username', label: 'Username field' },
+  { value: 'password', label: 'Password field' },
+  { value: 'loginButton', label: 'Login button' },
+  { value: 'otp', label: 'OTP field' },
+  { value: 'confirmOtpButton', label: 'Confirm OTP button' },
+];
 
 interface Props {
   initial: Account;
@@ -174,6 +189,58 @@ function LocatorField({
   );
 }
 
+interface StepDelayRowProps {
+  delay: AccountStepDelay;
+  onChange: (delay: AccountStepDelay) => void;
+  onRemove: () => void;
+}
+
+/** One "wait N seconds before/after this step" row — a pause the one-click
+ *  login fill sequence inserts at a specific point, in addition to the
+ *  Settings-level "Login pre-fill delay" (a single delay before the whole
+ *  sequence starts, set once for every account). */
+function StepDelayRow({ delay, onChange, onRemove }: StepDelayRowProps): ReactElement {
+  return (
+    <div className="step-target">
+      <select
+        aria-label="Delay position"
+        value={delay.position}
+        onChange={(e) =>
+          onChange({ ...delay, position: e.target.value as AccountStepDelay['position'] })
+        }
+      >
+        <option value="before">Before</option>
+        <option value="after">After</option>
+      </select>
+      <select
+        aria-label="Delay step"
+        value={delay.step}
+        onChange={(e) => onChange({ ...delay, step: e.target.value as AccountLoginStep })}
+      >
+        {STEP_DELAY_TARGETS.map((t) => (
+          <option key={t.value} value={t.value}>
+            {t.label}
+          </option>
+        ))}
+      </select>
+      <input
+        className="name-input"
+        type="number"
+        min={ACCOUNT_STEP_DELAY_SECONDS_MIN}
+        max={ACCOUNT_STEP_DELAY_SECONDS_MAX}
+        step={0.1}
+        aria-label="Delay seconds"
+        value={delay.seconds}
+        onChange={(e) => onChange({ ...delay, seconds: Number(e.target.value) })}
+      />
+      <span className="hint">seconds</span>
+      <button type="button" className="danger" onClick={onRemove}>
+        Remove
+      </button>
+    </div>
+  );
+}
+
 /** Create/edit one saved account. Mirrors ScriptsTab's list-replaced-by-editor
  *  pattern rather than a modal. The password field renders only when "use
  *  default password" is unchecked, per the spec: not even shown otherwise. */
@@ -209,6 +276,10 @@ export function AccountEditor({
   const [confirmOtpButton, setConfirmOtpButton] = useState<AccountLocator>(
     initial.confirmOtpButton ?? BLANK_LOCATOR
   );
+  // Per-step pauses in the one-click login fill sequence — in addition to
+  // the Settings-level "Login pre-fill delay" (a single delay before the
+  // whole sequence starts, set once for every account).
+  const [delays, setDelays] = useState<AccountStepDelay[]>(initial.stepDelays ?? []);
   // Which groups "Apply to group(s)" targets, shared by all three locator
   // fields — defaults to just this account's own group, if it has one.
   const [applyTargets, setApplyTargets] = useState<Set<string>>(() => {
@@ -235,6 +306,19 @@ export function AccountEditor({
     });
   }
 
+  function addDelay(): void {
+    setDelays((prev) => [
+      ...prev,
+      { id: newId('delay_'), step: 'username', position: 'before', seconds: 1 },
+    ]);
+  }
+  function updateDelay(id: string, next: AccountStepDelay): void {
+    setDelays((prev) => prev.map((d) => (d.id === id ? next : d)));
+  }
+  function removeDelay(id: string): void {
+    setDelays((prev) => prev.filter((d) => d.id !== id));
+  }
+
   function save(): void {
     const draft: AccountDraft = {
       id: initial.id,
@@ -248,6 +332,7 @@ export function AccountEditor({
       useDefaultOtp,
       otpField,
       confirmOtpButton,
+      stepDelays: delays,
     };
     if (!useDefaultPassword && password.trim() !== '') draft.newPassword = password;
     if (!useDefaultOtp && otp.trim() !== '') draft.newOtp = otp;
@@ -413,6 +498,24 @@ export function AccountEditor({
         onGroupAccountsChanged={onGroupAccountsChanged}
         applyResultDisplaySeconds={applyResultDisplaySeconds}
       />
+
+      <p className="hint">
+        Delays — pause the one-click login at a specific step (e.g. wait 1.5s after the Login button
+        click before the OTP field is expected to exist).
+      </p>
+      {delays.map((d) => (
+        <StepDelayRow
+          key={d.id}
+          delay={d}
+          onChange={(next) => updateDelay(d.id, next)}
+          onRemove={() => removeDelay(d.id)}
+        />
+      ))}
+      <div className="row">
+        <button type="button" onClick={addDelay}>
+          + Add delay
+        </button>
+      </div>
 
       <div className="row">
         <button type="button" className="primary" onClick={save}>

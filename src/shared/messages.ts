@@ -5,6 +5,7 @@ import type {
   AccountDraft,
   AccountLocator,
   AccountLocatorSeed,
+  AccountStepDelay,
   Checklist,
   ClearTypeId,
   CookieEdit,
@@ -221,6 +222,9 @@ export type RuntimeMessage =
         otpField?: AccountLocator;
         otp?: string;
         confirmOtpButton?: AccountLocator;
+        // Per-step pauses in the fill sequence, in addition to the caller's
+        // own pre-fill delay (already applied before this message is sent).
+        stepDelays?: AccountStepDelay[];
       };
     }
   | { type: typeof MESSAGE_TYPES.EXPORT_ACCOUNTS; payload: { pin: string; ids?: string[] } }

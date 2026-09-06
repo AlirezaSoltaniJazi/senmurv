@@ -594,6 +594,35 @@ describe('account storage', () => {
     expect(isAccount({ ...mk(), encryptedOtp: { ciphertext: 'x' } })).toBe(false);
   });
 
+  it('isAccount accepts valid stepDelays and rejects malformed ones', () => {
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'username', position: 'before', seconds: 1.5 }],
+      })
+    ).toBe(true);
+    expect(isAccount({ ...mk(), stepDelays: undefined })).toBe(true);
+    expect(isAccount({ ...mk(), stepDelays: 'nope' })).toBe(false);
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'bogus', position: 'before', seconds: 1 }],
+      })
+    ).toBe(false);
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'username', position: 'sideways', seconds: 1 }],
+      })
+    ).toBe(false);
+    expect(
+      isAccount({
+        ...mk(),
+        stepDelays: [{ id: 'd1', step: 'username', position: 'before', seconds: '1' }],
+      })
+    ).toBe(false);
+  });
+
   it('returns [] when nothing is stored, and drops invalid entries', async () => {
     expect(await getAccounts()).toEqual([]);
     store[STORAGE_KEYS.ACCOUNTS] = [mk({ id: 'good' }), { junk: true }];

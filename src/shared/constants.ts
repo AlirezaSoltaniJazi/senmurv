@@ -303,6 +303,16 @@ export const LOCATOR_ADDED_CONFIRM_SECONDS_MIN = 1;
 export const LOCATOR_ADDED_CONFIRM_SECONDS_MAX = 10;
 export const LOCATOR_ADDED_CONFIRM_SECONDS_DEFAULT = 2;
 
+/**
+ * Bounds for one `AccountStepDelay`'s `seconds` — a per-account, per-step
+ * pause in the one-click login fill sequence (e.g. "wait 1.5s after the
+ * Login button click"), in addition to `LOGIN_PREFILL_DELAY_SECONDS_*`'s
+ * single delay before the whole sequence starts. Decimal values (0.1
+ * granularity) are allowed, unlike the whole-second prefs above.
+ */
+export const ACCOUNT_STEP_DELAY_SECONDS_MIN = 0;
+export const ACCOUNT_STEP_DELAY_SECONDS_MAX = 30;
+
 /** Test automation frameworks we emit snippets for. */
 export const FRAMEWORKS = ['playwright', 'wdio', 'cypress', 'selenium', 'robot'] as const;
 
