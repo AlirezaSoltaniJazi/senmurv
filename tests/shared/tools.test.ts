@@ -23,6 +23,7 @@ describe('TOOLS registry', () => {
       'json',
       'case',
       'encode',
+      'scorecard',
       'queryparams',
       'logicalnames',
       'webapi',

@@ -16,6 +16,7 @@ import { JwtTool } from './tools/JwtTool';
 import { LogicalNamesTool } from './tools/LogicalNamesTool';
 import { QueryParamsTool } from './tools/QueryParamsTool';
 import { RegionTool } from './tools/RegionTool';
+import { ScorecardTool } from './tools/ScorecardTool';
 import { MeasureTool } from './tools/MeasureTool';
 import { TabOrderTool } from './tools/TabOrderTool';
 import { SiteDataTool } from './tools/SiteDataTool';
@@ -175,6 +176,7 @@ export function ToolsTab({
         {tool === 'json' && <JsonFormatterTool />}
         {tool === 'case' && <CaseConvertTool />}
         {tool === 'encode' && <EncodeDecodeTool />}
+        {tool === 'scorecard' && <ScorecardTool />}
         {tool === 'queryparams' && <QueryParamsTool />}
         {tool === 'logicalnames' && <LogicalNamesTool />}
         {tool === 'webapi' && <WebApiTool />}

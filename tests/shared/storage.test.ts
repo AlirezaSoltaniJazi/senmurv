@@ -8,6 +8,8 @@ import {
   deleteNote,
   deleteProfile,
   deleteQueryParamSet,
+  deleteScorecard,
+  deleteScorecardTemplate,
   deleteScript,
   deleteTask,
   getAccounts,
@@ -18,6 +20,8 @@ import {
   getPrefs,
   getProfiles,
   getQueryParamSets,
+  getScorecards,
+  getScorecardTemplates,
   getScripts,
   getTasks,
   isAccount,
@@ -26,6 +30,8 @@ import {
   isDefaultPasswordRecord,
   isNote,
   isQueryParamSet,
+  isScorecard,
+  isScorecardTemplate,
   isSavedScript,
   isTimeEntry,
   isValueProfile,
@@ -40,6 +46,8 @@ import {
   upsertNote,
   upsertProfileStored,
   upsertQueryParamSet,
+  upsertScorecard,
+  upsertScorecardTemplate,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
@@ -54,6 +62,7 @@ import type {
   ValueProfile,
 } from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
+import type { Scorecard, ScorecardTemplate } from '@/shared/tools/scorecard';
 import { store } from '../setup';
 
 function makeScript(overrides: Partial<SavedScript> = {}): SavedScript {
@@ -114,6 +123,35 @@ function makeSet(overrides: Partial<QueryParamSet> = {}): QueryParamSet {
       { name: 'pagetype', value: 'entityrecord' },
     ],
     hash: '',
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeScorecard(overrides: Partial<Scorecard> = {}): Scorecard {
+  return {
+    id: 'scc_1',
+    name: 'Jane Doe',
+    categories: [
+      { id: 'cat_1', name: 'Manual Testing', max: 10 },
+      { id: 'cat_2', name: 'Automation', max: 15 },
+    ],
+    scores: { cat_1: 7, cat_2: 12 },
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeTemplate(overrides: Partial<ScorecardTemplate> = {}): ScorecardTemplate {
+  return {
+    id: 'tpl_1',
+    name: 'QA Interview',
+    categories: [
+      { id: 'cat_1', name: 'Manual Testing', max: 10 },
+      { id: 'cat_2', name: 'Automation', max: 15 },
+    ],
     createdAt: 1,
     updatedAt: 1,
     ...overrides,
@@ -349,6 +387,84 @@ describe('query param set storage', () => {
     await upsertQueryParamSet(makeSet());
     await saveQueryParamSets([]);
     expect(await getQueryParamSets()).toEqual([]);
+  });
+});
+
+describe('isScorecard', () => {
+  it('accepts a well-formed scorecard and rejects junk', () => {
+    expect(isScorecard(makeScorecard())).toBe(true);
+    expect(isScorecard({ ...makeScorecard(), categories: [{ id: 'x' }] })).toBe(false);
+    expect(isScorecard({ ...makeScorecard(), scores: { cat_1: 'seven' } })).toBe(false);
+    expect(isScorecard({ ...makeScorecard(), name: 5 })).toBe(false);
+    expect(isScorecard(null)).toBe(false);
+  });
+});
+
+describe('scorecard storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getScorecards()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.SCORECARDS] = [makeScorecard(), { id: 'bad' }];
+    expect(await getScorecards()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertScorecard(makeScorecard());
+    let all = await getScorecards();
+    expect(all).toHaveLength(1);
+
+    all = await upsertScorecard(makeScorecard({ name: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.name).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertScorecard(makeScorecard());
+    await upsertScorecard(makeScorecard({ id: 'scc_2' }));
+    const remaining = await deleteScorecard('scc_1');
+    expect(remaining.map((s) => s.id)).toEqual(['scc_2']);
+  });
+});
+
+describe('isScorecardTemplate', () => {
+  it('accepts a well-formed template and rejects junk', () => {
+    expect(isScorecardTemplate(makeTemplate())).toBe(true);
+    expect(isScorecardTemplate({ ...makeTemplate(), categories: [{ id: 'x' }] })).toBe(false);
+    expect(isScorecardTemplate({ ...makeTemplate(), name: 5 })).toBe(false);
+    // Shape-only, like isScorecard — an extra `scores` field (as on a real
+    // Scorecard) is simply ignored, not rejected.
+    expect(isScorecardTemplate({ ...makeScorecard(), id: 'tpl_1' })).toBe(true);
+    expect(isScorecardTemplate(null)).toBe(false);
+  });
+});
+
+describe('scorecard template storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getScorecardTemplates()).toEqual([]);
+  });
+
+  it('drops corrupt entries on read', async () => {
+    store[STORAGE_KEYS.SCORECARD_TEMPLATES] = [makeTemplate(), { id: 'bad' }];
+    expect(await getScorecardTemplates()).toHaveLength(1);
+  });
+
+  it('upserts (insert then update) by id', async () => {
+    await upsertScorecardTemplate(makeTemplate());
+    let all = await getScorecardTemplates();
+    expect(all).toHaveLength(1);
+
+    all = await upsertScorecardTemplate(makeTemplate({ name: 'Renamed', updatedAt: 3 }));
+    expect(all).toHaveLength(1);
+    expect(all[0]!.name).toBe('Renamed');
+  });
+
+  it('deletes by id', async () => {
+    await upsertScorecardTemplate(makeTemplate());
+    await upsertScorecardTemplate(makeTemplate({ id: 'tpl_2' }));
+    const remaining = await deleteScorecardTemplate('tpl_1');
+    expect(remaining.map((t) => t.id)).toEqual(['tpl_2']);
   });
 });
 
