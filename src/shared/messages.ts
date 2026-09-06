@@ -29,6 +29,7 @@ import type {
   WcagLevel,
 } from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
+import type { Scorecard, ScorecardTemplate } from '@/shared/tools/scorecard';
 import type { RecordedStep } from '@/shared/workflow';
 
 /**
@@ -213,7 +214,18 @@ export type RuntimeMessage =
   | {
       type: typeof MESSAGE_TYPES.IMPORT_ACCOUNTS;
       payload: { accounts: ImportedAccount[]; defaultPassword?: string };
-    };
+    }
+  // Scorecard tool — same shape as Query param sets above.
+  | { type: typeof MESSAGE_TYPES.GET_SCORECARDS }
+  | { type: typeof MESSAGE_TYPES.SAVE_SCORECARD; payload: { scorecard: Scorecard } }
+  | { type: typeof MESSAGE_TYPES.DELETE_SCORECARD; payload: { id: string } }
+  // Scorecard templates — same shape again.
+  | { type: typeof MESSAGE_TYPES.GET_SCORECARD_TEMPLATES }
+  | {
+      type: typeof MESSAGE_TYPES.SAVE_SCORECARD_TEMPLATE;
+      payload: { template: ScorecardTemplate };
+    }
+  | { type: typeof MESSAGE_TYPES.DELETE_SCORECARD_TEMPLATE; payload: { id: string } };
 
 const MESSAGE_TYPE_VALUES = new Set<string>(Object.values(MESSAGE_TYPES));
 

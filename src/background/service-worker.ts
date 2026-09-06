@@ -38,6 +38,8 @@ import {
   deleteChecklist,
   deleteNote,
   deleteQueryParamSet,
+  deleteScorecard,
+  deleteScorecardTemplate,
   deleteScript,
   deleteTask,
   getAccounts,
@@ -48,6 +50,8 @@ import {
   deleteProfile,
   getProfiles,
   getQueryParamSets,
+  getScorecards,
+  getScorecardTemplates,
   getScripts,
   getTasks,
   saveAccounts,
@@ -65,6 +69,8 @@ import {
   upsertChecklist,
   upsertNote,
   upsertQueryParamSet,
+  upsertScorecard,
+  upsertScorecardTemplate,
   upsertScript,
   upsertTask,
 } from '@/shared/storage';
@@ -2073,6 +2079,42 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
 
       case MESSAGE_TYPES.DELETE_QUERY_PARAM_SET:
         deleteQueryParamSet(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_SCORECARDS:
+        getScorecards()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_SCORECARD:
+        upsertScorecard(message.payload.scorecard)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_SCORECARD:
+        deleteScorecard(message.payload.id)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_SCORECARD_TEMPLATES:
+        getScorecardTemplates()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.SAVE_SCORECARD_TEMPLATE:
+        upsertScorecardTemplate(message.payload.template)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.DELETE_SCORECARD_TEMPLATE:
+        deleteScorecardTemplate(message.payload.id)
           .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;

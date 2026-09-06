@@ -65,6 +65,7 @@ import type {
   ValueProfile,
 } from '@/shared/types';
 import type { QueryParamSet } from '@/shared/tools/query-params';
+import type { Scorecard, ScorecardTemplate } from '@/shared/tools/scorecard';
 
 // ---------------------------------------------------------------------------
 // Per-key write serialization
@@ -469,6 +470,123 @@ export async function deleteQueryParamSet(id: string): Promise<QueryParamSet[]> 
     const sets = await getQueryParamSets();
     const next = sets.filter((s) => s.id !== id);
     await browser.storage.local.set({ [STORAGE_KEYS.QUERY_PARAM_SETS]: next });
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Scorecards (Scorecard tool)
+// ---------------------------------------------------------------------------
+
+/** Shared shape check for both a scorecard's and a template's `categories`. */
+function isCategoryArray(value: unknown): boolean {
+  return (
+    Array.isArray(value) &&
+    value.every((c) => {
+      if (typeof c !== 'object' || c === null) return false;
+      const cat = c as Record<string, unknown>;
+      return (
+        typeof cat.id === 'string' && typeof cat.name === 'string' && typeof cat.max === 'number'
+      );
+    })
+  );
+}
+
+/** Type guard for a stored scorecard (rejects corrupt / legacy data). */
+export function isScorecard(value: unknown): value is Scorecard {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    (v.templateId === undefined || typeof v.templateId === 'string') &&
+    (v.templateName === undefined || typeof v.templateName === 'string') &&
+    isCategoryArray(v.categories) &&
+    typeof v.scores === 'object' &&
+    v.scores !== null &&
+    Object.values(v.scores as Record<string, unknown>).every((s) => typeof s === 'number') &&
+    typeof v.createdAt === 'number' &&
+    typeof v.updatedAt === 'number'
+  );
+}
+
+/** Read all scorecards (silently drops anything that fails validation). */
+export async function getScorecards(): Promise<Scorecard[]> {
+  const result = await browser.storage.local.get(STORAGE_KEYS.SCORECARDS);
+  const raw = result[STORAGE_KEYS.SCORECARDS];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isScorecard);
+}
+
+/** Insert or update a scorecard by id; returns the new list. */
+export async function upsertScorecard(scorecard: Scorecard): Promise<Scorecard[]> {
+  return withKeyLock(STORAGE_KEYS.SCORECARDS, async () => {
+    const scorecards = await getScorecards();
+    const exists = scorecards.some((s) => s.id === scorecard.id);
+    const next = exists
+      ? scorecards.map((s) => (s.id === scorecard.id ? scorecard : s))
+      : [...scorecards, scorecard];
+    await browser.storage.local.set({ [STORAGE_KEYS.SCORECARDS]: next });
+    return next;
+  });
+}
+
+/** Remove a scorecard by id; returns the new list. */
+export async function deleteScorecard(id: string): Promise<Scorecard[]> {
+  return withKeyLock(STORAGE_KEYS.SCORECARDS, async () => {
+    const scorecards = await getScorecards();
+    const next = scorecards.filter((s) => s.id !== id);
+    await browser.storage.local.set({ [STORAGE_KEYS.SCORECARDS]: next });
+    return next;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Scorecard templates (Scorecard tool) — reusable named rubrics, no scores
+// ---------------------------------------------------------------------------
+
+/** Type guard for a stored scorecard template (rejects corrupt / legacy data). */
+export function isScorecardTemplate(value: unknown): value is ScorecardTemplate {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
+  return (
+    typeof v.id === 'string' &&
+    typeof v.name === 'string' &&
+    isCategoryArray(v.categories) &&
+    typeof v.createdAt === 'number' &&
+    typeof v.updatedAt === 'number'
+  );
+}
+
+/** Read all scorecard templates (silently drops anything that fails validation). */
+export async function getScorecardTemplates(): Promise<ScorecardTemplate[]> {
+  const result = await browser.storage.local.get(STORAGE_KEYS.SCORECARD_TEMPLATES);
+  const raw = result[STORAGE_KEYS.SCORECARD_TEMPLATES];
+  if (!Array.isArray(raw)) return [];
+  return raw.filter(isScorecardTemplate);
+}
+
+/** Insert or update a scorecard template by id; returns the new list. */
+export async function upsertScorecardTemplate(
+  template: ScorecardTemplate
+): Promise<ScorecardTemplate[]> {
+  return withKeyLock(STORAGE_KEYS.SCORECARD_TEMPLATES, async () => {
+    const templates = await getScorecardTemplates();
+    const exists = templates.some((t) => t.id === template.id);
+    const next = exists
+      ? templates.map((t) => (t.id === template.id ? template : t))
+      : [...templates, template];
+    await browser.storage.local.set({ [STORAGE_KEYS.SCORECARD_TEMPLATES]: next });
+    return next;
+  });
+}
+
+/** Remove a scorecard template by id; returns the new list. */
+export async function deleteScorecardTemplate(id: string): Promise<ScorecardTemplate[]> {
+  return withKeyLock(STORAGE_KEYS.SCORECARD_TEMPLATES, async () => {
+    const templates = await getScorecardTemplates();
+    const next = templates.filter((t) => t.id !== id);
+    await browser.storage.local.set({ [STORAGE_KEYS.SCORECARD_TEMPLATES]: next });
     return next;
   });
 }

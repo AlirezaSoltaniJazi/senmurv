@@ -18,6 +18,7 @@ export type ToolKey =
   | 'json'
   | 'case'
   | 'encode'
+  | 'scorecard'
   | 'autorefresh'
   | 'queryparams'
   | 'logicalnames'
@@ -205,6 +206,16 @@ export const TOOLS: readonly ToolDescriptor[] = [
     icon: '🔁',
     blurb:
       'Encodes or decodes text as Base64, URL/URI, Hex or HTML entities. Everything stays on your machine.',
+    mode: null,
+    requiresPage: false,
+    isReady: true,
+  },
+  {
+    key: 'scorecard',
+    label: 'Scorecard',
+    icon: '📊',
+    blurb:
+      'Build your own rubric — category + max score each — with the total computed live. Save it as a reusable template (e.g. "QA Interview") and save a filled-in scorecard per evaluation.',
     mode: null,
     requiresPage: false,
     isReady: true,

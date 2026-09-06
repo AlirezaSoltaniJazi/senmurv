@@ -10,6 +10,8 @@ export const STORAGE_KEYS = {
   ACCOUNTS: 'senmurv:accounts',
   DEFAULT_PASSWORD: 'senmurv:defaultPassword',
   ACCOUNTS_SECURITY: 'senmurv:accountsSecurity',
+  SCORECARDS: 'senmurv:scorecards',
+  SCORECARD_TEMPLATES: 'senmurv:scorecardTemplates',
 } as const;
 
 /** Runtime message discriminants. Keep in sync with the RuntimeMessage union. */
@@ -134,6 +136,16 @@ export const MESSAGE_TYPES = {
   ACCOUNT_LOGIN_FILL: 'ACCOUNT_LOGIN_FILL',
   EXPORT_ACCOUNTS: 'EXPORT_ACCOUNTS',
   IMPORT_ACCOUNTS: 'IMPORT_ACCOUNTS',
+  // Scorecard tool — a named, saved rubric (categories + scores). Same shape
+  // as Query param sets: GET the list, SAVE upserts one by id, DELETE by id.
+  GET_SCORECARDS: 'GET_SCORECARDS',
+  SAVE_SCORECARD: 'SAVE_SCORECARD',
+  DELETE_SCORECARD: 'DELETE_SCORECARD',
+  // Scorecard templates — reusable named rubrics (categories only, no scores),
+  // e.g. "QA Interview". No built-in template ships; the user builds each one.
+  GET_SCORECARD_TEMPLATES: 'GET_SCORECARD_TEMPLATES',
+  SAVE_SCORECARD_TEMPLATE: 'SAVE_SCORECARD_TEMPLATE',
+  DELETE_SCORECARD_TEMPLATE: 'DELETE_SCORECARD_TEMPLATE',
 } as const;
 
 /** Locales/countries offered in the data + phone tools (faker instances mapped in faker-data.ts). */
