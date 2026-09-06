@@ -184,6 +184,34 @@ export function validateAccount(draft: Account): Result<Account> {
   return { ok: true, value: clean };
 }
 
+/**
+ * Drop `otpField`/`confirmOtpButton`/`useDefaultOtp`/`encryptedOtp` when
+ * neither locator has a real query and the account isn't otherwise wired for
+ * OTP (no default-OTP opt-in, no saved code). Applying a just-cleared OTP
+ * field to other accounts (the editor's "Apply to group(s)", or the Locator
+ * tab's target-account picker) would otherwise leave those accounts with a
+ * blank-but-still-"present" `otpField` — `RUN_ACCOUNT_LOGIN` only checks
+ * that the locator OBJECT exists, not that its query is non-empty, so a
+ * blank query surfaces as a confusing "could not find the OTP field" login
+ * failure instead of cleanly meaning "this account has no OTP step".
+ */
+function cleanOtpConsistency(account: Account): Account {
+  const otpQuery = account.otpField?.query.trim() ?? '';
+  const confirmQuery = account.confirmOtpButton?.query.trim() ?? '';
+  const usesOtp =
+    otpQuery !== '' ||
+    confirmQuery !== '' ||
+    Boolean(account.useDefaultOtp) ||
+    Boolean(account.encryptedOtp);
+  if (usesOtp) return account;
+  const next = { ...account };
+  delete next.otpField;
+  delete next.confirmOtpButton;
+  delete next.useDefaultOtp;
+  delete next.encryptedOtp;
+  return next;
+}
+
 /** `account` with the seeded locator merged into whichever field it targets
  *  (the Locator tab's "Add to account" buttons), plus its group when the
  *  seed carries one. */
@@ -207,6 +235,7 @@ export function applyLocatorSeed(account: Account, seed: AccountLocatorSeed): Ac
       next = { ...account, confirmOtpButton: locator };
       break;
   }
+  next = cleanOtpConsistency(next);
   const group = seed.group?.trim();
   if (group) next = { ...next, group };
   return next;

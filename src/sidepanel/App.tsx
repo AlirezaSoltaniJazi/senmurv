@@ -27,7 +27,14 @@ import { applyLocatorSeed, newAccount } from '@/shared/accounts';
 import { sendRuntimeMessage } from '@/shared/messages';
 import { togglePinned, validPinnedTools } from '@/shared/tools';
 import type { ToolKey } from '@/shared/tools';
-import type { AccountLocatorSeed, FontSize, Prefs, Result, ScriptSeed } from '@/shared/types';
+import type {
+  Account,
+  AccountLocatorSeed,
+  FontSize,
+  Prefs,
+  Result,
+  ScriptSeed,
+} from '@/shared/types';
 import type { RecorderSeed, WorkflowStep } from '@/shared/workflow';
 import type { AccountEditingState } from './components/AccountsTab';
 import { INITIAL_LOCATOR_TAB_STATE } from './locator-tab-state';
@@ -213,6 +220,20 @@ export function App(): ReactElement {
     }));
     setAccountSeedGeneration((n) => n + 1);
   }, []);
+
+  // Locator → Accounts handoff, the other branch: apply a query+kind
+  // directly to an EXISTING saved account (chosen in the Locator tab's
+  // target-account picker) — persisted immediately, no editor involved.
+  const applyLocatorToExistingAccount = useCallback(
+    async (id: string, seed: AccountLocatorSeed): Promise<Result<void>> => {
+      const res = await sendRuntimeMessage<Result<Account[]>>({
+        type: MESSAGE_TYPES.APPLY_LOCATOR_TO_ACCOUNT,
+        payload: { id, seed },
+      });
+      return res.ok ? { ok: true, value: undefined } : res;
+    },
+    []
+  );
 
   // Switching tabs should start at the top — the panel otherwise keeps the
   // previous tab's scroll position.
@@ -534,6 +555,7 @@ export function App(): ReactElement {
               state={locatorState}
               setState={setLocatorState}
               onAddToAccount={addLocatorToAccount}
+              onApplyToAccount={applyLocatorToExistingAccount}
               matchHighlightMax={matchHighlightMax}
               addedConfirmSeconds={locatorAddedConfirmSeconds}
             />

@@ -124,8 +124,13 @@ function LocatorField({
     );
   }
 
+  function clearValue(): void {
+    setResult(null);
+    onChange({ ...value, query: '' });
+  }
+
   async function applyToGroups(): Promise<void> {
-    if (groups.length === 0 || value.query.trim() === '') return;
+    if (groups.length === 0) return;
     clearResultTimer();
     setApplying(true);
     const res = await sendRuntimeMessage<Result<Account[]>>({
@@ -167,12 +172,15 @@ function LocatorField({
         >
           {checking ? 'Validating…' : 'Validate'}
         </button>
+        <button type="button" disabled={value.query === ''} onClick={clearValue}>
+          Clear
+        </button>
         <button
           type="button"
-          disabled={applying || groups.length === 0 || value.query.trim() === ''}
+          disabled={applying || groups.length === 0}
           title={
             groups.length > 0
-              ? `Apply this locator to every account in: ${groups.join(', ')}`
+              ? `Apply this locator (including a cleared one) to every account in: ${groups.join(', ')}`
               : 'Check at least one group above'
           }
           onClick={() => void applyToGroups()}

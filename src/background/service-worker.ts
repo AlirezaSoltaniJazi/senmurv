@@ -23,6 +23,7 @@ import {
   unlockWithPin,
 } from '@/shared/crypto';
 import {
+  applyLocatorSeed,
   applyLocatorToGroups,
   duplicateAccount,
   isValidPin,
@@ -1753,6 +1754,21 @@ async function applyLocatorToGroupsInStore(
   return applied;
 }
 
+/** Apply one locator field directly to a single EXISTING account (the
+ *  Locator tab's "Add to account" target-account picker, as opposed to
+ *  seeding the in-progress editor draft). Pure/crypto-free — works even
+ *  while Accounts is locked, same as applyLocatorToGroupsInStore. */
+async function applyLocatorToAccountInStore(
+  id: string,
+  seed: AccountLocatorSeed
+): Promise<Result<Account[]>> {
+  const accounts = await getAccounts();
+  const target = accounts.find((a) => a.id === id);
+  if (!target) return { ok: false, error: 'Account not found — it may have been deleted.' };
+  const updated = { ...applyLocatorSeed(target, seed), updatedAt: Date.now() };
+  return { ok: true, value: await upsertAccountStored(updated) };
+}
+
 /**
  * Decrypt `ids` (or every saved account, if omitted) plus the shared default
  * password, for the Accounts export. Re-verifies `pin` directly via
@@ -2409,6 +2425,12 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
       case MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS:
         applyLocatorToGroupsInStore(message.payload.groups, message.payload.seed)
           .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.APPLY_LOCATOR_TO_ACCOUNT:
+        applyLocatorToAccountInStore(message.payload.id, message.payload.seed)
+          .then(sendResponse)
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 

@@ -444,6 +444,59 @@ describe('applyLocatorSeed', () => {
     });
     expect(next.group).toBe('Existing Group');
   });
+
+  it('strips OTP entirely when clearing the OTP field leaves no other trace of OTP usage', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '#otp' },
+      confirmOtpButton: { kind: 'css', query: '' },
+    });
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '' });
+    expect(next.otpField).toBeUndefined();
+    expect(next.confirmOtpButton).toBeUndefined();
+  });
+
+  it('strips useDefaultOtp/encryptedOtp too when OTP is no longer used', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '' },
+      confirmOtpButton: { kind: 'css', query: '' },
+      useDefaultOtp: false,
+    });
+    const next = applyLocatorSeed(account, { field: 'confirmOtpButton', kind: 'css', query: '' });
+    expect(next.useDefaultOtp).toBeUndefined();
+    expect(next.encryptedOtp).toBeUndefined();
+  });
+
+  it('does NOT strip OTP when the other OTP locator still has a real query', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '#otp' },
+      confirmOtpButton: { kind: 'css', query: '#confirm' },
+    });
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '' });
+    expect(next.otpField).toEqual({ kind: 'css', query: '' });
+    expect(next.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+  });
+
+  it('does NOT strip OTP when useDefaultOtp is on, even with both locators blank', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '' },
+      confirmOtpButton: { kind: 'css', query: '' },
+      useDefaultOtp: true,
+    });
+    const next = applyLocatorSeed(account, { field: 'otp', kind: 'css', query: '' });
+    expect(next.useDefaultOtp).toBe(true);
+  });
+
+  it('leaves an unrelated account with real OTP config untouched when applying username/password/loginButton', () => {
+    const account = mk({
+      otpField: { kind: 'css', query: '#otp' },
+      confirmOtpButton: { kind: 'css', query: '#confirm' },
+      useDefaultOtp: true,
+    });
+    const next = applyLocatorSeed(account, { field: 'username', kind: 'css', query: '#u' });
+    expect(next.otpField).toEqual({ kind: 'css', query: '#otp' });
+    expect(next.confirmOtpButton).toEqual({ kind: 'css', query: '#confirm' });
+    expect(next.useDefaultOtp).toBe(true);
+  });
 });
 
 describe('duplicateAccount', () => {

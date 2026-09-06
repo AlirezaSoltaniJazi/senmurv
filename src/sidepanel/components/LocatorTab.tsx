@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
-import { existingGroupNames } from '@/shared/accounts';
+import { DEFAULT_GROUP_NAME, existingGroupNames } from '@/shared/accounts';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
 import type { Account, AccountLocatorSeed, LocatorKind, MatchResult, Result } from '@/shared/types';
@@ -25,6 +25,10 @@ interface Props {
   /** Merge a query+kind into the Accounts tab's in-progress draft, without
    *  navigating there — the user may want to keep picking/testing here. */
   onAddToAccount: (seed: AccountLocatorSeed) => void;
+  /** Apply a query+kind directly to an EXISTING saved account (as opposed to
+   *  the in-progress editor draft `onAddToAccount` seeds) — persisted right
+   *  away, no editor involved. */
+  onApplyToAccount: (id: string, seed: AccountLocatorSeed) => Promise<Result<void>>;
   /** Cap on drawn match badges when highlighting every match of a query. */
   matchHighlightMax: number;
   /** Seconds the "Added!" confirmation stays visible after adding to an account. */
@@ -35,6 +39,7 @@ export function LocatorTab({
   state,
   setState,
   onAddToAccount,
+  onApplyToAccount,
   matchHighlightMax,
   addedConfirmSeconds,
 }: Props): ReactElement {
@@ -52,10 +57,14 @@ export function LocatorTab({
     matchInfo,
   } = state;
 
-  // Existing group names, for the "Add to account" group picker — fetched
-  // once; this tab has no other reason to hold the accounts list.
+  // Existing accounts, for the "Add to account" group + target-account
+  // pickers — fetched once; this tab has no other reason to hold the list.
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [existingGroups, setExistingGroups] = useState<string[]>([]);
   const [selectedGroup, setSelectedGroup] = useState('');
+  // '' means "seed a new (or the currently-open) draft"; otherwise the id of
+  // an existing account to apply the locator to directly.
+  const [selectedAccountId, setSelectedAccountId] = useState('');
   const [addedMessage, setAddedMessage] = useState<string | null>(null);
   const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -68,12 +77,22 @@ export function LocatorTab({
     let cancelled = false;
     void (async () => {
       const res = await sendRuntimeMessage<Result<Account[]>>({ type: MESSAGE_TYPES.GET_ACCOUNTS });
-      if (!cancelled && res.ok) setExistingGroups(existingGroupNames(res.value));
+      if (!cancelled && res.ok) {
+        setAccounts(res.value);
+        setExistingGroups(existingGroupNames(res.value));
+      }
     })();
     return () => {
       cancelled = true;
     };
   }, []);
+
+  // Existing accounts in the currently-selected group scope (blank ==
+  // Default, same fallback every other group operation uses) — offered in
+  // the target-account picker alongside "(new account)".
+  const itemsInGroup = accounts.filter(
+    (a) => (a.group?.trim() || DEFAULT_GROUP_NAME) === (selectedGroup.trim() || DEFAULT_GROUP_NAME)
+  );
 
   useEffect(() => {
     return () => {
@@ -194,18 +213,34 @@ export function LocatorTab({
     }
   }
 
-  function addToAccount(field: AccountLocatorSeed['field']): void {
+  function showAdded(message: string): void {
+    if (addedTimerRef.current !== null) clearTimeout(addedTimerRef.current);
+    setAddedMessage(message);
+    addedTimerRef.current = setTimeout(() => setAddedMessage(null), addedConfirmSeconds * 1000);
+  }
+
+  async function addToAccount(field: AccountLocatorSeed['field']): Promise<void> {
     const parsed = parseLocatorInput(query);
     if (!parsed.query) return;
+    const label = ACCOUNT_TARGETS.find((t) => t.field === field)?.label ?? field;
+
+    if (selectedAccountId !== '') {
+      const target = accounts.find((a) => a.id === selectedAccountId);
+      const seed: AccountLocatorSeed = { query: parsed.query, kind: testKind, field };
+      const res = await onApplyToAccount(selectedAccountId, seed);
+      if (!res.ok) {
+        update({ error: res.error });
+        return;
+      }
+      showAdded(`Added to ${label} on "${target?.name || target?.address || 'account'}".`);
+      return;
+    }
+
     const seed: AccountLocatorSeed = { query: parsed.query, kind: testKind, field };
     const group = selectedGroup.trim();
     if (group !== '') seed.group = group;
     onAddToAccount(seed);
-
-    const label = ACCOUNT_TARGETS.find((t) => t.field === field)?.label ?? field;
-    if (addedTimerRef.current !== null) clearTimeout(addedTimerRef.current);
-    setAddedMessage(`Added to ${label}${group !== '' ? ` (group: ${group})` : ''}.`);
-    addedTimerRef.current = setTimeout(() => setAddedMessage(null), addedConfirmSeconds * 1000);
+    showAdded(`Added to ${label}${group !== '' ? ` (group: ${group})` : ''}.`);
   }
 
   /** Scroll to the previous/next match (delta ±1), wrapping around. */
@@ -278,7 +313,11 @@ export function LocatorTab({
           <div className="row">
             <span className="hint">Add to account:</span>
             {ACCOUNT_TARGETS.map((target) => (
-              <button key={target.field} type="button" onClick={() => addToAccount(target.field)}>
+              <button
+                key={target.field}
+                type="button"
+                onClick={() => void addToAccount(target.field)}
+              >
                 {target.label}
               </button>
             ))}
@@ -286,12 +325,29 @@ export function LocatorTab({
               <select
                 aria-label="Target group"
                 value={selectedGroup}
-                onChange={(e) => setSelectedGroup(e.target.value)}
+                onChange={(e) => {
+                  setSelectedGroup(e.target.value);
+                  setSelectedAccountId('');
+                }}
               >
                 <option value="">(current group)</option>
                 {existingGroups.map((g) => (
                   <option key={g} value={g}>
                     {g}
+                  </option>
+                ))}
+              </select>
+            )}
+            {itemsInGroup.length > 0 && (
+              <select
+                aria-label="Target account"
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+              >
+                <option value="">(new account)</option>
+                {itemsInGroup.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name || a.address}
                   </option>
                 ))}
               </select>

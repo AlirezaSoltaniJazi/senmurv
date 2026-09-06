@@ -187,6 +187,10 @@ export type RuntimeMessage =
       type: typeof MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS;
       payload: { groups: string[]; seed: AccountLocatorSeed };
     }
+  | {
+      type: typeof MESSAGE_TYPES.APPLY_LOCATOR_TO_ACCOUNT;
+      payload: { id: string; seed: AccountLocatorSeed };
+    }
   | { type: typeof MESSAGE_TYPES.GET_DEFAULT_PASSWORD_STATE }
   | { type: typeof MESSAGE_TYPES.SAVE_DEFAULT_PASSWORD; payload: { password: string } }
   | { type: typeof MESSAGE_TYPES.CLEAR_DEFAULT_PASSWORD }
