@@ -242,6 +242,71 @@ export function renameGroup(accounts: Account[], from: string, to: string): Acco
 }
 
 /**
+ * Move account `id` into `group` (trimmed; blank or {@link DEFAULT_GROUP_NAME}
+ * clears the field, same fallback every other group operation uses). A no-op
+ * if the account isn't found or is already in that group. The moved account
+ * is repositioned to just after the last existing member of its new group —
+ * it becomes that group's last item, mirroring `nestScript`'s "becomes the
+ * folder's last child" contract for Scripts. Pure — leaves `updatedAt`
+ * untouched, matching `renameGroup` (a structural move, not a content edit).
+ */
+export function moveAccountToGroup(accounts: Account[], id: string, group: string): Account[] {
+  const trimmed = group.trim();
+  const isDefault = trimmed === '' || trimmed.toLowerCase() === DEFAULT_GROUP_NAME.toLowerCase();
+  const targetGroupName = isDefault ? DEFAULT_GROUP_NAME : trimmed;
+  const moving = accounts.find((a) => a.id === id);
+  if (!moving) return accounts;
+  if ((moving.group?.trim() || DEFAULT_GROUP_NAME) === targetGroupName) return accounts;
+
+  let updated: Account;
+  if (isDefault) {
+    const { group: _drop, ...rest } = moving;
+    updated = rest;
+  } else {
+    updated = { ...moving, group: trimmed };
+  }
+
+  const others = accounts.filter((a) => a.id !== id);
+  let insertAt = others.length;
+  for (let i = others.length - 1; i >= 0; i -= 1) {
+    const candidate = others[i];
+    if (candidate && (candidate.group?.trim() || DEFAULT_GROUP_NAME) === targetGroupName) {
+      insertAt = i + 1;
+      break;
+    }
+  }
+  others.splice(insertAt, 0, updated);
+  return others;
+}
+
+/**
+ * Reorder `movingId` to just before `targetId` — only when both are
+ * currently in the SAME group (by the same blank/Default-fallback
+ * comparison every group operation uses). A cross-group drop is a no-op;
+ * use {@link moveAccountToGroup} for that instead. Pure — leaves `updatedAt`
+ * untouched, matching `moveAccountToGroup`/Scripts' `moveScriptBefore`.
+ */
+export function moveAccountBefore(
+  accounts: Account[],
+  movingId: string,
+  targetId: string
+): Account[] {
+  if (movingId === targetId) return accounts;
+  const moving = accounts.find((a) => a.id === movingId);
+  const target = accounts.find((a) => a.id === targetId);
+  if (!moving || !target) return accounts;
+  if (
+    (moving.group?.trim() || DEFAULT_GROUP_NAME) !== (target.group?.trim() || DEFAULT_GROUP_NAME)
+  ) {
+    return accounts;
+  }
+  const rest = accounts.filter((a) => a.id !== movingId);
+  const at = rest.findIndex((a) => a.id === targetId);
+  rest.splice(at, 0, moving);
+  return rest;
+}
+
+/**
  * Apply one locator field (`seed`) to every account bucketed under any of
  * `groups` (each trimmed, via {@link DEFAULT_GROUP_NAME}'s blank/absent
  * fallback like every other group operation) — the editor's "Apply to

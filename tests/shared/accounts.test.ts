@@ -7,6 +7,8 @@ import {
   existingGroupNames,
   groupAccounts,
   isValidPin,
+  moveAccountBefore,
+  moveAccountToGroup,
   newAccount,
   renameGroup,
   upsertAccount,
@@ -548,6 +550,76 @@ describe('renameGroup', () => {
     const other = mk({ id: 'b', group: 'Group B' });
     const next = renameGroup([mk({ id: 'a', group: 'Group A' }), other], 'Group A', 'Renamed');
     expect(next.find((a) => a.id === 'b')).toEqual(other);
+  });
+});
+
+describe('moveAccountToGroup', () => {
+  it('moves an account into a different group, appended after its last member', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A' }),
+      mk({ id: 'b', group: 'Group B' }),
+      mk({ id: 'c', group: 'Group B' }),
+    ];
+    const next = moveAccountToGroup(accounts, 'a', 'Group B');
+    expect(next.map((x) => x.id)).toEqual(['b', 'c', 'a']);
+    expect(next.find((x) => x.id === 'a')?.group).toBe('Group B');
+  });
+
+  it('trims the target group name', () => {
+    const next = moveAccountToGroup([mk({ id: 'a' })], 'a', '  Group B  ');
+    expect(next.find((x) => x.id === 'a')?.group).toBe('Group B');
+  });
+
+  it('clears the group field when moved to Default (blank or the reserved name)', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' }), mk({ id: 'b' })];
+    const next = moveAccountToGroup(accounts, 'a', '');
+    expect(next.find((x) => x.id === 'a')?.group).toBeUndefined();
+
+    const next2 = moveAccountToGroup(accounts, 'a', 'default');
+    expect(next2.find((x) => x.id === 'a')?.group).toBeUndefined();
+  });
+
+  it('is a no-op when the account is already in that group, or not found', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' })];
+    expect(moveAccountToGroup(accounts, 'a', 'Group A')).toEqual(accounts);
+    expect(moveAccountToGroup(accounts, 'a', '  Group A  ')).toEqual(accounts);
+    expect(moveAccountToGroup(accounts, 'missing', 'Group B')).toEqual(accounts);
+  });
+
+  it('does not stamp updatedAt', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A', updatedAt: 5 })];
+    const next = moveAccountToGroup(accounts, 'a', 'Group B');
+    expect(next[0]?.updatedAt).toBe(5);
+  });
+});
+
+describe('moveAccountBefore', () => {
+  it('reorders within the same group', () => {
+    const accounts = [
+      mk({ id: 'a', group: 'Group A' }),
+      mk({ id: 'b', group: 'Group A' }),
+      mk({ id: 'c', group: 'Group A' }),
+    ];
+    const next = moveAccountBefore(accounts, 'c', 'a');
+    expect(next.map((x) => x.id)).toEqual(['c', 'a', 'b']);
+  });
+
+  it('is a no-op across different groups', () => {
+    const accounts = [mk({ id: 'a', group: 'Group A' }), mk({ id: 'b', group: 'Group B' })];
+    expect(moveAccountBefore(accounts, 'a', 'b')).toEqual(accounts);
+  });
+
+  it('is a no-op when moving an item before itself, or either id is missing', () => {
+    const accounts = [mk({ id: 'a' }), mk({ id: 'b' })];
+    expect(moveAccountBefore(accounts, 'a', 'a')).toEqual(accounts);
+    expect(moveAccountBefore(accounts, 'missing', 'a')).toEqual(accounts);
+    expect(moveAccountBefore(accounts, 'a', 'missing')).toEqual(accounts);
+  });
+
+  it('treats blank/absent group the same as Default when comparing', () => {
+    const accounts = [mk({ id: 'a' }), mk({ id: 'b', group: '  ' }), mk({ id: 'c' })];
+    const next = moveAccountBefore(accounts, 'c', 'a');
+    expect(next.map((x) => x.id)).toEqual(['c', 'a', 'b']);
   });
 });
 

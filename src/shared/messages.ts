@@ -177,6 +177,11 @@ export type RuntimeMessage =
   | { type: typeof MESSAGE_TYPES.DELETE_ACCOUNT; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.DUPLICATE_ACCOUNT; payload: { id: string } }
   | { type: typeof MESSAGE_TYPES.RENAME_GROUP; payload: { from: string; to: string } }
+  | { type: typeof MESSAGE_TYPES.MOVE_ACCOUNT_TO_GROUP; payload: { id: string; group: string } }
+  | {
+      type: typeof MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE;
+      payload: { movingId: string; targetId: string };
+    }
   | {
       type: typeof MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS;
       payload: { groups: string[]; seed: AccountLocatorSeed };

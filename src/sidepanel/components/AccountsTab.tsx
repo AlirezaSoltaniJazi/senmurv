@@ -161,6 +161,22 @@ export function AccountsTab({
     if (res.ok) setAccounts(res.value);
   }
 
+  async function moveToGroup(id: string, group: string): Promise<void> {
+    const res = await sendRuntimeMessage<Result<Account[]>>({
+      type: MESSAGE_TYPES.MOVE_ACCOUNT_TO_GROUP,
+      payload: { id, group },
+    });
+    if (res.ok) setAccounts(res.value);
+  }
+
+  async function moveBefore(movingId: string, targetId: string): Promise<void> {
+    const res = await sendRuntimeMessage<Result<Account[]>>({
+      type: MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE,
+      payload: { movingId, targetId },
+    });
+    if (res.ok) setAccounts(res.value);
+  }
+
   async function deleteAccount(account: Account): Promise<void> {
     if (!window.confirm(`Delete "${account.name || account.address}"? This cannot be undone.`)) {
       return;
@@ -307,6 +323,8 @@ export function AccountsTab({
           onDuplicate={(account) => void duplicateAccount(account)}
           onDelete={(account) => void deleteAccount(account)}
           onRenameGroup={(from, to) => void renameGroup(from, to)}
+          onMoveToGroup={(id, group) => void moveToGroup(id, group)}
+          onMoveBefore={(movingId, targetId) => void moveBefore(movingId, targetId)}
         />
       )}
 

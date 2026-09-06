@@ -26,6 +26,8 @@ import {
   applyLocatorToGroups,
   duplicateAccount,
   isValidPin,
+  moveAccountBefore,
+  moveAccountToGroup,
   renameGroup,
   validateAccount,
 } from '@/shared/accounts';
@@ -1723,6 +1725,22 @@ async function renameGroupInStore(from: string, to: string): Promise<Account[]> 
   return renamed;
 }
 
+/** Move an account into a (possibly different) group. Pure/crypto-free —
+ *  works even while Accounts is locked, same as renameGroupInStore. */
+async function moveAccountToGroupInStore(id: string, group: string): Promise<Account[]> {
+  const moved = moveAccountToGroup(await getAccounts(), id, group);
+  await saveAccounts(moved);
+  return moved;
+}
+
+/** Reorder one account before another within the same group. Pure/crypto-
+ *  free — works even while Accounts is locked, same as renameGroupInStore. */
+async function moveAccountBeforeInStore(movingId: string, targetId: string): Promise<Account[]> {
+  const moved = moveAccountBefore(await getAccounts(), movingId, targetId);
+  await saveAccounts(moved);
+  return moved;
+}
+
 /** Apply one locator field to every account in any of `groups`. Pure/crypto-
  *  free — works even while Accounts is locked, same as renameGroupInStore. */
 async function applyLocatorToGroupsInStore(
@@ -2368,6 +2386,18 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
 
       case MESSAGE_TYPES.RENAME_GROUP:
         renameGroupInStore(message.payload.from, message.payload.to)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.MOVE_ACCOUNT_TO_GROUP:
+        moveAccountToGroupInStore(message.payload.id, message.payload.group)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE:
+        moveAccountBeforeInStore(message.payload.movingId, message.payload.targetId)
           .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;

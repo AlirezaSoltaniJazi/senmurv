@@ -15,7 +15,15 @@ import type {
 } from '@/shared/types';
 import { runAccountLoginFill } from './account-login';
 import { contextAlive, notify } from './context';
-import { clearOverlay, destroyOverlay, drawBoxes, flashOverlay, targetAt } from './overlay';
+import {
+  clearOverlay,
+  destroyOverlay,
+  disableHitTestOverride,
+  drawBoxes,
+  enableHitTestOverride,
+  flashOverlay,
+  targetAt,
+} from './overlay';
 import { scrollToMatch, startMatch, stopMatch } from './match-highlight';
 import { rafThrottle } from './raf-throttle';
 import type { RafThrottled } from './raf-throttle';
@@ -231,8 +239,76 @@ function bail(): void {
   destroyOverlay();
 }
 
+const INTERACTIVE_TAGS = new Set([
+  'a',
+  'button',
+  'input',
+  'select',
+  'textarea',
+  'summary',
+  'option',
+]);
+const INTERACTIVE_ROLES = new Set([
+  'button',
+  'link',
+  'checkbox',
+  'radio',
+  'tab',
+  'menuitem',
+  'switch',
+  'textbox',
+  'combobox',
+  'option',
+]);
+const TEST_ATTR_PREFIXES = ['data-testid', 'data-test', 'data-cy', 'data-qa'];
+
+/** Does `el` carry anything a QA engineer would actually want to locate on? */
+function isMeaningful(el: Element): boolean {
+  if (INTERACTIVE_TAGS.has(el.tagName.toLowerCase())) return true;
+  const role = el.getAttribute('role');
+  if (role !== null && INTERACTIVE_ROLES.has(role)) return true;
+  if (el.id !== '' || el.getAttribute('name') !== null || el.getAttribute('aria-label') !== null) {
+    return true;
+  }
+  if (
+    TEST_ATTR_PREFIXES.some((prefix) => el.getAttributeNames().some((n) => n.startsWith(prefix)))
+  ) {
+    return true;
+  }
+  return (el.textContent ?? '').trim() !== '';
+}
+
+/**
+ * Climb from a hit-tested element to the nearest ancestor worth locating on,
+ * when the exact pixel under the pointer landed on a purely decorative
+ * pass-through node that carries no text and no identifying attribute of its
+ * own — a Material ripple/touch-target/focus-indicator `<span>` is the
+ * concrete case (see `enableHitTestOverride`'s doc comment): even once
+ * hit-testing can reach it at all, it's a bare sibling `<span>` of the real
+ * `<button data-testid="…">`, not a wrapper around it, so nothing about
+ * `buildLocatorSet` or a DOM-tree search from the hit element would find the
+ * testid without this climb. Bounded to a few levels so a genuinely
+ * meaningful but unlabelled leaf (e.g. an icon-only element with real
+ * sibling text elsewhere in a big container) doesn't climb arbitrarily far.
+ */
+function resolvePickable(el: Element): Element {
+  if (isMeaningful(el)) return el;
+  let cur = el.parentElement;
+  for (let depth = 0; cur !== null && depth < 5; depth += 1) {
+    if (isMeaningful(cur)) return cur;
+    cur = cur.parentElement;
+  }
+  return el;
+}
+
+/** The element the user meant to pick at this point — see `resolvePickable`. */
+function pickTarget(x: number, y: number): Element | null {
+  const el = targetAt(x, y);
+  return el ? resolvePickable(el) : null;
+}
+
 function onMouseMove(e: MouseEvent): void {
-  const el = targetAt(e.clientX, e.clientY);
+  const el = pickTarget(e.clientX, e.clientY);
   if (el) highlight(el);
 }
 
@@ -252,7 +328,7 @@ function onPickerPointerDown(e: PointerEvent): void {
   e.preventDefault();
   e.stopPropagation();
   e.stopImmediatePropagation();
-  const el = targetAt(e.clientX, e.clientY);
+  const el = pickTarget(e.clientX, e.clientY);
 
   if (pageMode === 'pick-fields') {
     // Continuous: report each clicked field and stay active for the next.
@@ -302,6 +378,11 @@ function onKeyDown(e: KeyboardEvent): void {
 let pickHover: RafThrottled | null = null;
 
 function startPickListeners(): void {
+  // Only element/field picking forces every element hit-testable — see
+  // `enableHitTestOverride`'s doc comment. Other overlay-consuming modes
+  // (Assertions, Recorder, …) deliberately observe the page's REAL
+  // interactive behavior and must not have it overridden.
+  enableHitTestOverride();
   pickHover = rafThrottle(onMouseMove);
   document.addEventListener('mousemove', pickHover.handler, true);
   document.addEventListener('pointerdown', onPickerPointerDown, true);
@@ -318,6 +399,7 @@ function stopPickListeners(): void {
   document.removeEventListener('pointerdown', onPickerPointerDown, true);
   document.removeEventListener('click', suppressClick, true);
   document.removeEventListener('keydown', onKeyDown, true);
+  disableHitTestOverride();
   destroyOverlay();
 }
 
