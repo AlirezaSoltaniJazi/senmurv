@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { browser } from '@/shared/browser-api';
 import { hasUrl, parseBulkUrls } from '@/shared/tools/bulk-open';
@@ -14,9 +14,12 @@ export function BulkOpenTool(): ReactElement {
   const [opening, setOpening] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
 
-  const parsed = parseBulkUrls(input);
-  const valid = parsed.filter(hasUrl);
-  const invalid = parsed.filter((p) => p.url === null);
+  // Memoized on [input] — re-normalizing/validating every pasted line
+  // shouldn't happen on every render (e.g. the `opening`/`status` state
+  // changes during openAll()), only when the text actually changes.
+  const parsed = useMemo(() => parseBulkUrls(input), [input]);
+  const valid = useMemo(() => parsed.filter(hasUrl), [parsed]);
+  const invalid = useMemo(() => parsed.filter((p) => p.url === null), [parsed]);
 
   async function openAll(): Promise<void> {
     if (valid.length === 0) return;

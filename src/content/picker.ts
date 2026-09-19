@@ -47,6 +47,15 @@ declare global {
 // ---------------------------------------------------------------------------
 
 let toolsModule: Promise<typeof import('./tools')> | null = null;
+// Set the instant the import above settles — a synchronous escape hatch for
+// stopCurrentMode (see its tool-mode branch) so tearing down the OUTGOING
+// tool mode doesn't have to go back through a .then(), which would queue as
+// a microtask that only runs AFTER the calling enterMode/enterToolMode has
+// already finished starting the NEXT mode. That ordering bug was real: the
+// new mode's listeners/overlay were created first, then the old mode's
+// stop() (including destroyOverlay()) ran a tick later and rippped out what
+// the new mode had just built — on every single Tools-tab switch.
+let resolvedTools: typeof import('./tools') | null = null;
 
 /**
  * Load (once) the Tools in-page modes. CRXJS lifts this dynamic import into
@@ -54,7 +63,10 @@ let toolsModule: Promise<typeof import('./tools')> | null = null;
  * every filename is content-hashed.
  */
 function loadTools(): Promise<typeof import('./tools')> {
-  toolsModule ??= import('./tools');
+  toolsModule ??= import('./tools').then((mod) => {
+    resolvedTools = mod;
+    return mod;
+  });
   return toolsModule;
 }
 
@@ -149,9 +161,12 @@ function stopCurrentMode(): void {
   } else if (outgoing === 'match') {
     stopMatch();
   } else if (isToolMode(outgoing)) {
-    // The chunk is necessarily resolved — we could not have entered the mode
-    // without it — so this settles immediately.
-    void loadTools().then((tools) => tools.stopMode(outgoing));
+    // pageMode only ever becomes a ToolMode inside enterToolMode, AFTER its
+    // `await loadTools()` — so resolvedTools is guaranteed non-null here.
+    // Calling it directly (not via loadTools().then(...)) makes this
+    // teardown synchronous, so it always finishes before the caller
+    // (enterMode/enterToolMode) goes on to start the next mode.
+    resolvedTools?.stopMode(outgoing);
   }
   restoreCursor();
 }

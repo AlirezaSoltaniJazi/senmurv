@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import type { DragEvent, ReactElement } from 'react';
 import { DEFAULT_GROUP_NAME, groupAccounts, reorderGroups } from '@/shared/accounts';
 import type { Account } from '@/shared/types';
@@ -175,6 +175,14 @@ export function AccountList({
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragKind, setDragKind] = useState<'account' | 'group' | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
+  // Memoized on its real dependencies — this previously re-bucketed and
+  // re-sorted every account on every render (e.g. a drag-hover updating
+  // `overId`, or a per-row tooltip timer), not just when accounts/groupOrder
+  // actually changed.
+  const groups = useMemo(
+    () => reorderGroups(groupAccounts(accounts), groupOrder),
+    [accounts, groupOrder]
+  );
 
   if (accounts.length === 0) {
     return <p className="hint">No saved accounts yet.</p>;
@@ -247,7 +255,7 @@ export function AccountList({
 
   return (
     <ul className="script-list">
-      {reorderGroups(groupAccounts(accounts), groupOrder).map((group) => (
+      {groups.map((group) => (
         <Fragment key={group.name}>
           <li
             className={
