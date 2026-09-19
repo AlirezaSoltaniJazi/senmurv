@@ -6,6 +6,7 @@ import { ToolShell } from './tools/ToolShell';
 import { A11yTool } from './tools/A11yTool';
 import { AssertTool } from './tools/AssertTool';
 import { AutoRefreshTool } from './tools/AutoRefreshTool';
+import { BulkOpenTool } from './tools/BulkOpenTool';
 import { CaseConvertTool } from './tools/CaseConvertTool';
 import { ColorTool } from './tools/ColorTool';
 import { EncodeDecodeTool } from './tools/EncodeDecodeTool';
@@ -180,6 +181,7 @@ export function ToolsTab({
         {tool === 'queryparams' && <QueryParamsTool />}
         {tool === 'logicalnames' && <LogicalNamesTool />}
         {tool === 'webapi' && <WebApiTool />}
+        {tool === 'bulkopen' && <BulkOpenTool />}
         {tool === 'autorefresh' && (
           <AutoRefreshTool
             active={autoRefresh}

@@ -22,7 +22,8 @@ export type ToolKey =
   | 'autorefresh'
   | 'queryparams'
   | 'logicalnames'
-  | 'webapi';
+  | 'webapi'
+  | 'bulkopen';
 
 /**
  * One entry in the Tools launcher. `mode` is the in-page mode the shell tears
@@ -248,6 +249,16 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Resolves the current record to its Dataverse Web API URL and opens it in a new tab. Reads the Xrm client API, so it does nothing on an ordinary (non-Dynamics) page.',
     mode: null,
     requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'bulkopen',
+    label: 'Bulk Open URLs',
+    icon: '📑',
+    blurb:
+      'Paste one URL per line and open every one as a new background tab in this window. A bare host (e.g. "example.com") gets https:// added automatically; invalid lines are skipped and listed.',
+    mode: null,
+    requiresPage: false,
     isReady: true,
   },
   {

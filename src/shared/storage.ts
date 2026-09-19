@@ -962,3 +962,23 @@ export async function setAccountsSecurityConfig(config: AccountsSecurityConfig):
     browser.storage.local.set({ [STORAGE_KEYS.ACCOUNTS_SECURITY]: config })
   );
 }
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every((v) => typeof v === 'string');
+}
+
+/** Read the saved Accounts group display order (real group names only —
+ *  Default is never included, it always sorts first). [] if nothing is
+ *  stored yet. */
+export async function getAccountsGroupOrder(): Promise<string[]> {
+  const result = await browser.storage.local.get(STORAGE_KEYS.ACCOUNTS_GROUP_ORDER);
+  const raw = result[STORAGE_KEYS.ACCOUNTS_GROUP_ORDER];
+  return isStringArray(raw) ? raw : [];
+}
+
+/** Save the Accounts group display order. */
+export async function setAccountsGroupOrder(order: string[]): Promise<void> {
+  await withKeyLock(STORAGE_KEYS.ACCOUNTS_GROUP_ORDER, () =>
+    browser.storage.local.set({ [STORAGE_KEYS.ACCOUNTS_GROUP_ORDER]: order })
+  );
+}

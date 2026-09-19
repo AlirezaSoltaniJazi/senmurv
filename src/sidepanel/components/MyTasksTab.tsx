@@ -161,6 +161,16 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
     });
   }
 
+  function renameSubtask(list: Checklist, subtaskId: string, title: string): void {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    void persist({
+      ...list,
+      subtasks: list.subtasks.map((s) => (s.id === subtaskId ? { ...s, title: trimmed } : s)),
+      updatedAt: nowMs(),
+    });
+  }
+
   async function saveEdit(list: Checklist): Promise<void> {
     setError(null);
     if (await persist({ ...list, updatedAt: nowMs() })) setEditingId(null);
@@ -294,6 +304,7 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
         onToggleImportant={toggleImportant}
         onToggleSubtask={toggleSubtask}
         onAddSubtask={addSubtask}
+        onRenameSubtask={renameSubtask}
         onDeleteSubtask={deleteSubtask}
         onStartTracking={() => startTracking(list)}
         onStartSubtaskTracking={startSubtaskTracking}

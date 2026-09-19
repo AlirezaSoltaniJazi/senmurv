@@ -1,10 +1,13 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import type { DragEvent, ReactElement } from 'react';
-import { DEFAULT_GROUP_NAME, groupAccounts } from '@/shared/accounts';
+import { DEFAULT_GROUP_NAME, groupAccounts, reorderGroups } from '@/shared/accounts';
 import type { Account } from '@/shared/types';
 
 interface Props {
   accounts: Account[];
+  /** Manual display order of real groups (Default excluded — it always
+   *  sorts first); see `reorderGroups`/`moveGroupBefore`. */
+  groupOrder: string[];
   /** id of the account whose Login is in flight, or null. */
   pendingId: string | null;
   /** account id -> error from its most recent Login attempt. */
@@ -22,6 +25,9 @@ interface Props {
    *  (a no-op unless both are already in the same group; see
    *  `moveAccountBefore`). */
   onMoveBefore: (movingId: string, targetId: string) => void;
+  /** Drag a group's header onto another group's header — reorders it just
+   *  before that one (see `moveGroupBefore`). Default is never draggable. */
+  onMoveGroupBefore: (movingName: string, targetName: string) => void;
 }
 
 interface AccountRowProps {
@@ -137,6 +143,7 @@ function AccountRow({
 
 export function AccountList({
   accounts,
+  groupOrder,
   pendingId,
   loginErrors,
   tooltipDelaySeconds,
@@ -147,6 +154,7 @@ export function AccountList({
   onRenameGroup,
   onMoveToGroup,
   onMoveBefore,
+  onMoveGroupBefore,
 }: Props): ReactElement {
   // Which group names are expanded — collapsed by default, so the main page
   // shows just the group names until you click into one.
@@ -154,13 +162,18 @@ export function AccountList({
   // Inline group rename — same shape as ScriptsTab's folder rename.
   const [renamingGroup, setRenamingGroup] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState('');
-  // Drag an account onto a group's header row to move it there, or onto
-  // another account row to reorder before it — same drag-and-drop shape as
-  // ScriptsTab's folder/script nesting, minus the "nest onto a sibling"
-  // shortcut: a group header always means "move here", an account row
-  // always means "reorder before this one" (moveAccountBefore no-ops across
-  // groups on its own, so no extra guard is needed here).
+  // Drag an account onto a group's header row to move it there, onto
+  // another account row to reorder before it, or drag a group's own header
+  // onto another group's header to reorder the groups themselves — same
+  // drag-and-drop shape as ScriptsTab's folder/script nesting, minus the
+  // "nest onto a sibling" shortcut: a group header always means "move here"
+  // (or "reorder groups", when the dragged thing is itself a group), an
+  // account row always means "reorder before this one" (moveAccountBefore
+  // no-ops across groups on its own, so no extra guard is needed here).
+  // `dragId` holds an account id or a group name depending on `dragKind` —
+  // the two never collide (account ids are `acct_`-prefixed).
   const [dragId, setDragId] = useState<string | null>(null);
+  const [dragKind, setDragKind] = useState<'account' | 'group' | null>(null);
   const [overId, setOverId] = useState<string | null>(null);
 
   if (accounts.length === 0) {
@@ -190,8 +203,15 @@ export function AccountList({
 
   function onAccountDragStart(e: DragEvent, id: string): void {
     setDragId(id);
+    setDragKind('account');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', id); // Firefox requires data
+  }
+  function onGroupDragStart(e: DragEvent, name: string): void {
+    setDragId(name);
+    setDragKind('group');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', name); // Firefox requires data
   }
   function onRowDragOver(e: DragEvent, id: string): void {
     if (dragId === null || dragId === id) return;
@@ -201,35 +221,57 @@ export function AccountList({
   }
   function endDrag(): void {
     setDragId(null);
+    setDragKind(null);
     setOverId(null);
   }
   function onGroupDrop(e: DragEvent, groupName: string): void {
     e.preventDefault();
     const id = dragId;
+    const kind = dragKind;
     endDrag();
     if (id === null) return;
-    onMoveToGroup(id, groupName);
+    if (kind === 'group') {
+      if (id !== groupName) onMoveGroupBefore(id, groupName);
+    } else {
+      onMoveToGroup(id, groupName);
+    }
   }
   function onAccountDrop(e: DragEvent, targetId: string): void {
     e.preventDefault();
     const movingId = dragId;
+    const kind = dragKind;
     endDrag();
-    if (movingId === null || movingId === targetId) return;
+    if (kind !== 'account' || movingId === null || movingId === targetId) return;
     onMoveBefore(movingId, targetId);
   }
 
   return (
     <ul className="script-list">
-      {groupAccounts(accounts).map((group) => (
+      {reorderGroups(groupAccounts(accounts), groupOrder).map((group) => (
         <Fragment key={group.name}>
           <li
             className={
               'script-row folder-row' +
-              (dragId !== null && overId === group.name ? ' drag-nest-over' : '')
+              (dragId !== null && overId === group.name ? ' drag-nest-over' : '') +
+              (dragKind === 'group' && dragId === group.name ? ' dragging' : '')
             }
             onDragOver={(e) => onRowDragOver(e, group.name)}
             onDrop={(e) => onGroupDrop(e, group.name)}
           >
+            {group.name === DEFAULT_GROUP_NAME ? (
+              <span className="drag-handle-spacer" aria-hidden="true" />
+            ) : (
+              <span
+                className="drag-handle"
+                draggable
+                onDragStart={(e) => onGroupDragStart(e, group.name)}
+                onDragEnd={endDrag}
+                title="Drag to reorder groups"
+                aria-label="Drag to reorder groups"
+              >
+                ⠿
+              </span>
+            )}
             <button
               type="button"
               className="tree-caret"

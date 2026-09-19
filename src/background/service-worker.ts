@@ -26,9 +26,12 @@ import {
   applyLocatorSeed,
   applyLocatorToGroups,
   duplicateAccount,
+  effectiveGroupOrder,
+  existingGroupNames,
   isValidPin,
   moveAccountBefore,
   moveAccountToGroup,
+  moveGroupBefore,
   renameGroup,
   validateAccount,
 } from '@/shared/accounts';
@@ -48,6 +51,7 @@ import {
   deleteScript,
   deleteTask,
   getAccounts,
+  getAccountsGroupOrder,
   getChecklists,
   getDefaultOtpRecord,
   getDefaultPasswordRecord,
@@ -68,6 +72,7 @@ import {
   saveScripts,
   saveTasks,
   savePrefs,
+  setAccountsGroupOrder,
   setDefaultOtpRecord,
   setDefaultPasswordRecord,
   transformTasks,
@@ -386,7 +391,17 @@ async function sendTabMessageWithRetry<T>(
   throw lastError;
 }
 
-const UNREACHABLE = 'Could not reach the page. Try reloading the tab.';
+// Reached only once the URL itself has already cleared isRunnableUrl (and,
+// for Accounts login, navigation already succeeded) — so by the time this
+// fires, it is never an address or locator problem. It means reachTab's
+// direct sendMessage AND its inject-and-retry fallback both failed, which in
+// practice is the content script's connection to a stale/reloaded extension
+// being wedged. Reloading the TAB alone does not always clear that — the
+// extension side can be the stale half — so this says so explicitly instead
+// of only suggesting the fix that turned out not to be enough.
+const UNREACHABLE =
+  'Could not reach the page — not an address or locator problem, the connection to it was lost. ' +
+  'Try reloading the tab; if that does not help, reload the extension itself and try again.';
 
 /**
  * Deliver a message to the content script, injecting it first for a tab that
@@ -1743,6 +1758,23 @@ async function moveAccountBeforeInStore(movingId: string, targetId: string): Pro
   return moved;
 }
 
+/** Reorder one group's header before another's — the group list's own drag
+ *  handle, as opposed to moving an account between/within groups. Resolves
+ *  the CURRENT effective order (saved order merged with whatever real groups
+ *  exist right now) before applying the move, so a brand-new or since-
+ *  deleted group never desyncs the drag. Pure/crypto-free — works even while
+ *  Accounts is locked, same as renameGroupInStore. */
+async function moveAccountsGroupBeforeInStore(
+  movingName: string,
+  targetName: string
+): Promise<string[]> {
+  const realNames = existingGroupNames(await getAccounts());
+  const currentOrder = effectiveGroupOrder(realNames, await getAccountsGroupOrder());
+  const nextOrder = moveGroupBefore(currentOrder, movingName, targetName);
+  await setAccountsGroupOrder(nextOrder);
+  return nextOrder;
+}
+
 /** Apply one locator field to every account in any of `groups`. Pure/crypto-
  *  free — works even while Accounts is locked, same as renameGroupInStore. */
 async function applyLocatorToGroupsInStore(
@@ -2418,6 +2450,21 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
 
       case MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE:
         moveAccountBeforeInStore(message.payload.movingId, message.payload.targetId)
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.GET_ACCOUNTS_GROUP_ORDER:
+        (async () => {
+          const realNames = existingGroupNames(await getAccounts());
+          return effectiveGroupOrder(realNames, await getAccountsGroupOrder());
+        })()
+          .then((value) => sendResponse({ ok: true, value }))
+          .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
+        return true;
+
+      case MESSAGE_TYPES.MOVE_ACCOUNTS_GROUP_BEFORE:
+        moveAccountsGroupBeforeInStore(message.payload.movingName, message.payload.targetName)
           .then((value) => sendResponse({ ok: true, value }))
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;

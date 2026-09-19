@@ -376,6 +376,65 @@ export function moveAccountBefore(
 }
 
 /**
+ * The effective display order of REAL groups (Default is excluded — it is
+ * never reordered, always sorting first): every name in `order` that is
+ * still a real group, in that order, followed by any real group not yet in
+ * `order` (brand new, or saved before this feature existed), alphabetically.
+ * A saved `order` is a preference, not a source of truth — a group it
+ * doesn't mention still needs somewhere sensible to display, and a name it
+ * mentions that no longer has any accounts is simply dropped.
+ */
+export function effectiveGroupOrder(realGroupNames: string[], order: string[]): string[] {
+  const known = new Set(realGroupNames);
+  const present = order.filter((name) => known.has(name));
+  const listed = new Set(present);
+  const rest = realGroupNames
+    .filter((name) => !listed.has(name))
+    .sort((a, b) => a.localeCompare(b));
+  return [...present, ...rest];
+}
+
+/**
+ * Reorder already-bucketed groups (from {@link groupAccounts}) per a saved
+ * group order — Default always stays first regardless, since it is not a
+ * real, user-created group and is never part of `order`.
+ */
+export function reorderGroups<T>(groups: AccountGroup<T>[], order: string[]): AccountGroup<T>[] {
+  const byName = new Map(groups.map((g) => [g.name, g] as const));
+  const realNames = groups.filter((g) => g.name !== DEFAULT_GROUP_NAME).map((g) => g.name);
+  const effective = effectiveGroupOrder(realNames, order);
+
+  const out: AccountGroup<T>[] = [];
+  const defaultGroup = byName.get(DEFAULT_GROUP_NAME);
+  if (defaultGroup) out.push(defaultGroup);
+  for (const name of effective) {
+    const g = byName.get(name);
+    if (g) out.push(g);
+  }
+  return out;
+}
+
+/**
+ * Compute the next saved group order after dragging `movingName` to just
+ * before `targetName`, given the CURRENT effective order (see
+ * {@link effectiveGroupOrder}). A no-op if either name isn't in that order,
+ * or they're the same — Default is never a valid `movingName`/`targetName`
+ * since {@link effectiveGroupOrder} never includes it.
+ */
+export function moveGroupBefore(
+  currentOrder: string[],
+  movingName: string,
+  targetName: string
+): string[] {
+  if (movingName === targetName) return currentOrder;
+  if (!currentOrder.includes(movingName) || !currentOrder.includes(targetName)) return currentOrder;
+  const rest = currentOrder.filter((name) => name !== movingName);
+  const at = rest.indexOf(targetName);
+  rest.splice(at, 0, movingName);
+  return rest;
+}
+
+/**
  * Apply one locator field (`seed`) to every account bucketed under any of
  * `groups` (each trimmed, via {@link DEFAULT_GROUP_NAME}'s blank/absent
  * fallback like every other group operation) — the editor's "Apply to

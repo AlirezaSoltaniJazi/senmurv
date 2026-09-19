@@ -30,6 +30,7 @@ interface ChecklistCardProps {
   onToggleImportant: (list: Checklist) => void;
   onToggleSubtask: (list: Checklist, subtaskId: string) => void;
   onAddSubtask: (list: Checklist, title: string) => void;
+  onRenameSubtask: (list: Checklist, subtaskId: string, title: string) => void;
   onDeleteSubtask: (list: Checklist, subtaskId: string) => void;
   onStartTracking: () => void;
   onStartSubtaskTracking: (list: Checklist, subtask: Subtask) => void;
@@ -114,6 +115,7 @@ export function ChecklistCard({
   onToggleImportant,
   onToggleSubtask,
   onAddSubtask,
+  onRenameSubtask,
   onDeleteSubtask,
   onStartTracking,
   onStartSubtaskTracking,
@@ -124,6 +126,10 @@ export function ChecklistCard({
   onDelete,
 }: ChecklistCardProps): ReactElement {
   const [newSubtask, setNewSubtask] = useState('');
+  // Inline subtask rename — same shape as the Accounts tab's group rename:
+  // click "Rename", an input replaces the label, Enter/blur saves, Escape cancels.
+  const [renamingSubtaskId, setRenamingSubtaskId] = useState<string | null>(null);
+  const [renameSubtaskValue, setRenameSubtaskValue] = useState('');
   const parentRef = useRef<HTMLInputElement>(null);
   const progress = checklistProgress(list);
   const complete = isComplete(list);
@@ -152,6 +158,18 @@ export function ChecklistCard({
     if (!trimmed) return;
     onAddSubtask(list, trimmed);
     setNewSubtask('');
+  }
+
+  function startRenameSubtask(s: Subtask): void {
+    setRenamingSubtaskId(s.id);
+    setRenameSubtaskValue(s.title);
+  }
+
+  function saveRenameSubtask(subtaskId: string): void {
+    const title = renameSubtaskValue.trim();
+    setRenamingSubtaskId(null);
+    if (!title) return;
+    onRenameSubtask(list, subtaskId, title);
   }
 
   return (
@@ -241,7 +259,33 @@ export function ChecklistCard({
                     onChange={() => onToggleSubtask(list, s.id)}
                     aria-label={s.title}
                   />
-                  <span className={s.done ? 'subtask-title done' : 'subtask-title'}>{s.title}</span>
+                  {renamingSubtaskId === s.id ? (
+                    <input
+                      className="name-input subtask-rename"
+                      autoFocus
+                      value={renameSubtaskValue}
+                      onChange={(e) => setRenameSubtaskValue(e.target.value)}
+                      onBlur={() => saveRenameSubtask(s.id)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveRenameSubtask(s.id);
+                        else if (e.key === 'Escape') setRenamingSubtaskId(null);
+                      }}
+                    />
+                  ) : (
+                    <span className={s.done ? 'subtask-title done' : 'subtask-title'}>
+                      {s.title}
+                    </span>
+                  )}
+                  {renamingSubtaskId !== s.id && (
+                    <button
+                      type="button"
+                      onClick={() => startRenameSubtask(s)}
+                      aria-label="Rename subtask"
+                      title="Rename subtask"
+                    >
+                      ✎
+                    </button>
+                  )}
                   <span className="track-control">
                     {subEntry ? (
                       <>

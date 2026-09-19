@@ -56,6 +56,10 @@ export function AccountsTab({
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // Manual display order of real (non-Default) groups — Default always
+  // sorts first regardless, and a group not yet in here falls back to
+  // alphabetical (see shared/accounts.ts's reorderGroups).
+  const [groupOrder, setGroupOrder] = useState<string[]>([]);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
   // Pending "clear this account's login error" timers, keyed by account id —
@@ -84,6 +88,10 @@ export function AccountsTab({
       if (cancelled || !state?.isUnlocked) return;
       const res = await sendRuntimeMessage<Result<Account[]>>({ type: MESSAGE_TYPES.GET_ACCOUNTS });
       if (!cancelled && res.ok) setAccounts(res.value);
+      const orderRes = await sendRuntimeMessage<Result<string[]>>({
+        type: MESSAGE_TYPES.GET_ACCOUNTS_GROUP_ORDER,
+      });
+      if (!cancelled && orderRes.ok) setGroupOrder(orderRes.value);
     })();
     return () => {
       cancelled = true;
@@ -175,6 +183,14 @@ export function AccountsTab({
       payload: { movingId, targetId },
     });
     if (res.ok) setAccounts(res.value);
+  }
+
+  async function moveGroupBefore(movingName: string, targetName: string): Promise<void> {
+    const res = await sendRuntimeMessage<Result<string[]>>({
+      type: MESSAGE_TYPES.MOVE_ACCOUNTS_GROUP_BEFORE,
+      payload: { movingName, targetName },
+    });
+    if (res.ok) setGroupOrder(res.value);
   }
 
   async function deleteAccount(account: Account): Promise<void> {
@@ -315,6 +331,7 @@ export function AccountsTab({
       ) : (
         <AccountList
           accounts={accounts}
+          groupOrder={groupOrder}
           pendingId={pendingId}
           loginErrors={loginErrors}
           tooltipDelaySeconds={tooltipDelaySeconds}
@@ -325,6 +342,9 @@ export function AccountsTab({
           onRenameGroup={(from, to) => void renameGroup(from, to)}
           onMoveToGroup={(id, group) => void moveToGroup(id, group)}
           onMoveBefore={(movingId, targetId) => void moveBefore(movingId, targetId)}
+          onMoveGroupBefore={(movingName, targetName) =>
+            void moveGroupBefore(movingName, targetName)
+          }
         />
       )}
 

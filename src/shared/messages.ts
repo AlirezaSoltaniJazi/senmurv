@@ -183,6 +183,11 @@ export type RuntimeMessage =
       type: typeof MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE;
       payload: { movingId: string; targetId: string };
     }
+  | { type: typeof MESSAGE_TYPES.GET_ACCOUNTS_GROUP_ORDER }
+  | {
+      type: typeof MESSAGE_TYPES.MOVE_ACCOUNTS_GROUP_BEFORE;
+      payload: { movingName: string; targetName: string };
+    }
   | {
       type: typeof MESSAGE_TYPES.APPLY_LOCATOR_TO_GROUPS;
       payload: { groups: string[]; seed: AccountLocatorSeed };
