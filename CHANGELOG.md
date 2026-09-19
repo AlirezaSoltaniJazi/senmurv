@@ -6,6 +6,8 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-19
+
 ### Added
 
 - **Accounts → OTP (two-factor) support** — an optional OTP field and Confirm
@@ -628,7 +630,8 @@ Initial release. A Manifest V3 Chrome extension with a Side Panel QA toolkit.
   suite, and CI (lint / format / typecheck / test / build) plus a release
   workflow.
 
-[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.9.0...v1.0.0
 [0.9.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/AlirezaSoltaniJazi/senmurv/compare/v0.7.0...v0.8.0
