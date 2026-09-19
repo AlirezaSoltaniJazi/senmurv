@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { KeyboardEvent, ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
@@ -161,6 +161,16 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
     });
   }
 
+  function renameSubtask(list: Checklist, subtaskId: string, title: string): void {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    void persist({
+      ...list,
+      subtasks: list.subtasks.map((s) => (s.id === subtaskId ? { ...s, title: trimmed } : s)),
+      updatedAt: nowMs(),
+    });
+  }
+
   async function saveEdit(list: Checklist): Promise<void> {
     setError(null);
     if (await persist({ ...list, updatedAt: nowMs() })) setEditingId(null);
@@ -196,18 +206,36 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
     });
   }
 
+  // One O(timeEntries) pass each, instead of a fresh linear scan per checklist
+  // (activeEntryFor) and per subtask (activeSubEntryFor) on every render —
+  // with many tasks/subtasks and a long time-entry history that was
+  // effectively O((checklists + subtasks) × timeEntries) per render.
+  const activeEntryByChecklistId = useMemo(() => {
+    const map = new Map<string, TimeEntry>();
+    for (const e of timeEntries) {
+      if (e.checklistId !== undefined && e.subtaskId === undefined && isActive(e)) {
+        map.set(e.checklistId, e);
+      }
+    }
+    return map;
+  }, [timeEntries]);
+
+  const activeEntryBySubtaskId = useMemo(() => {
+    const map = new Map<string, TimeEntry>();
+    for (const e of timeEntries) {
+      if (e.subtaskId !== undefined && isActive(e)) map.set(e.subtaskId, e);
+    }
+    return map;
+  }, [timeEntries]);
+
   /** The still-active timer tracking a whole task (not one of its subtasks). */
   function activeEntryFor(listId: string): TimeEntry | null {
-    return (
-      timeEntries.find(
-        (e) => e.checklistId === listId && e.subtaskId === undefined && isActive(e)
-      ) ?? null
-    );
+    return activeEntryByChecklistId.get(listId) ?? null;
   }
 
   /** The still-active timer tracking a specific subtask, if any. */
   function activeSubEntryFor(subtaskId: string): TimeEntry | null {
-    return timeEntries.find((e) => e.subtaskId === subtaskId && isActive(e)) ?? null;
+    return activeEntryBySubtaskId.get(subtaskId) ?? null;
   }
 
   async function saveEntry(entry: TimeEntry): Promise<void> {
@@ -266,18 +294,25 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
     if (e.key === 'Enter') void addTask();
   }
 
-  const overall = overallProgress(checklists);
+  const overall = useMemo(() => overallProgress(checklists), [checklists]);
   const overallBar = progressBar(overall.percent);
-  const sorted = [...checklists].sort(
-    (a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || b.createdAt - a.createdAt
-  );
-  const matching = sorted.filter((list) => matchesChecklistQuery(list, query));
-  // Each task lands in exactly one section — no duplicate listing. Starred
-  // wins over done (a starred task you've finished still surfaces as
-  // Important); everything else that's complete moves to Done.
-  const importantLists = matching.filter((list) => list.important === true);
-  const doneLists = matching.filter((list) => list.important !== true && isComplete(list));
-  const otherLists = matching.filter((list) => list.important !== true && !isComplete(list));
+  // Memoized on [checklists, query] — this used to re-sort/re-filter on every
+  // render, including every once-a-second `now` tick from an active timer
+  // and every keystroke in the search box before the query even changed.
+  const { importantLists, doneLists, otherLists } = useMemo(() => {
+    const sorted = [...checklists].sort(
+      (a, b) => (a.deadline ?? Infinity) - (b.deadline ?? Infinity) || b.createdAt - a.createdAt
+    );
+    const matching = sorted.filter((list) => matchesChecklistQuery(list, query));
+    // Each task lands in exactly one section — no duplicate listing. Starred
+    // wins over done (a starred task you've finished still surfaces as
+    // Important); everything else that's complete moves to Done.
+    return {
+      importantLists: matching.filter((list) => list.important === true),
+      doneLists: matching.filter((list) => list.important !== true && isComplete(list)),
+      otherLists: matching.filter((list) => list.important !== true && !isComplete(list)),
+    };
+  }, [checklists, query]);
 
   function renderCard(list: Checklist): ReactElement {
     return (
@@ -294,6 +329,7 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
         onToggleImportant={toggleImportant}
         onToggleSubtask={toggleSubtask}
         onAddSubtask={addSubtask}
+        onRenameSubtask={renameSubtask}
         onDeleteSubtask={deleteSubtask}
         onStartTracking={() => startTracking(list)}
         onStartSubtaskTracking={startSubtaskTracking}
@@ -367,7 +403,7 @@ export function MyTasksTab({ reloadNonce }: Props): ReactElement {
         </details>
       )}
 
-      {matching.length === 0 ? (
+      {importantLists.length + doneLists.length + otherLists.length === 0 ? (
         <p className="hint">
           {checklists.length === 0
             ? 'No tasks yet. Add one above.'

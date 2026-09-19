@@ -1,4 +1,4 @@
-import { MESSAGE_TYPES, TAB_ORDER_MAX_STOPS } from '@/shared/constants';
+import { MESSAGE_TYPES, TAB_ORDER_MAX_STOPS_DEFAULT } from '@/shared/constants';
 import { notifyQuiet } from '@/content/context';
 import { isOurHost } from '@/content/overlay';
 import { drawBoxes, clearOverlay, destroyOverlay } from '@/content/overlay';
@@ -125,19 +125,19 @@ function markStale(): void {
 }
 
 /** Compute the tab order, retain elements, draw badges, and (re)arm the observers. */
-export function scanTabOrder(): TabOrderScan {
+export function scanTabOrder(maxStops: number = TAB_ORDER_MAX_STOPS_DEFAULT): TabOrderScan {
   active = true;
   selected = -1;
   modalDialogs = computeModalDialogs();
   const result = computeTabOrder(document, BROWSER_ENV);
-  elements = result.elements.slice(0, TAB_ORDER_MAX_STOPS);
-  stops = result.stops.slice(0, TAB_ORDER_MAX_STOPS);
+  elements = result.elements.slice(0, maxStops);
+  stops = result.stops.slice(0, maxStops);
 
   const warnings: string[] = [
     'Computed from the DOM (Chrome, top frame only). Closed shadow roots, cross-origin frames, roving tabindex and JS focus managers are not visible.',
   ];
-  if (result.elements.length > TAB_ORDER_MAX_STOPS) {
-    warnings.push(`Showing the first ${TAB_ORDER_MAX_STOPS} of ${result.elements.length} stops.`);
+  if (result.elements.length > maxStops) {
+    warnings.push(`Showing the first ${maxStops} of ${result.elements.length} stops.`);
   }
   // A subtree observer on documentElement does NOT see mutations inside shadow
   // roots — say so rather than silently miss them.

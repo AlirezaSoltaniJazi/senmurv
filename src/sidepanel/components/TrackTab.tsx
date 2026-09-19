@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type { ReactElement } from 'react';
 import { MESSAGE_TYPES } from '@/shared/constants';
 import { sendRuntimeMessage } from '@/shared/messages';
@@ -257,20 +257,36 @@ export function TrackTab({ reloadNonce, tagColors }: Props): ReactElement {
     });
   }
 
-  const activeEntries = [...entries].filter(isActive).sort((a, b) => firstStart(b) - firstStart(a));
+  // Memoized on their real dependencies (not "every render") — these
+  // previously recomputed on every keystroke in the title/tag inputs, every
+  // expand/collapse toggle, etc., not just when entries/now/cursor actually
+  // changed. dayBlocks/totals still depend on `now` and so still recompute
+  // every second while a timer runs (they show live elapsed time) — that
+  // part is inherent, not a bug.
+  const activeEntries = useMemo(
+    () => [...entries].filter(isActive).sort((a, b) => firstStart(b) - firstStart(a)),
+    [entries]
+  );
   // Starred but not currently running/paused — Active already covers the
   // starred-and-live case, so this section never duplicates it.
-  const importantEntries = [...entries]
-    .filter((e) => e.important === true && !isActive(e))
-    .sort((a, b) => firstStart(b) - firstStart(a));
-  const dayBlocks = buildDayBlocks(entries, now);
-  const grid = buildMonthGrid(cursor.year, cursor.month);
-  const totals = totalsByDay(entries, now);
+  const importantEntries = useMemo(
+    () =>
+      [...entries]
+        .filter((e) => e.important === true && !isActive(e))
+        .sort((a, b) => firstStart(b) - firstStart(a)),
+    [entries]
+  );
+  const dayBlocks = useMemo(() => buildDayBlocks(entries, now), [entries, now]);
+  const grid = useMemo(
+    () => buildMonthGrid(cursor.year, cursor.month),
+    [cursor.year, cursor.month]
+  );
+  const totals = useMemo(() => totalsByDay(entries, now), [entries, now]);
   // One pass for the whole month, instead of the calendar re-scanning every
   // entry for each of its 42 cells.
-  const tagsPerDay = tagsByDay(entries);
-  const tags = distinctTags(entries);
-  const titles = distinctTitles(entries);
+  const tagsPerDay = useMemo(() => tagsByDay(entries), [entries]);
+  const tags = useMemo(() => distinctTags(entries), [entries]);
+  const titles = useMemo(() => distinctTitles(entries), [entries]);
 
   return (
     <TagColorsContext.Provider value={tagColors}>

@@ -88,7 +88,14 @@ export function JsonFormatterTool(): ReactElement {
   const [view, setView] = useState<'text' | 'tree'>('text');
 
   const parsed = useMemo(() => (input.trim() === '' ? null : parseJson(input)), [input]);
-  const formatted = useMemo(() => (input.trim() === '' ? null : formatJson(input)), [input]);
+  // Derived from the already-parsed value, not re-parsed from `input` — the
+  // "Formatted" view previously ran a second full JSON.parse of the same
+  // text on every keystroke (formatJson() does its own internal parseJson()
+  // call), doubling the parse cost for a large pasted payload.
+  const formatted = useMemo<Result<string> | null>(() => {
+    if (parsed === null || !parsed.ok) return null;
+    return { ok: true, value: JSON.stringify(parsed.value, null, 2) };
+  }, [parsed]);
 
   // Replace the textarea with a transformed version (pretty / minified), if valid.
   const apply = (next: Result<string>): void => {

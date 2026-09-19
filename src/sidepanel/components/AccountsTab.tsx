@@ -11,6 +11,7 @@ import type { Account, AccountDraft, AccountsLockState, Result } from '@/shared/
 import { AccountEditor } from './accounts/AccountEditor';
 import { AccountList } from './accounts/AccountList';
 import { AccountsSecurity } from './accounts/AccountsSecurity';
+import { DefaultOtpSettings } from './accounts/DefaultOtpSettings';
 import { DefaultPasswordSettings } from './accounts/DefaultPasswordSettings';
 
 /** The in-progress account draft, if any — lifted to App.tsx so it (and the
@@ -31,11 +32,14 @@ interface Props {
   seedGeneration: number;
   /** Seconds a saved account must be hovered before its description tooltip appears. */
   tooltipDelaySeconds: number;
+  /** Seconds a login-error banner stays visible before auto-dismissing. */
+  loginErrorDisplaySeconds: number;
+  /** Seconds an "Apply to group(s)" result banner stays visible. */
+  applyResultDisplaySeconds: number;
 }
 
 const DEFAULT_SESSION_MINUTES = 30;
 const LOCKED_ERROR_PREFIX = 'Accounts are locked';
-const LOGIN_ERROR_DISPLAY_MS = 5000;
 
 export function AccountsTab({
   reloadNonce,
@@ -43,6 +47,8 @@ export function AccountsTab({
   setEditing,
   seedGeneration,
   tooltipDelaySeconds,
+  loginErrorDisplaySeconds,
+  applyResultDisplaySeconds,
 }: Props): ReactElement {
   const [lockState, setLockState] = useState<AccountsLockState | null>(null);
   const [pin, setPin] = useState('');
@@ -50,15 +56,21 @@ export function AccountsTab({
   const [authError, setAuthError] = useState<string | null>(null);
 
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // Manual display order of real (non-Default) groups — Default always
+  // sorts first regardless, and a group not yet in here falls back to
+  // alphabetical (see shared/accounts.ts's reorderGroups).
+  const [groupOrder, setGroupOrder] = useState<string[]>([]);
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [loginErrors, setLoginErrors] = useState<Record<string, string>>({});
   // Pending "clear this account's login error" timers, keyed by account id —
-  // so a login error auto-dismisses after LOGIN_ERROR_DISPLAY_MS.
+  // so a login error auto-dismisses after loginErrorDisplaySeconds.
   const loginErrorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
   const [unlockNonce, setUnlockNonce] = useState(0);
   // Told by DefaultPasswordSettings whenever it changes; lets the editor's
   // "use default password" checkbox disable itself until one is set.
   const [isDefaultPasswordSet, setIsDefaultPasswordSet] = useState(false);
+  // Same, for DefaultOtpSettings / "use default OTP code".
+  const [isDefaultOtpSet, setIsDefaultOtpSet] = useState(false);
 
   async function refreshLockState(): Promise<AccountsLockState | null> {
     const res = await sendRuntimeMessage<Result<AccountsLockState>>({
@@ -76,6 +88,10 @@ export function AccountsTab({
       if (cancelled || !state?.isUnlocked) return;
       const res = await sendRuntimeMessage<Result<Account[]>>({ type: MESSAGE_TYPES.GET_ACCOUNTS });
       if (!cancelled && res.ok) setAccounts(res.value);
+      const orderRes = await sendRuntimeMessage<Result<string[]>>({
+        type: MESSAGE_TYPES.GET_ACCOUNTS_GROUP_ORDER,
+      });
+      if (!cancelled && orderRes.ok) setGroupOrder(orderRes.value);
     })();
     return () => {
       cancelled = true;
@@ -153,6 +169,30 @@ export function AccountsTab({
     if (res.ok) setAccounts(res.value);
   }
 
+  async function moveToGroup(id: string, group: string): Promise<void> {
+    const res = await sendRuntimeMessage<Result<Account[]>>({
+      type: MESSAGE_TYPES.MOVE_ACCOUNT_TO_GROUP,
+      payload: { id, group },
+    });
+    if (res.ok) setAccounts(res.value);
+  }
+
+  async function moveBefore(movingId: string, targetId: string): Promise<void> {
+    const res = await sendRuntimeMessage<Result<Account[]>>({
+      type: MESSAGE_TYPES.MOVE_ACCOUNT_BEFORE,
+      payload: { movingId, targetId },
+    });
+    if (res.ok) setAccounts(res.value);
+  }
+
+  async function moveGroupBefore(movingName: string, targetName: string): Promise<void> {
+    const res = await sendRuntimeMessage<Result<string[]>>({
+      type: MESSAGE_TYPES.MOVE_ACCOUNTS_GROUP_BEFORE,
+      payload: { movingName, targetName },
+    });
+    if (res.ok) setGroupOrder(res.value);
+  }
+
   async function deleteAccount(account: Account): Promise<void> {
     if (!window.confirm(`Delete "${account.name || account.address}"? This cannot be undone.`)) {
       return;
@@ -191,7 +231,7 @@ export function AccountsTab({
       if (res.error.startsWith(LOCKED_ERROR_PREFIX)) void refreshLockState();
       loginErrorTimers.current[account.id] = setTimeout(
         () => clearLoginError(account.id),
-        LOGIN_ERROR_DISPLAY_MS
+        loginErrorDisplaySeconds * 1000
       );
     }
   }
@@ -281,13 +321,17 @@ export function AccountsTab({
           initial={editing.account}
           isNew={editing.isNew}
           isDefaultPasswordSet={isDefaultPasswordSet}
+          isDefaultOtpSet={isDefaultOtpSet}
           existingGroups={existingGroupNames(accounts)}
+          onGroupAccountsChanged={setAccounts}
+          applyResultDisplaySeconds={applyResultDisplaySeconds}
           onSave={(draft) => void saveAccount(draft)}
           onCancel={() => setEditing(null)}
         />
       ) : (
         <AccountList
           accounts={accounts}
+          groupOrder={groupOrder}
           pendingId={pendingId}
           loginErrors={loginErrors}
           tooltipDelaySeconds={tooltipDelaySeconds}
@@ -296,6 +340,11 @@ export function AccountsTab({
           onDuplicate={(account) => void duplicateAccount(account)}
           onDelete={(account) => void deleteAccount(account)}
           onRenameGroup={(from, to) => void renameGroup(from, to)}
+          onMoveToGroup={(id, group) => void moveToGroup(id, group)}
+          onMoveBefore={(movingId, targetId) => void moveBefore(movingId, targetId)}
+          onMoveGroupBefore={(movingName, targetName) =>
+            void moveGroupBefore(movingName, targetName)
+          }
         />
       )}
 
@@ -303,6 +352,11 @@ export function AccountsTab({
         reloadNonce={unlockNonce}
         onStateChange={setIsDefaultPasswordSet}
         accountsUsingDefaultCount={accounts.filter((a) => a.useDefaultPassword).length}
+      />
+      <DefaultOtpSettings
+        reloadNonce={unlockNonce}
+        onStateChange={setIsDefaultOtpSet}
+        accountsUsingDefaultCount={accounts.filter((a) => a.useDefaultOtp).length}
       />
       <AccountsSecurity
         sessionMinutes={lockState.sessionMinutes}

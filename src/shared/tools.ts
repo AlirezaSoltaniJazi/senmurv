@@ -16,10 +16,14 @@ export type ToolKey =
   | 'harden'
   | 'jwt'
   | 'json'
+  | 'case'
+  | 'encode'
+  | 'scorecard'
   | 'autorefresh'
   | 'queryparams'
   | 'logicalnames'
-  | 'webapi';
+  | 'webapi'
+  | 'bulkopen';
 
 /**
  * One entry in the Tools launcher. `mode` is the in-page mode the shell tears
@@ -188,6 +192,36 @@ export const TOOLS: readonly ToolDescriptor[] = [
     isReady: true,
   },
   {
+    key: 'case',
+    label: 'Case Converter',
+    icon: '🔠',
+    blurb:
+      'Converts pasted text between UPPER, lower, Capitalized, Title, Sentence, alternating and inverse case, plus camelCase, PascalCase, snake_case, CONSTANT_CASE and kebab-case. Everything stays on your machine.',
+    mode: null,
+    requiresPage: false,
+    isReady: true,
+  },
+  {
+    key: 'encode',
+    label: 'Encode / Decode',
+    icon: '🔁',
+    blurb:
+      'Encodes or decodes text as Base64, URL/URI, Hex or HTML entities. Everything stays on your machine.',
+    mode: null,
+    requiresPage: false,
+    isReady: true,
+  },
+  {
+    key: 'scorecard',
+    label: 'Scorecard',
+    icon: '📊',
+    blurb:
+      'Build your own rubric — category + max score each — with the total computed live. Save it as a reusable template (e.g. "QA Interview") and save a filled-in scorecard per evaluation.',
+    mode: null,
+    requiresPage: false,
+    isReady: true,
+  },
+  {
     key: 'queryparams',
     label: 'Query params',
     icon: '🔗',
@@ -215,6 +249,16 @@ export const TOOLS: readonly ToolDescriptor[] = [
       'Resolves the current record to its Dataverse Web API URL and opens it in a new tab. Reads the Xrm client API, so it does nothing on an ordinary (non-Dynamics) page.',
     mode: null,
     requiresPage: true,
+    isReady: true,
+  },
+  {
+    key: 'bulkopen',
+    label: 'Bulk Open URLs',
+    icon: '📑',
+    blurb:
+      'Paste one URL per line and open every one as a new background tab in this window. A bare host (e.g. "example.com") gets https:// added automatically; invalid lines are skipped and listed.',
+    mode: null,
+    requiresPage: false,
     isReady: true,
   },
   {

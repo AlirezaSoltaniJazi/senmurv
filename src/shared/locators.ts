@@ -255,6 +255,70 @@ export function getTextPreview(el: Element): string {
   return text.length > 60 ? `${text.slice(0, 59)}…` : text;
 }
 
+// ---------------------------------------------------------------------------
+// Relative / layout locator (Selenium-only)
+// ---------------------------------------------------------------------------
+
+export type RelativePosition = 'above' | 'below' | 'toLeftOf' | 'toRightOf';
+
+interface Rect {
+  top: number;
+  bottom: number;
+  left: number;
+  right: number;
+}
+
+/**
+ * Reads the two element rects a relative locator needs. Injectable because
+ * happy-dom has no layout engine (`getBoundingClientRect()` returns zeros in
+ * tests) — same shape as `BypassEnv`'s carve-out from the shared/ purity rule.
+ */
+export interface RelativeLocatorEnv {
+  rectOf: (el: Element) => Rect;
+}
+
+const DEFAULT_RELATIVE_ENV: RelativeLocatorEnv = {
+  rectOf: (el) => el.getBoundingClientRect(),
+};
+
+/**
+ * The element's associated `<label>` — via `for="id"` or by wrapping — the
+ * one anchor relationship common and unambiguous enough to generate a
+ * relative locator for. Anything broader (nearest sibling, nearest heading,
+ * …) would need a real anchor-search algorithm; this stays deliberately
+ * narrow rather than guess.
+ */
+function findLabelAnchor(el: Element, doc: Document): Element | null {
+  const id = el.getAttribute('id');
+  if (id) {
+    const label = doc.querySelector(`label[for="${cssEscapeAttrValue(id)}"]`);
+    if (label) return label;
+  }
+  return el.closest('label');
+}
+
+/**
+ * Classify `elRect` relative to `anchorRect` along whichever axis separates
+ * them the most — matches Selenium's own `RelativeLocator` semantics (one of
+ * above/below/toLeftOf/toRightOf). Returns null when the two overlap on both
+ * axes (no clear relationship to report).
+ */
+export function relativePosition(elRect: Rect, anchorRect: Rect): RelativePosition | null {
+  const below = elRect.top - anchorRect.bottom;
+  const above = anchorRect.top - elRect.bottom;
+  const toRightOf = elRect.left - anchorRect.right;
+  const toLeftOf = anchorRect.left - elRect.right;
+
+  const candidates: [RelativePosition, number][] = [
+    ['below', below],
+    ['above', above],
+    ['toRightOf', toRightOf],
+    ['toLeftOf', toLeftOf],
+  ];
+  const best = candidates.filter(([, gap]) => gap > 0).sort((a, b) => b[1] - a[1])[0];
+  return best ? best[0] : null;
+}
+
 /** A short preview of the element's identifying attributes. */
 function attributesPreview(el: Element): string {
   const keep = ['id', 'class', 'name', 'type', 'role', 'aria-label', ...TEST_ID_ATTRS];
@@ -317,6 +381,19 @@ export function buildCssSelector(el: Element, doc: Document): string {
     current = current.parentElement;
   }
   return parts.join(' > ');
+}
+
+/**
+ * A valid XPath 1.0 string literal for `value`, even when it contains both
+ * quote characters — XPath has no escape character, so a value with an
+ * embedded `"` must be split into a `concat()` of double-quoted pieces
+ * joined by a single-quoted `"`, the standard XPath 1.0 idiom for this.
+ */
+function xpathStringLiteral(value: string): string {
+  if (!value.includes('"')) return `"${value}"`;
+  if (!value.includes("'")) return `'${value}'`;
+  const parts = value.split('"').map((part) => `"${part}"`);
+  return `concat(${parts.join(`, '"', `)})`;
 }
 
 /** Build a relative XPath, preferring id / stable attributes, falling back to absolute. */
@@ -392,6 +469,83 @@ function roleNameSnippets(role: string, name: string): FrameworkSnippet[] {
   ];
 }
 
+function nameAttrSnippets(name: string, sel: string): FrameworkSnippet[] {
+  return [
+    snippet('playwright', 'locator', `page.locator(${jsStr(sel)})`),
+    snippet('wdio', '$', `$(${jsStr(sel)})`),
+    snippet('cypress', 'get', `cy.get(${jsStr(sel)})`),
+    snippet('selenium', 'By.name', `By.name(${dblStr(name)})`),
+    snippet('robot', 'name strategy', `name:${name}`),
+  ];
+}
+
+/** WebdriverIO's plain-text selectors: `=exact` / `*=partial`, on any element. */
+function wdioTextSelector(text: string, exact: boolean): string {
+  return `${exact ? '=' : '*='}${text}`;
+}
+
+function textSnippets(text: string, xpath: string): FrameworkSnippet[] {
+  return [
+    snippet('playwright', 'getByText', `page.getByText(${jsStr(text)})`),
+    snippet('wdio', '$ (text)', `$(${jsStr(wdioTextSelector(text, true))})`),
+    snippet('cypress', 'contains', `cy.contains(${jsStr(text)})`),
+    snippet('selenium', 'By.xpath', `By.xpath(${dblStr(xpath)})`),
+    snippet('robot', 'xpath strategy', `xpath:${xpath}`),
+  ];
+}
+
+function linkTextSnippets(text: string): FrameworkSnippet[] {
+  return [
+    snippet('playwright', 'getByRole', `page.getByRole('link', { name: ${jsStr(text)} })`),
+    snippet('wdio', '$ (link text)', `$(${jsStr(wdioTextSelector(text, true))})`),
+    snippet('cypress', 'contains', `cy.contains('a', ${jsStr(text)})`),
+    snippet('selenium', 'By.linkText', `By.linkText(${dblStr(text)})`),
+    snippet('robot', 'link strategy', `link:${text}`),
+  ];
+}
+
+function partialLinkTextSnippets(text: string): FrameworkSnippet[] {
+  return [
+    snippet(
+      'playwright',
+      'getByRole',
+      `page.getByRole('link', { name: ${jsStr(text)}, exact: false })`
+    ),
+    snippet('wdio', '$ (partial link text)', `$(${jsStr(wdioTextSelector(text, false))})`),
+    snippet('cypress', 'contains', `cy.contains('a', ${jsStr(text)})`),
+    snippet('selenium', 'By.partialLinkText', `By.partialLinkText(${dblStr(text)})`),
+    snippet('robot', 'partial link strategy', `partial link:${text}`),
+  ];
+}
+
+function classNameSnippets(cls: string, sel: string): FrameworkSnippet[] {
+  return [
+    snippet('playwright', 'locator', `page.locator(${jsStr(sel)})`),
+    snippet('wdio', '$', `$(${jsStr(sel)})`),
+    snippet('cypress', 'get', `cy.get(${jsStr(sel)})`),
+    snippet('selenium', 'By.className', `By.className(${dblStr(cls)})`),
+    snippet('robot', 'class strategy', `class:${cls}`),
+  ];
+}
+
+/**
+ * Selenium 4's `RelativeLocator` — the only supported framework with a
+ * native concept of "the element above/below/left/right of this anchor".
+ */
+function relativeSnippets(
+  tag: string,
+  position: RelativePosition,
+  anchorSelector: string
+): FrameworkSnippet[] {
+  return [
+    snippet(
+      'selenium',
+      `RelativeLocator.${position}`,
+      `RelativeLocator.with(By.tagName(${dblStr(tag)})).${position}(By.cssSelector(${dblStr(anchorSelector)}))`
+    ),
+  ];
+}
+
 function cssSnippets(css: string): FrameworkSnippet[] {
   return [
     snippet('playwright', 'locator', `page.locator(${jsStr(css)})`),
@@ -437,7 +591,11 @@ function priorityIndex(strategy: LocatorStrategy): number {
  * Compute the ranked set of locator suggestions for an element.
  * Pure — pass the owning document (defaults to the global `document`).
  */
-export function buildLocatorSet(el: Element, doc: Document = document): LocatorSet {
+export function buildLocatorSet(
+  el: Element,
+  doc: Document = document,
+  relEnv: RelativeLocatorEnv = DEFAULT_RELATIVE_ENV
+): LocatorSet {
   const suggestions: LocatorSuggestion[] = [];
 
   const testId = getTestIdAttr(el);
@@ -449,6 +607,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
           strategy: 'testId',
           label: testId.attr,
           value: testId.value,
+          testQuery: selector,
+          kind: 'css',
           quality: 'high',
           recommended: false,
           snippets: testIdSnippets(testId.attr, testId.value),
@@ -470,6 +630,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
           strategy: 'formControl',
           label: 'form control',
           value: sel,
+          testQuery: sel,
+          kind: 'css',
           quality: count === 1 ? 'high' : 'medium',
           recommended: false,
           snippets: cssSnippets(sel),
@@ -482,9 +644,9 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
   // Only offer an `id` selector when the id is author-defined (not mat-/cdk-/…-N).
   const id = el.getAttribute('id');
   if (id && isStableId(id)) {
+    const idSel = `#${cssEscapeIdent(id)}`;
     const count =
-      countCssMatches(doc, `#${cssEscapeIdent(id)}`) ??
-      countCssMatches(doc, `[id="${cssEscapeAttrValue(id)}"]`);
+      countCssMatches(doc, idSel) ?? countCssMatches(doc, `[id="${cssEscapeAttrValue(id)}"]`);
     const quality: LocatorQuality = count === 1 ? 'high' : 'medium';
     suggestions.push(
       withMatchCount(
@@ -492,9 +654,33 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
           strategy: 'id',
           label: 'id',
           value: id,
+          testQuery: idSel,
+          kind: 'css',
           quality,
           recommended: false,
           snippets: idSnippets(id),
+        },
+        count
+      )
+    );
+  }
+
+  // The HTML `name` attribute — very common and stable on form inputs.
+  const nameAttr = el.getAttribute('name');
+  if (nameAttr) {
+    const sel = `${el.tagName.toLowerCase()}[name="${cssEscapeAttrValue(nameAttr)}"]`;
+    const count = countCssMatches(doc, sel);
+    suggestions.push(
+      withMatchCount(
+        {
+          strategy: 'name',
+          label: 'name',
+          value: sel,
+          testQuery: sel,
+          kind: 'css',
+          quality: count === 1 ? 'high' : 'medium',
+          recommended: false,
+          snippets: nameAttrSnippets(nameAttr, sel),
         },
         count
       )
@@ -515,6 +701,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
           strategy: 'attr',
           label: 'value',
           value: sel,
+          testQuery: sel,
+          kind: 'css',
           quality: count === 1 ? 'high' : 'medium',
           recommended: false,
           snippets: cssSnippets(sel),
@@ -535,6 +723,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
           strategy: 'ariaLabel',
           label: 'aria-label',
           value: sel,
+          testQuery: sel,
+          kind: 'css',
           quality: count === 1 ? 'high' : 'medium',
           recommended: false,
           snippets: cssSnippets(sel),
@@ -547,6 +737,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
   const role = getRole(el);
   const name = getAccessibleName(el, doc);
   if (role && name) {
+    // No testQuery/kind: `name` here is an accessible name, not itself a
+    // selector — its own snippets construct a different query per framework.
     suggestions.push({
       strategy: 'roleName',
       label: `role=${role}`,
@@ -557,6 +749,67 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
     });
   }
 
+  // Visible text — any element, not just button/a (unlike the roleName
+  // fallback above). Skipped when empty or long enough that it reads as a
+  // paragraph rather than a locator.
+  const textPreview = getTextPreview(el);
+  if (textPreview && textPreview.length <= 60 && !textPreview.endsWith('…')) {
+    const tag = el.tagName.toLowerCase();
+    const textXPath = `//${tag}[normalize-space(.)=${xpathStringLiteral(textPreview)}]`;
+    suggestions.push(
+      withMatchCount(
+        {
+          strategy: 'text',
+          label: 'text',
+          value: textPreview,
+          testQuery: textXPath,
+          kind: 'xpath',
+          quality: 'medium',
+          recommended: false,
+          snippets: textSnippets(textPreview, textXPath),
+        },
+        countXPathMatches(doc, textXPath)
+      )
+    );
+
+    // Link text / partial link text — Selenium/Robot-specific strategies,
+    // meaningful only for an actual anchor.
+    if (tag === 'a') {
+      const exactXPath = `//a[normalize-space(text())=${xpathStringLiteral(textPreview)}]`;
+      suggestions.push(
+        withMatchCount(
+          {
+            strategy: 'linkText',
+            label: 'link text',
+            value: textPreview,
+            testQuery: exactXPath,
+            kind: 'xpath',
+            quality: 'medium',
+            recommended: false,
+            snippets: linkTextSnippets(textPreview),
+          },
+          countXPathMatches(doc, exactXPath)
+        )
+      );
+      const partialXPath = `//a[contains(normalize-space(text()),${xpathStringLiteral(textPreview)})]`;
+      suggestions.push(
+        withMatchCount(
+          {
+            strategy: 'partialLinkText',
+            label: 'partial link text',
+            value: textPreview,
+            testQuery: partialXPath,
+            kind: 'xpath',
+            quality: 'low',
+            recommended: false,
+            snippets: partialLinkTextSnippets(textPreview),
+          },
+          countXPathMatches(doc, partialXPath)
+        )
+      );
+    }
+  }
+
   const css = buildCssSelector(el, doc);
   const cssCount = countCssMatches(doc, css);
   suggestions.push(
@@ -565,6 +818,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
         strategy: 'css',
         label: 'CSS selector',
         value: css,
+        testQuery: css,
+        kind: 'css',
         quality: cssCount === 1 ? 'medium' : 'low',
         recommended: false,
         snippets: cssSnippets(css),
@@ -573,6 +828,39 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
     )
   );
 
+  // A single class name — Selenium's `By.className` only ever accepts one
+  // (not a compound selector), so try each until one is unique; otherwise
+  // fall back to the first as a best-effort, low-quality suggestion.
+  const classList = Array.from(el.classList).filter((c) => c.trim() !== '');
+  if (classList.length > 0) {
+    let chosen = classList[0]!;
+    let chosenCount = countCssMatches(doc, `.${cssEscapeIdent(chosen)}`);
+    for (const c of classList) {
+      const count = countCssMatches(doc, `.${cssEscapeIdent(c)}`);
+      if (count === 1) {
+        chosen = c;
+        chosenCount = count;
+        break;
+      }
+    }
+    const sel = `.${cssEscapeIdent(chosen)}`;
+    suggestions.push(
+      withMatchCount(
+        {
+          strategy: 'className',
+          label: 'class',
+          value: chosen,
+          testQuery: sel,
+          kind: 'css',
+          quality: chosenCount === 1 ? 'medium' : 'low',
+          recommended: false,
+          snippets: classNameSnippets(chosen, sel),
+        },
+        chosenCount
+      )
+    );
+  }
+
   const relXpath = buildRelativeXPath(el);
   suggestions.push(
     withMatchCount(
@@ -580,6 +868,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
         strategy: 'xpath',
         label: 'XPath (relative)',
         value: relXpath,
+        testQuery: relXpath,
+        kind: 'xpath',
         quality: 'low',
         recommended: false,
         snippets: xpathSnippets(relXpath),
@@ -596,6 +886,8 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
           strategy: 'xpathAbsolute',
           label: 'XPath (absolute)',
           value: absXpath,
+          testQuery: absXpath,
+          kind: 'xpath',
           quality: 'low',
           recommended: false,
           snippets: xpathSnippets(absXpath),
@@ -603,6 +895,26 @@ export function buildLocatorSet(el: Element, doc: Document = document): LocatorS
         countXPathMatches(doc, absXpath)
       )
     );
+  }
+
+  // Relative/layout locator — Selenium-only, and only when there's an
+  // unambiguous anchor (the element's own associated <label>). See
+  // findLabelAnchor's docs for why this stays this narrow.
+  const labelAnchor = findLabelAnchor(el, doc);
+  if (labelAnchor && labelAnchor !== el) {
+    const position = relativePosition(relEnv.rectOf(el), relEnv.rectOf(labelAnchor));
+    if (position) {
+      const anchorSelector = buildCssSelector(labelAnchor, doc);
+      const anchorText = getTextPreview(labelAnchor) || anchorSelector;
+      suggestions.push({
+        strategy: 'relative',
+        label: `relative (${position})`,
+        value: `${position} "${anchorText}"`,
+        quality: 'low',
+        recommended: false,
+        snippets: relativeSnippets(el.tagName.toLowerCase(), position, anchorSelector),
+      });
+    }
   }
 
   suggestions.sort((a, b) => priorityIndex(a.strategy) - priorityIndex(b.strategy));

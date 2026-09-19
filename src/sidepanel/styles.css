@@ -474,6 +474,13 @@ summary.section-title.collapsible {
   cursor: grabbing;
 }
 
+/* Keeps a non-draggable row (e.g. the Default group) aligned with its
+ * draggable siblings, which have a real .drag-handle taking up this space. */
+.drag-handle-spacer {
+  flex: 0 0 auto;
+  width: 18px;
+}
+
 .script-row.dragging {
   opacity: 0.4;
 }
@@ -1627,6 +1634,11 @@ input[type='checkbox'] {
   white-space: nowrap;
 }
 
+.subtask-rename {
+  flex: 1;
+  min-width: 0;
+}
+
 .checklist-edit {
   display: flex;
   flex-direction: column;
@@ -2081,4 +2093,21 @@ input[type='checkbox'] {
   min-width: 0;
   font-family: ui-monospace, Menlo, monospace;
   font-size: 11px;
+}
+
+/* Scorecard — builder rows. The name column gets the room (category names
+   read as prose); score/max are small fixed-width number inputs. */
+.sc-name {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sc-score,
+.sc-max {
+  flex: 0 0 3.2rem;
+  min-width: 0;
+  text-align: center;
+}
+.sc-slash {
+  color: var(--muted);
+  flex: 0 0 auto;
 }

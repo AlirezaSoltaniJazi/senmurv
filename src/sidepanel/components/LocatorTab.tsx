@@ -1,10 +1,11 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Dispatch, ReactElement, SetStateAction } from 'react';
 import { browser } from '@/shared/browser-api';
 import { MESSAGE_TYPES } from '@/shared/constants';
+import { DEFAULT_GROUP_NAME, existingGroupNames } from '@/shared/accounts';
 import { parseLocatorInput } from '@/shared/locators';
 import { isRuntimeMessage, sendRuntimeMessage } from '@/shared/messages';
-import type { AccountLocatorSeed, MatchResult, Result } from '@/shared/types';
+import type { Account, AccountLocatorSeed, LocatorKind, MatchResult, Result } from '@/shared/types';
 import { IconActionButton } from './IconActionButton';
 import { LocatorKindToggle } from './LocatorKindToggle';
 import { FrameworkChips, LocatorSuggestions } from './LocatorSuggestions';
@@ -14,6 +15,8 @@ const ACCOUNT_TARGETS: { field: AccountLocatorSeed['field']; label: string }[] =
   { field: 'username', label: 'Username field' },
   { field: 'password', label: 'Password field' },
   { field: 'loginButton', label: 'Login button' },
+  { field: 'otp', label: 'OTP field' },
+  { field: 'confirmOtpButton', label: 'Confirm OTP button' },
 ];
 
 interface Props {
@@ -22,9 +25,24 @@ interface Props {
   /** Merge a query+kind into the Accounts tab's in-progress draft, without
    *  navigating there — the user may want to keep picking/testing here. */
   onAddToAccount: (seed: AccountLocatorSeed) => void;
+  /** Apply a query+kind directly to an EXISTING saved account (as opposed to
+   *  the in-progress editor draft `onAddToAccount` seeds) — persisted right
+   *  away, no editor involved. */
+  onApplyToAccount: (id: string, seed: AccountLocatorSeed) => Promise<Result<void>>;
+  /** Cap on drawn match badges when highlighting every match of a query. */
+  matchHighlightMax: number;
+  /** Seconds the "Added!" confirmation stays visible after adding to an account. */
+  addedConfirmSeconds: number;
 }
 
-export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactElement {
+export function LocatorTab({
+  state,
+  setState,
+  onAddToAccount,
+  onApplyToAccount,
+  matchHighlightMax,
+  addedConfirmSeconds,
+}: Props): ReactElement {
   const {
     picking,
     result,
@@ -39,10 +57,48 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
     matchInfo,
   } = state;
 
+  // Existing accounts, for the "Add to account" group + target-account
+  // pickers — fetched once; this tab has no other reason to hold the list.
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [existingGroups, setExistingGroups] = useState<string[]>([]);
+  const [selectedGroup, setSelectedGroup] = useState('');
+  // '' means "seed a new (or the currently-open) draft"; otherwise the id of
+  // an existing account to apply the locator to directly.
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const [addedMessage, setAddedMessage] = useState<string | null>(null);
+  const addedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const update = useCallback(
     (patch: Partial<LocatorTabState>) => setState((prev) => ({ ...prev, ...patch })),
     [setState]
   );
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await sendRuntimeMessage<Result<Account[]>>({ type: MESSAGE_TYPES.GET_ACCOUNTS });
+      if (!cancelled && res.ok) {
+        setAccounts(res.value);
+        setExistingGroups(existingGroupNames(res.value));
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Existing accounts in the currently-selected group scope (blank ==
+  // Default, same fallback every other group operation uses) — offered in
+  // the target-account picker alongside "(new account)".
+  const itemsInGroup = accounts.filter(
+    (a) => (a.group?.trim() || DEFAULT_GROUP_NAME) === (selectedGroup.trim() || DEFAULT_GROUP_NAME)
+  );
+
+  useEffect(() => {
+    return () => {
+      if (addedTimerRef.current !== null) clearTimeout(addedTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     function onMessage(message: unknown): void {
@@ -86,7 +142,7 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
       void (async () => {
         const res = await sendRuntimeMessage<Result<MatchResult>>({
           type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
-          payload: { query: parsed.query, kind: testKind },
+          payload: { query: parsed.query, kind: testKind, maxHighlight: matchHighlightMax },
         });
         if (res.ok) {
           update({ matchInfo: res.value, testError: null });
@@ -96,7 +152,7 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
       })();
     }, 300);
     return () => clearTimeout(id);
-  }, [query, testKind, highlighting, update]);
+  }, [query, testKind, highlighting, update, matchHighlightMax]);
 
   async function startPick(): Promise<void> {
     // Starting a pick switches the in-page mode, which the arbiter tears the
@@ -115,17 +171,22 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
     update({ picking: false });
   }
 
-  async function runTest(): Promise<void> {
-    update({ testError: null, testCount: null });
-    const parsed = parseLocatorInput(query);
-    if (!parsed.query) return;
-    update({ testedQuery: parsed.query });
+  /** Fill the Test-a-locator box with `q`/`kind` and run it immediately —
+   *  shared by the manual Test button and each suggestion's own Test button. */
+  async function testValue(q: string, kind: LocatorKind): Promise<void> {
+    update({ query: q, testKind: kind, testedQuery: q, testError: null, testCount: null });
     const res = await sendRuntimeMessage<Result<{ count: number }>>({
       type: MESSAGE_TYPES.TEST_LOCATOR,
-      payload: { query: parsed.query, kind: testKind },
+      payload: { query: q, kind },
     });
     if (res.ok) update({ testCount: res.value.count });
     else update({ testError: res.error });
+  }
+
+  async function runTest(): Promise<void> {
+    const parsed = parseLocatorInput(query);
+    if (!parsed.query) return;
+    await testValue(parsed.query, testKind);
   }
 
   async function toggleHighlight(): Promise<void> {
@@ -143,7 +204,7 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
     update({ testedQuery: parsed.query });
     const res = await sendRuntimeMessage<Result<MatchResult>>({
       type: MESSAGE_TYPES.HIGHLIGHT_MATCHES,
-      payload: { query: parsed.query, kind: testKind },
+      payload: { query: parsed.query, kind: testKind, maxHighlight: matchHighlightMax },
     });
     if (res.ok) {
       update({ highlighting: true, matchInfo: res.value });
@@ -152,10 +213,34 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
     }
   }
 
-  function addToAccount(field: AccountLocatorSeed['field']): void {
+  function showAdded(message: string): void {
+    if (addedTimerRef.current !== null) clearTimeout(addedTimerRef.current);
+    setAddedMessage(message);
+    addedTimerRef.current = setTimeout(() => setAddedMessage(null), addedConfirmSeconds * 1000);
+  }
+
+  async function addToAccount(field: AccountLocatorSeed['field']): Promise<void> {
     const parsed = parseLocatorInput(query);
     if (!parsed.query) return;
-    onAddToAccount({ query: parsed.query, kind: testKind, field });
+    const label = ACCOUNT_TARGETS.find((t) => t.field === field)?.label ?? field;
+
+    if (selectedAccountId !== '') {
+      const target = accounts.find((a) => a.id === selectedAccountId);
+      const seed: AccountLocatorSeed = { query: parsed.query, kind: testKind, field };
+      const res = await onApplyToAccount(selectedAccountId, seed);
+      if (!res.ok) {
+        update({ error: res.error });
+        return;
+      }
+      showAdded(`Added to ${label} on "${target?.name || target?.address || 'account'}".`);
+      return;
+    }
+
+    const seed: AccountLocatorSeed = { query: parsed.query, kind: testKind, field };
+    const group = selectedGroup.trim();
+    if (group !== '') seed.group = group;
+    onAddToAccount(seed);
+    showAdded(`Added to ${label}${group !== '' ? ` (group: ${group})` : ''}.`);
   }
 
   /** Scroll to the previous/next match (delta ±1), wrapping around. */
@@ -228,12 +313,48 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
           <div className="row">
             <span className="hint">Add to account:</span>
             {ACCOUNT_TARGETS.map((target) => (
-              <button key={target.field} type="button" onClick={() => addToAccount(target.field)}>
+              <button
+                key={target.field}
+                type="button"
+                onClick={() => void addToAccount(target.field)}
+              >
                 {target.label}
               </button>
             ))}
+            {existingGroups.length > 0 && (
+              <select
+                aria-label="Target group"
+                value={selectedGroup}
+                onChange={(e) => {
+                  setSelectedGroup(e.target.value);
+                  setSelectedAccountId('');
+                }}
+              >
+                <option value="">(current group)</option>
+                {existingGroups.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            )}
+            {itemsInGroup.length > 0 && (
+              <select
+                aria-label="Target account"
+                value={selectedAccountId}
+                onChange={(e) => setSelectedAccountId(e.target.value)}
+              >
+                <option value="">(new account)</option>
+                {itemsInGroup.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.name || a.address}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
         )}
+        {addedMessage !== null && <p className="status">{addedMessage}</p>}
         {testCount !== null && (
           <p className={testCount === 1 ? 'status' : 'hint'}>
             {testCount === 0
@@ -288,7 +409,11 @@ export function LocatorTab({ state, setState, onAddToAccount }: Props): ReactEle
           </div>
 
           <FrameworkChips filter={filter} onChange={(f) => update({ filter: f })} />
-          <LocatorSuggestions suggestions={result.suggestions} filter={filter} />
+          <LocatorSuggestions
+            suggestions={result.suggestions}
+            filter={filter}
+            onTest={(q, kind) => void testValue(q, kind)}
+          />
         </>
       )}
     </div>

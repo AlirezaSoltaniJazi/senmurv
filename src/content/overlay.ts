@@ -199,6 +199,66 @@ export function targetAt(x: number, y: number): Element | null {
   return el;
 }
 
+let hitTestOverrideEl: HTMLStyleElement | null = null;
+
+/**
+ * Force every element hit-testable for the duration of active picking.
+ *
+ * Some UI frameworks — Angular Material's disabled-button style is the
+ * concrete case that surfaced this — set `pointer-events: none` via CSS on a
+ * disabled control, layered on top of the native `disabled` attribute. That
+ * removes the ENTIRE subtree from `elementFromPoint` hit-testing, not just
+ * from click dispatch: a coordinate lookup over a `pointer-events:none`
+ * button resolves to whatever is rendered behind or around it instead of the
+ * button itself (verified directly: `document.elementFromPoint` at the
+ * center of such a button returns its containing `<div>`, with no trace of
+ * the button in `elementsFromPoint`'s stack either — this is a genuinely
+ * different failure mode from `mousedown`/`click` suppression on a plain
+ * `disabled` attribute, which `onPickerPointerDown`'s doc comment covers).
+ * A picker that means to let a QA engineer select ANY element, including
+ * ones the page tried to make non-interactive, needs to override this for
+ * the duration of the pick.
+ *
+ * The repeated `:root` is a specificity trick, not decoration: each
+ * repetition adds one to the selector's class-count tier, so ten of them
+ * beats any realistic page rule even when that rule also carries
+ * `!important` — verified against a live Angular Material disabled button
+ * via the runInChrome skill, with and without `!important` on the page's own
+ * rule. A plain `*` selector is NOT enough: `!important` alone beats a
+ * non-important rule regardless of specificity, but two `!important` rules
+ * are then decided by specificity, and a real page's class selector usually
+ * beats a bare `*`.
+ *
+ * Our own overlay host relies on being `pointer-events: none` (see this
+ * file's top-of-file invariants) so `elementFromPoint` skips it and reaches
+ * the real page element underneath — that's how hover-highlight works at
+ * all. The broad `*` override above would win over that inline style too
+ * (any `!important` rule beats a non-important one, inline style included),
+ * turning the full-viewport overlay host itself into the hit-test result for
+ * every point on the page and silently cancelling every pick. A second rule,
+ * scoped to `SENMURV_HOST_TAGS` and placed after the broad one (same
+ * specificity tier, later source order wins), reasserts `none` for exactly
+ * our own hosts and nothing else.
+ */
+export function enableHitTestOverride(): void {
+  if (hitTestOverrideEl) return;
+  const root = ':root'.repeat(10);
+  const hostSelectors = SENMURV_HOST_TAGS.map((tag) => `${root} ${tag}`).join(', ');
+  const style = document.createElement('style');
+  style.setAttribute('data-senmurv', 'hit-test-override');
+  style.textContent =
+    `${root} :is(*, *::before, *::after) { pointer-events: auto !important; }\n` +
+    `${hostSelectors} { pointer-events: none !important; }`;
+  document.documentElement.appendChild(style);
+  hitTestOverrideEl = style;
+}
+
+/** Undo {@link enableHitTestOverride}, restoring the page's own pointer-events. */
+export function disableHitTestOverride(): void {
+  hitTestOverrideEl?.remove();
+  hitTestOverrideEl = null;
+}
+
 // ---------------------------------------------------------------------------
 // Pointer capture layer (for the Measure drag)
 // ---------------------------------------------------------------------------

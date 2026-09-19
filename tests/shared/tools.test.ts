@@ -21,9 +21,13 @@ describe('TOOLS registry', () => {
       'harden',
       'jwt',
       'json',
+      'case',
+      'encode',
+      'scorecard',
       'queryparams',
       'logicalnames',
       'webapi',
+      'bulkopen',
       'autorefresh',
     ] satisfies ToolKey[]);
   });
