@@ -6,6 +6,75 @@ All notable changes to Senmurv are documented here. The format is based on
 
 ## [Unreleased]
 
+### Added
+
+- **Accounts → OTP (two-factor) support** — an optional OTP field and Confirm
+  OTP button locator per account, filled and clicked automatically right
+  after the main login step. A shared **Default OTP code** mirrors the
+  existing Default password, reusable via a "use default OTP code" checkbox.
+- **Accounts → Groups: drag-and-drop** — drag an account's handle onto
+  another account row to reorder it within its group, or onto a different
+  group's header to move it there. Drag a group's own header onto another
+  group's to set the groups' own display order — Default always stays first
+  and is never draggable.
+- **Accounts → per-step login delays** — add one or more "wait N(.N) seconds
+  before/after [step]" pauses per account (Username field, Password field,
+  Login button, OTP field, Confirm OTP button), for a login page that needs
+  a moment mid-sequence (e.g. an SPA that hasn't rendered the next field
+  yet) — in addition to the existing single Login pre-fill delay.
+- **Accounts → Clear button on every locator field** — clear a field's value
+  in one click; "Apply to group(s)" now accepts a cleared value too, so
+  "this account no longer uses OTP" can be propagated across a whole group
+  the same way a real locator can.
+- **Locator tab → apply straight to an existing account** — "Add to
+  account" gains a second dropdown (scoped to the selected group) to apply
+  a tested locator directly to an already-saved account, instead of only
+  seeding a new or in-progress draft. Each suggestion also gets its own
+  **Test** button that fills and runs "Test a locator" immediately, and
+  adding a locator shows a brief "Added!" confirmation (duration
+  configurable in Settings).
+- **Locator picker → more strategies** — Name attribute, Text-based
+  selection, Link text / partial link text, Relative locators
+  (Selenium-only), and Class name join the existing data-testid / id / ARIA
+  / CSS / XPath ranking.
+- **Settings → Login pre-fill delay** and **"Added!" confirmation
+  duration** — configurable timers for one-click login's pre-fill pause and
+  the Locator tab's post-add confirmation message.
+- **My Tasks → rename a subtask** — a small ✎ button on each subtask turns
+  its title into an editable field (Enter to save, Escape to cancel).
+- **Tools → Bulk Open URLs** — paste a list of URLs, one per line, and open
+  every one as a new background tab in this window with one click. A bare
+  host (e.g. `example.com`) gets `https://` added automatically; invalid
+  lines are skipped and listed rather than blocking the rest.
+
+### Changed
+
+- Clarified the "Could not reach the page" error: it now says plainly that
+  it isn't an address or locator problem, and suggests reloading the
+  extension itself as a next step if reloading the tab doesn't help.
+
+### Fixed
+
+- **The element picker no longer misses disabled elements.** Some UI
+  frameworks (Angular Material among them) disable an interactive element
+  via CSS (`pointer-events: none`) on top of the native `disabled`
+  attribute, which defeated the picker's hit-testing entirely — it would
+  silently resolve to whatever was rendered behind the element instead. The
+  picker now temporarily overrides this while picking is active, and
+  correctly climbs from a bare decorative wrapper (e.g. a ripple/touch-target
+  span some component libraries render inside a button) to the real element
+  underneath.
+- **Tools — switching directly between two tools no longer races.**
+  Switching from one Tools-tab mode straight to another (e.g. Colour →
+  Font, with no explicit Stop in between) could start the new tool before
+  the outgoing one's cleanup had actually run, briefly leaving both active
+  and rebuilding the on-page overlay unnecessarily on every switch.
+- Two small performance issues: My Tasks and Track were re-running their
+  entire list filtering/sorting/grouping on every render — including once a
+  second while any timer was running — instead of only when the underlying
+  data actually changed; the JSON Formatter tool parsed pasted JSON twice
+  per keystroke instead of once.
+
 ## [1.0.0] - 2026-08-30
 
 ### Added
