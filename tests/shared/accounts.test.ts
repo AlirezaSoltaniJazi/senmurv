@@ -4,13 +4,16 @@ import {
   applyLocatorToGroups,
   DEFAULT_GROUP_NAME,
   duplicateAccount,
+  effectiveGroupOrder,
   existingGroupNames,
   groupAccounts,
   isValidPin,
   moveAccountBefore,
   moveAccountToGroup,
+  moveGroupBefore,
   newAccount,
   renameGroup,
+  reorderGroups,
   upsertAccount,
   validateAccount,
 } from '@/shared/accounts';
@@ -735,6 +738,74 @@ describe('moveAccountBefore', () => {
     const accounts = [mk({ id: 'a' }), mk({ id: 'b', group: '  ' }), mk({ id: 'c' })];
     const next = moveAccountBefore(accounts, 'c', 'a');
     expect(next.map((x) => x.id)).toEqual(['c', 'a', 'b']);
+  });
+});
+
+describe('effectiveGroupOrder', () => {
+  it('puts every listed real group first, in the saved order', () => {
+    const next = effectiveGroupOrder(['Group A', 'Group B', 'Group C'], ['Group C', 'Group A']);
+    expect(next).toEqual(['Group C', 'Group A', 'Group B']);
+  });
+
+  it('appends unlisted real groups alphabetically after the listed ones', () => {
+    const next = effectiveGroupOrder(['Zeta', 'Alpha', 'Group B'], ['Group B']);
+    expect(next).toEqual(['Group B', 'Alpha', 'Zeta']);
+  });
+
+  it('drops saved names that are no longer real groups', () => {
+    const next = effectiveGroupOrder(['Group A'], ['Group A', 'Deleted Group']);
+    expect(next).toEqual(['Group A']);
+  });
+
+  it('is purely alphabetical when nothing is saved', () => {
+    expect(effectiveGroupOrder(['Zeta', 'Alpha'], [])).toEqual(['Alpha', 'Zeta']);
+  });
+});
+
+describe('reorderGroups', () => {
+  function mkGroups(names: string[]): { name: string; accounts: number[] }[] {
+    return names.map((name) => ({ name, accounts: [] }));
+  }
+
+  it('keeps Default first regardless of the saved order', () => {
+    const groups = mkGroups([DEFAULT_GROUP_NAME, 'Group A', 'Group B']);
+    const next = reorderGroups(groups, ['Group B', 'Group A']);
+    expect(next.map((g) => g.name)).toEqual([DEFAULT_GROUP_NAME, 'Group B', 'Group A']);
+  });
+
+  it('reorders real groups per the saved order', () => {
+    const groups = mkGroups(['Group A', 'Group B', 'Group C']);
+    const next = reorderGroups(groups, ['Group C', 'Group B', 'Group A']);
+    expect(next.map((g) => g.name)).toEqual(['Group C', 'Group B', 'Group A']);
+  });
+
+  it('is a no-op (alphabetical) when no order is saved', () => {
+    const groups = mkGroups(['Group A', 'Group B']);
+    expect(reorderGroups(groups, [])).toEqual(groups);
+  });
+
+  it('works with no Default bucket present', () => {
+    const groups = mkGroups(['Group A', 'Group B']);
+    const next = reorderGroups(groups, ['Group B', 'Group A']);
+    expect(next.map((g) => g.name)).toEqual(['Group B', 'Group A']);
+  });
+});
+
+describe('moveGroupBefore', () => {
+  it('moves a group to just before another', () => {
+    const next = moveGroupBefore(['Group A', 'Group B', 'Group C'], 'Group C', 'Group A');
+    expect(next).toEqual(['Group C', 'Group A', 'Group B']);
+  });
+
+  it('is a no-op when moving a group before itself', () => {
+    const order = ['Group A', 'Group B'];
+    expect(moveGroupBefore(order, 'Group A', 'Group A')).toEqual(order);
+  });
+
+  it('is a no-op when either name is not in the current order', () => {
+    const order = ['Group A', 'Group B'];
+    expect(moveGroupBefore(order, 'Missing', 'Group A')).toEqual(order);
+    expect(moveGroupBefore(order, 'Group A', 'Missing')).toEqual(order);
   });
 });
 

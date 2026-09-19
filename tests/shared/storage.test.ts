@@ -14,6 +14,7 @@ import {
   deleteScript,
   deleteTask,
   getAccounts,
+  getAccountsGroupOrder,
   getAccountsSecurityConfig,
   getChecklists,
   getDefaultOtpRecord,
@@ -42,6 +43,7 @@ import {
   saveAccounts,
   saveProfiles,
   saveQueryParamSets,
+  setAccountsGroupOrder,
   setAccountsSecurityConfig,
   setDefaultOtpRecord,
   setDefaultPasswordRecord,
@@ -721,6 +723,25 @@ describe('accounts security config storage', () => {
   it('sets and reads the config', async () => {
     await setAccountsSecurityConfig(mk());
     expect(await getAccountsSecurityConfig()).toEqual(mk());
+  });
+});
+
+describe('accounts group order storage', () => {
+  it('returns [] when nothing is stored', async () => {
+    expect(await getAccountsGroupOrder()).toEqual([]);
+  });
+
+  it('sets and reads the order', async () => {
+    await setAccountsGroupOrder(['Group B', 'Group A']);
+    expect(await getAccountsGroupOrder()).toEqual(['Group B', 'Group A']);
+  });
+
+  it('falls back to [] for corrupt stored data', async () => {
+    store[STORAGE_KEYS.ACCOUNTS_GROUP_ORDER] = { not: 'an array' };
+    expect(await getAccountsGroupOrder()).toEqual([]);
+
+    store[STORAGE_KEYS.ACCOUNTS_GROUP_ORDER] = ['Group A', 42];
+    expect(await getAccountsGroupOrder()).toEqual([]);
   });
 });
 

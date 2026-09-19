@@ -27,6 +27,7 @@ describe('TOOLS registry', () => {
       'queryparams',
       'logicalnames',
       'webapi',
+      'bulkopen',
       'autorefresh',
     ] satisfies ToolKey[]);
   });
