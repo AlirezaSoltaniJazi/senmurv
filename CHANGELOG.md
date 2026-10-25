@@ -24,6 +24,12 @@ All notable changes to Senmurv are documented here. The format is based on
   Login button, OTP field, Confirm OTP button), for a login page that needs
   a moment mid-sequence (e.g. an SPA that hasn't rendered the next field
   yet) — in addition to the existing single Login pre-fill delay.
+- **Accounts → Apply a locator to group(s)** — every locator field in the
+  account editor (Username, Password, Login button, OTP field, Confirm OTP
+  button) can push its value straight onto every account in one or more
+  checked groups, for reusing the same login form's locators across several
+  environment-specific groups (e.g. UAT/VAL/PROD) without re-picking each
+  field by hand.
 - **Accounts → Clear button on every locator field** — clear a field's value
   in one click; "Apply to group(s)" now accepts a cleared value too, so
   "this account no longer uses OTP" can be propagated across a whole group
@@ -44,6 +50,14 @@ All notable changes to Senmurv are documented here. The format is based on
   the Locator tab's post-add confirmation message.
 - **My Tasks → rename a subtask** — a small ✎ button on each subtask turns
   its title into an editable field (Enter to save, Escape to cancel).
+- **Tools → Scorecard** — build your own rubric (category + max score each,
+  with the total computed live), save it as a reusable template (e.g. "QA
+  Interview"), and save a filled-in scorecard per evaluation.
+- **Tools → Case Converter** — convert pasted text between UPPER, lower,
+  Capitalized, Title, Sentence, alternating and inverse case, plus
+  camelCase, PascalCase, snake_case, CONSTANT_CASE and kebab-case.
+- **Tools → Encode / Decode** — encode or decode text as Base64, URL/URI,
+  Hex, or HTML entities.
 - **Tools → Bulk Open URLs** — paste a list of URLs, one per line, and open
   every one as a new background tab in this window with one click. A bare
   host (e.g. `example.com`) gets `https://` added automatically; invalid

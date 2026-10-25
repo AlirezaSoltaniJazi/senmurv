@@ -10,10 +10,16 @@ interface Response {
   error?: string;
 }
 
+/** The side panel, as a runtime message sender — the only sender the hub serves. */
+const PANEL_SENDER = {
+  id: 'test-extension',
+  url: 'chrome-extension://test/src/sidepanel/index.html',
+};
+
 /** Dispatch a runtime message and resolve with the handler's sendResponse value. */
-function send(message: unknown): Promise<Response | undefined> {
+function send(message: unknown, sender: object = PANEL_SENDER): Promise<Response | undefined> {
   return new Promise((resolve) => {
-    const results = chromeMock.runtime.onMessage.dispatch(message, {}, (resp: Response) =>
+    const results = chromeMock.runtime.onMessage.dispatch(message, sender, (resp: Response) =>
       resolve(resp)
     );
     if (!results.some((r) => r === true)) resolve(undefined);
@@ -91,6 +97,25 @@ describe('RUN_SCRIPT', () => {
     const res = await send({ type: MESSAGE_TYPES.RUN_SCRIPT, payload: { code: '1' } });
     expect(res?.ok).toBe(false);
     expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+});
+
+describe('message sender gate', () => {
+  it('ignores a message from a content script running in a web page', async () => {
+    const res = await send(
+      { type: MESSAGE_TYPES.RUN_SCRIPT, payload: { code: 'window.x=1' } },
+      { id: 'test-extension', url: 'https://evil.example/', tab: { id: 1 } }
+    );
+    expect(res).toBeUndefined();
+    expect(chromeMock.scripting.executeScript).not.toHaveBeenCalled();
+  });
+
+  it('ignores a message from another extension', async () => {
+    const res = await send(
+      { type: MESSAGE_TYPES.GET_SCRIPTS },
+      { id: 'other-extension', url: 'chrome-extension://other/page.html' }
+    );
+    expect(res).toBeUndefined();
   });
 });
 

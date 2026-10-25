@@ -44,7 +44,12 @@ describe.skipIf(!hasBuild)('bundle placement (requires `npm run build`)', () => 
     warResources = (manifest.web_accessible_resources ?? []).flatMap((e) => e.resources ?? []);
     const assetNames = readdirSync(ASSETS);
     toolsChunk = assetNames.find((n) => /^tools-.*\.js$/.test(n));
-    pickerChunk = assetNames.find((n) => /^picker\.ts-[^l].*\.js$/.test(n));
+    // The declared content script is CRXJS's tiny loader; follow its
+    // `getURL("assets/…")` to the real picker chunk rather than guessing the
+    // chunk's file name, which CRXJS has changed between majors.
+    const loader = manifest.content_scripts?.[0]?.js?.[0];
+    const loaderSource = loader ? readFileSync(path.join(DIST, loader), 'utf8') : '';
+    pickerChunk = /getURL\("assets\/([^"]+\.js)"\)/.exec(loaderSource)?.[1];
   });
 
   it('emits the Tools modes as their own chunk', () => {

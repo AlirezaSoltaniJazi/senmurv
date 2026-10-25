@@ -102,14 +102,7 @@ const FONT_SIZES: { value: FontSize; label: string }[] = [
 ];
 
 type SettingsSection =
-  | 'appearance'
-  | 'flow'
-  | 'accounts'
-  | 'tools'
-  | 'locator'
-  | 'data'
-  | 'notes'
-  | 'tags';
+  'appearance' | 'flow' | 'accounts' | 'tools' | 'locator' | 'data' | 'notes' | 'tags';
 
 const SECTIONS: { key: SettingsSection; label: string }[] = [
   { key: 'appearance', label: 'Appearance' },
