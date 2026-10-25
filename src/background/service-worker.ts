@@ -496,8 +496,7 @@ async function testLocator(
       args: [query, kind],
     });
     const outcome = results[0]?.result as
-      | { ok: boolean; count?: number; error?: string }
-      | undefined;
+      { ok: boolean; count?: number; error?: string } | undefined;
     if (!outcome || !outcome.ok) {
       return { ok: false, error: outcome?.error ?? 'Invalid selector.' };
     }
@@ -654,8 +653,7 @@ async function bypassXrm(tabId: number): Promise<Result<XrmReport>> {
       func: xrmBypass,
     });
     const outcome = results[0]?.result as
-      | { ok: boolean; value?: XrmReport; error?: string }
-      | undefined;
+      { ok: boolean; value?: XrmReport; error?: string } | undefined;
     if (!outcome?.ok || !outcome.value) {
       return { ok: false, error: outcome?.error ?? 'The Dynamics bypass returned nothing.' };
     }
@@ -742,8 +740,7 @@ async function xrmWebApiUrl(tabId: number): Promise<Result<XrmWebApiRecord>> {
       func: readXrmWebApiUrl,
     });
     const outcome = results[0]?.result as
-      | { ok: boolean; value?: XrmWebApiRecord; error?: string }
-      | undefined;
+      { ok: boolean; value?: XrmWebApiRecord; error?: string } | undefined;
     if (!outcome?.ok || !outcome.value) {
       return { ok: false, error: outcome?.error ?? 'Resolving the Web API URL returned nothing.' };
     }
@@ -838,8 +835,7 @@ async function showLogicalNames(tabId: number): Promise<Result<LogicalNamesRepor
       args: [maxNames],
     });
     const outcome = results[0]?.result as
-      | { ok: boolean; value?: LogicalNameRecord[]; error?: string }
-      | undefined;
+      { ok: boolean; value?: LogicalNameRecord[]; error?: string } | undefined;
     if (!outcome?.ok || !outcome.value) {
       return { ok: false, error: outcome?.error ?? 'Reading the Dynamics form returned nothing.' };
     }
@@ -1433,8 +1429,7 @@ async function getRegionState(
       func: regionStateShim,
     });
     const outcome = results[0]?.result as
-      | { active: boolean; config: RegionConfig | null }
-      | undefined;
+      { active: boolean; config: RegionConfig | null } | undefined;
     return { ok: true, value: outcome ?? { active: false, config: null } };
   } catch (err) {
     return { ok: false, error: errorMessage(err) };
@@ -2055,6 +2050,19 @@ async function changeAccountsPin(currentPin: string, newPin: string): Promise<Re
   return { ok: true, value: undefined };
 }
 
+/**
+ * True only for messages from this extension's own pages (the side panel).
+ * Content scripts share the extension id but live inside arbitrary web pages,
+ * so a compromised renderer could forge anything they can send. They only ever
+ * post panel-addressed streams (ELEMENT_PICKED, TOOL_STREAM, …) that this hub
+ * has no case for, so refusing them here costs nothing.
+ */
+function isFromExtensionPage(sender: Runtime.MessageSender): boolean {
+  return (
+    sender.id === browser.runtime.id && (sender.url ?? '').startsWith(browser.runtime.getURL(''))
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Message hub
 // ---------------------------------------------------------------------------
@@ -2064,14 +2072,14 @@ async function changeAccountsPin(currentPin: string, newPin: string): Promise<Re
 // "true when responding asynchronously, otherwise undefined", which is the
 // standard MV3 idiom and exactly what this listener does. Cast rather than
 // force every early-exit path to a shape that doesn't match its behavior.
-browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse) => {
+browser.runtime.onMessage.addListener(((message: unknown, sender, sendResponse) => {
   // isRuntimeMessage only validates the `type` discriminant, not the payload
   // shape. A valid-type message with a missing/renamed payload throws
   // synchronously here (e.g. reading `message.payload.script`); catch it so the
   // caller gets an error instead of a hung `sendMessage`. Async branches guard
   // themselves via withActiveTab / the storage `.catch`.
   try {
-    if (!isRuntimeMessage(message)) return undefined;
+    if (!isFromExtensionPage(sender) || !isRuntimeMessage(message)) return undefined;
 
     switch (message.type) {
       case MESSAGE_TYPES.GET_SCRIPTS:
@@ -2566,8 +2574,18 @@ browser.runtime.onMessage.addListener(((message: unknown, _sender, sendResponse)
           sendResponse({ ok: false, error: PIN_LENGTH_ERROR });
           return true;
         }
-        setUpPin(message.payload.pin, message.payload.sessionMinutes)
-          .then(() => sendResponse({ ok: true, value: undefined }))
+        // First-time setup only: a fresh salt would make every stored secret
+        // permanently undecryptable, so replacing a PIN must go through
+        // CHANGE_ACCOUNTS_PIN, which re-encrypts them.
+        getLockState()
+          .then(async ({ isPinSet }) => {
+            if (isPinSet) {
+              sendResponse({ ok: false, error: 'A PIN is already set — use Change PIN.' });
+              return;
+            }
+            await setUpPin(message.payload.pin, message.payload.sessionMinutes);
+            sendResponse({ ok: true, value: undefined });
+          })
           .catch((err) => sendResponse({ ok: false, error: errorMessage(err) }));
         return true;
 

@@ -11,10 +11,16 @@ interface Response {
   error?: string;
 }
 
+/** The side panel, as a runtime message sender — the only sender the hub serves. */
+const PANEL_SENDER = {
+  id: 'test-extension',
+  url: 'chrome-extension://test/src/sidepanel/index.html',
+};
+
 /** Dispatch a runtime message and resolve with the handler's sendResponse value. */
-function send(message: unknown): Promise<Response | undefined> {
+function send(message: unknown, sender: object = PANEL_SENDER): Promise<Response | undefined> {
   return new Promise((resolve) => {
-    const results = chromeMock.runtime.onMessage.dispatch(message, {}, (resp: Response) =>
+    const results = chromeMock.runtime.onMessage.dispatch(message, sender, (resp: Response) =>
       resolve(resp)
     );
     if (!results.some((r) => r === true)) resolve(undefined);
@@ -89,6 +95,25 @@ describe('GET_ACCOUNTS_LOCK_STATE / SET_ACCOUNTS_PIN / UNLOCK_ACCOUNTS / LOCK_AC
 
     const right = await send({ type: MESSAGE_TYPES.UNLOCK_ACCOUNTS, payload: { pin: '123456' } });
     expect(right).toEqual({ ok: true, value: undefined });
+  });
+
+  it('refuses to replace an existing PIN, so stored secrets stay decryptable', async () => {
+    await send({
+      type: MESSAGE_TYPES.SET_ACCOUNTS_PIN,
+      payload: { pin: '123456', sessionMinutes: 30 },
+    });
+    const again = await send({
+      type: MESSAGE_TYPES.SET_ACCOUNTS_PIN,
+      payload: { pin: '654321', sessionMinutes: 30 },
+    });
+    expect(again).toEqual({ ok: false, error: 'A PIN is already set — use Change PIN.' });
+
+    await send({ type: MESSAGE_TYPES.LOCK_ACCOUNTS });
+    const original = await send({
+      type: MESSAGE_TYPES.UNLOCK_ACCOUNTS,
+      payload: { pin: '123456' },
+    });
+    expect(original).toEqual({ ok: true, value: undefined });
   });
 
   it('rejects a PIN shorter than 6 digits or longer than 15, and never sets one up', async () => {
