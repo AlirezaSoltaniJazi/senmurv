@@ -22,7 +22,7 @@ export default defineConfig({
   plugins: [react()],
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, 'src'),
+      '@': path.resolve(import.meta.dirname, 'src'),
     },
   },
   build: {
@@ -38,9 +38,9 @@ export default defineConfig({
     modulePreload: false,
     rollupOptions: {
       input: {
-        background: path.resolve(__dirname, 'src/background/service-worker.ts'),
-        picker: path.resolve(__dirname, 'src/content/picker.ts'),
-        sidepanel: path.resolve(__dirname, 'src/sidepanel/index.html'),
+        background: path.resolve(import.meta.dirname, 'src/background/service-worker.ts'),
+        picker: path.resolve(import.meta.dirname, 'src/content/picker.ts'),
+        sidepanel: path.resolve(import.meta.dirname, 'src/sidepanel/index.html'),
       },
       output: {
         format: 'es',

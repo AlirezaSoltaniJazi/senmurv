@@ -550,12 +550,7 @@ export interface BypassOptions {
 
 /** What kind of lock a change removed — one counter per category in the report. */
 export type BypassCategory =
-  | 'enabled'
-  | 'validation'
-  | 'options'
-  | 'revealed'
-  | 'passwords'
-  | 'dialogs';
+  'enabled' | 'validation' | 'options' | 'revealed' | 'passwords' | 'dialogs';
 
 /**
  * The ONLY thing that crosses the wire. Counts and strings only — it is
@@ -592,12 +587,7 @@ export interface BypassState extends PageBypassState {
 
 /** Kinds of site data clearable from the page itself, for the current origin. */
 export type ClearTypeId =
-  | 'cacheStorage'
-  | 'serviceWorkers'
-  | 'localStorage'
-  | 'sessionStorage'
-  | 'indexedDB'
-  | 'cookies';
+  'cacheStorage' | 'serviceWorkers' | 'localStorage' | 'sessionStorage' | 'indexedDB' | 'cookies';
 
 /** One row of the per-origin storage breakdown. */
 export interface StorageDetail {

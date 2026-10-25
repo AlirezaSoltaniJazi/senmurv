@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Node.js 20 or 22
+- Node.js 22 or 24
 - Google Chrome 114+ (the Side Panel API requires 114+)
 
 ## Install
